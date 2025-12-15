@@ -1,5 +1,5 @@
 {
-  "name": "kraken-auto-sweeper",
+  "name": "moby",
   "version": "1.0.0",
   "description": "Self-hosted daemon that monitors Kraken trades and auto-withdraws to pre-saved addresses",
   "private": true,
@@ -8,7 +8,7 @@
     "dev": "tsx watch src/server/app.ts",
     "dev:ui": "vite",
     "build": "tsc && vite build",
-    "build:server": "tsc",
+    "build:server": "tsc -p tsconfig.server.json",
     "build:ui": "vite build",
     "start": "node dist/server/app.js",
     "test": "vitest",

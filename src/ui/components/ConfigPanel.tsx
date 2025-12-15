@@ -68,7 +68,7 @@ export function ConfigPanel() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [editingAsset, setEditingAsset] = useState<string | null>(null);
-  const [showAddAsset, setShowAddAsset] = useState(false);
+  const [addAssetFor, setAddAssetFor] = useState<string | null>(null);
   const [sweeperStatus, setSweeperStatus] = useState<SweeperStatus | null>(null);
   const [toggling, setToggling] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -301,7 +301,7 @@ export function ConfigPanel() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setShowAddAsset(true)}
+                            onClick={() => setAddAssetFor(asset)}
                             className="text-primary hover:text-primary/80 h-auto p-0"
                           >
                             + Add to sweep
@@ -359,7 +359,7 @@ export function ConfigPanel() {
         <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
           <CardTitle>Sweep Configuration</CardTitle>
           {unconfiguredAssets.length > 0 && (
-            <Button onClick={() => setShowAddAsset(true)} size="sm">
+            <Button onClick={() => setAddAssetFor('')} size="sm">
               Add Asset ({unconfiguredAssets.length} available)
             </Button>
           )}
@@ -400,13 +400,14 @@ export function ConfigPanel() {
 
       {/* Add Asset Modal */}
       <AddAssetDialog
-        open={showAddAsset}
-        onOpenChange={setShowAddAsset}
+        open={addAssetFor !== null}
+        onOpenChange={(open) => !open && setAddAssetFor(null)}
+        initialAsset={addAssetFor || undefined}
         existingAssets={Object.keys(config.assets)}
         addressesByAsset={addressesByAsset}
         onAdd={async (asset, assetConfig) => {
           const success = await saveAssetConfig(asset, assetConfig);
-          if (success) setShowAddAsset(false);
+          if (success) setAddAssetFor(null);
         }}
         saving={saving}
       />
@@ -687,17 +688,20 @@ function AssetConfigRow({
 interface AddAssetDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialAsset?: string;
   existingAssets: string[];
   addressesByAsset: Record<string, { method: string; keys: string[] }>;
   onAdd: (asset: string, config: AssetConfig) => void;
   saving: boolean;
 }
 
-function AddAssetDialog({ open, onOpenChange, existingAssets, addressesByAsset, onAdd, saving }: AddAssetDialogProps) {
+function AddAssetDialog({ open, onOpenChange, initialAsset, existingAssets, addressesByAsset, onAdd, saving }: AddAssetDialogProps) {
   const availableAssets = Object.keys(addressesByAsset).filter(
     (a) => !existingAssets.includes(a) && addressesByAsset[a].keys.length > 0
   );
-  const [selectedAsset, setSelectedAsset] = useState(availableAssets[0] || '');
+  // Use initialAsset if provided and available, otherwise first available
+  const defaultAsset = initialAsset && availableAssets.includes(initialAsset) ? initialAsset : availableAssets[0] || '';
+  const [selectedAsset, setSelectedAsset] = useState(defaultAsset);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [config, setConfig] = useState<Omit<AssetConfig, 'method' | 'walletKeys'>>({
     priority: existingAssets.length + 1,
@@ -709,6 +713,14 @@ function AddAssetDialog({ open, onOpenChange, existingAssets, addressesByAsset, 
       amount: 0.01,
     },
   });
+
+  // Reset selected asset when dialog opens with a specific asset
+  useEffect(() => {
+    if (open) {
+      const newDefault = initialAsset && availableAssets.includes(initialAsset) ? initialAsset : availableAssets[0] || '';
+      setSelectedAsset(newDefault);
+    }
+  }, [open, initialAsset]);
 
   useEffect(() => {
     if (selectedAsset && addressesByAsset[selectedAsset]) {
