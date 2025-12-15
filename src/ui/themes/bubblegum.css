@@ -2,6 +2,37 @@
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Comfortaa:wght@400;600;700&display=swap');
 
 html[data-style="bubblegum"] {
+  /* Shadcn UI Mappings (Light) */
+  --background: 330 100% 98%; /* Very light pink/white */
+  --foreground: 260 20% 25%; /* Dark purple/text */
+
+  --card: 0 0% 100%;
+  --card-foreground: 260 20% 25%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 260 20% 25%;
+
+  --primary: 330 100% 70%; /* Bubble pink */
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 270 100% 90%; /* Lavender */
+  --secondary-foreground: 260 20% 25%;
+
+  --muted: 330 50% 96%;
+  --muted-foreground: 260 10% 60%;
+
+  --accent: 120 100% 80%; /* Mint */
+  --accent-foreground: 260 20% 25%;
+
+  --destructive: 330 100% 70%; /* Pink as danger too in this theme? Or red */
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 330 100% 85%;
+  --input: 330 50% 95%;
+  --ring: 330 100% 70%;
+
+  --radius: 1.5rem; /* Rounded toyetic look */
+
   /* Typography */
   --font-display: 'Fredoka', 'Comic Sans MS', cursive;
   --font-body: 'Comfortaa', cursive;
@@ -513,6 +544,35 @@ html[data-style="bubblegum"] .section-title {
 /* Bubblegum Dark Mode - Neon Candy */
 html.dark[data-style="bubblegum"],
 html[data-theme="dark"][data-style="bubblegum"] {
+  /* Shadcn UI Mappings (Dark) */
+  --background: 260 20% 10%; /* Dark purple/black */
+  --foreground: 330 50% 95%; /* Light pink */
+
+  --card: 260 25% 15%;
+  --card-foreground: 330 50% 95%;
+
+  --popover: 260 25% 15%;
+  --popover-foreground: 330 50% 95%;
+
+  --primary: 330 100% 70%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 270 50% 25%;
+  --secondary-foreground: 330 50% 95%;
+
+  --muted: 260 20% 20%;
+  --muted-foreground: 330 30% 70%;
+
+  --accent: 330 100% 70%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 80% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 330 50% 30%;
+  --input: 260 20% 20%;
+  --ring: 330 100% 70%;
+
   /* Core Colors - Neon Candy */
   --primary: #ff85c8;
   --primary-foreground: #ffffff;

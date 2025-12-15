@@ -2,6 +2,37 @@
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500&display=swap');
 
 html[data-style="luxury"] {
+  /* Shadcn UI Mappings (Dark Default for Luxury) */
+  --background: 240 5% 8%; /* #121214 */
+  --foreground: 40 10% 90%; /* #e5e5e5 */
+
+  --card: 240 4% 10%; /* #1a1a1c */
+  --card-foreground: 40 10% 90%;
+
+  --popover: 240 4% 10%;
+  --popover-foreground: 40 10% 90%;
+
+  --primary: 40 40% 80%; /* #e5d3b3 Champagne */
+  --primary-foreground: 240 5% 5%;
+
+  --secondary: 40 5% 20%;
+  --secondary-foreground: 40 40% 80%;
+
+  --muted: 240 2% 15%;
+  --muted-foreground: 0 0% 60%;
+
+  --accent: 46 63% 52%; /* #d4af37 Gold */
+  --accent-foreground: 240 5% 5%;
+
+  --destructive: 0 50% 30%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 0 0% 20%;
+  --input: 240 4% 9%;
+  --ring: 46 63% 52%;
+
+  --radius: 0.125rem; /* 2px Sharp */
+
   /* Typography */
   --font-serif: 'Playfair Display', serif;
   --font-display: 'Cormorant Garamond', serif;
@@ -301,6 +332,35 @@ html[data-style="luxury"] .modern-table td {
 
 html[data-style="luxury"]:not(.dark):not([data-theme="dark"]),
 html[data-theme="light"][data-style="luxury"] {
+  /* Shadcn UI Mappings (Light) */
+  --background: 40 20% 97%; /* Off-white/cream */
+  --foreground: 240 5% 5%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 240 5% 5%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 5% 5%;
+
+  --primary: 46 63% 52%; /* Gold text on light */
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 40 20% 90%;
+  --secondary-foreground: 240 5% 5%;
+
+  --muted: 40 10% 94%;
+  --muted-foreground: 0 0% 40%;
+
+  --accent: 40 30% 80%; /* Champagne accent */
+  --accent-foreground: 240 5% 5%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 40 10% 85%;
+  --input: 0 0% 100%;
+  --ring: 46 63% 52%;
+
   /* Core Colors - Warm Alabaster */
   --primary: #b08d55;
   --primary-foreground: #ffffff;

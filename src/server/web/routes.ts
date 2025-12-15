@@ -18,7 +18,7 @@ import {
   setAppStateValue,
   getAllKrakenAddresses,
   upsertKrakenAddress,
-  flagRemovedAddresses,
+  deleteRemovedAddresses,
   getAllApiKeys,
   getApiKeyById,
   createApiKey,
@@ -451,7 +451,6 @@ export function createRoutes(context: RoutesContext): Router {
         address: addr.address,
         createdAt: addr.createdAt,
         lastSeenAt: addr.lastSeenAt,
-        removedAt: addr.removedAt,
       }))
     );
   });
@@ -478,8 +477,14 @@ export function createRoutes(context: RoutesContext): Router {
       let restoredCount = 0;
       const currentKeys: Array<{ asset: string; key: string }> = [];
 
-      // Upsert each address
+      // Upsert each address (skip entries without an address, like bank transfers)
+      let skippedCount = 0;
       for (const addr of krakenAddresses) {
+        if (!addr.address) {
+          logger.debug({ asset: addr.asset, key: addr.key, method: addr.method }, 'Skipping entry without address (bank transfer)');
+          skippedCount++;
+          continue;
+        }
         logger.debug({ addr }, 'Upserting address');
         currentKeys.push({ asset: addr.asset, key: addr.key });
         const result = upsertKrakenAddress(addr.asset, addr.method, addr.key, addr.address);
@@ -492,17 +497,20 @@ export function createRoutes(context: RoutesContext): Router {
           logger.debug({ asset: addr.asset, key: addr.key }, 'Removed address restored');
         }
       }
+      if (skippedCount > 0) {
+        logger.info({ skippedCount }, 'Skipped entries without addresses (bank transfers)');
+      }
 
-      // Flag addresses that no longer exist in Kraken
+      // Delete addresses that no longer exist in Kraken
       logger.debug({ currentKeys }, 'Current keys from Kraken');
-      const flaggedCount = flagRemovedAddresses(currentKeys);
+      const deletedCount = deleteRemovedAddresses(currentKeys);
 
       logger.info(
         {
           krakenCount: krakenAddresses.length,
           new: newCount,
           restored: restoredCount,
-          flagged: flaggedCount
+          deleted: deletedCount
         },
         'Synced Kraken withdrawal addresses'
       );
@@ -518,12 +526,11 @@ export function createRoutes(context: RoutesContext): Router {
           address: addr.address,
           createdAt: addr.createdAt,
           lastSeenAt: addr.lastSeenAt,
-          removedAt: addr.removedAt,
         })),
         stats: {
           new: newCount,
           restored: restoredCount,
-          flagged: flaggedCount,
+          deleted: deletedCount,
           fromKraken: krakenAddresses.length,
         },
       });

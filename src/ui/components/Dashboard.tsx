@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Switch } from '@radix-ui/react-switch';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
+import { Switch } from '@/ui/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/ui/components/ui/tabs';
+import { Card, CardContent } from '@/ui/components/ui/card';
 import {
   LayoutDashboard,
   List,
@@ -16,6 +17,9 @@ import { ApiKeysPanel } from './ApiKeysPanel';
 import { StatusPanel } from './StatusPanel';
 import { ConfigPanel } from './ConfigPanel';
 import { OrdersPanel } from './OrdersPanel';
+
+import { ModeToggle } from './ModeToggle';
+import { ThemeSelector } from './ThemeSelector';
 
 interface DashboardProps {
   user: { userId: string; username: string };
@@ -98,38 +102,43 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <Waves className="w-12 h-12 text-indigo-500 animate-pulse" />
-          <div className="text-gray-400">Loading Moby...</div>
+          <Waves className="w-12 h-12 text-primary animate-pulse" />
+          <div className="text-muted-foreground">Loading Moby...</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-200 font-sans selection:bg-indigo-500/30">
+    <div className="min-h-screen bg-background text-foreground font-sans selection:bg-primary/30">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-gray-800 bg-gray-950/80 backdrop-blur-md">
+      <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
               <Waves className="w-5 h-5 text-white" />
             </div>
-            <h1 className="text-xl font-bold text-white tracking-tight">Moby</h1>
+            <h1 className="text-xl font-bold tracking-tight">Moby</h1>
           </div>
 
           <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]"></span>
-              <span className="text-gray-400">System Operational</span>
+            <div className="flex items-center gap-4">
+              <ThemeSelector />
+              <ModeToggle />
             </div>
-            <div className="h-4 w-px bg-gray-800"></div>
+            <div className="h-4 w-px bg-border"></div>
+            <div className="flex items-center gap-2 text-sm hidden md:flex">
+              <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]"></span>
+              <span className="text-muted-foreground">System Operational</span>
+            </div>
+            <div className="h-4 w-px bg-border hidden md:block"></div>
             <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-gray-300">{user.username}</span>
+              <span className="text-sm font-medium">{user.username}</span>
               <button
                 onClick={onLogout}
-                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-all"
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all"
                 title="Sign out"
               >
                 <LogOut size={18} />
@@ -142,31 +151,27 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
       {/* Main content */}
       <main className="max-w-6xl mx-auto px-4 py-8">
         {/* Control bar */}
-        <div className="bg-gradient-to-br from-gray-900 to-gray-900/50 rounded-xl border border-gray-800 p-6 mb-8 shadow-xl">
-          <div className="flex items-center justify-between">
+        <Card className="mb-8 bg-gradient-to-br from-card to-card/50">
+          <CardContent className="p-6 flex items-center justify-between">
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-4">
                 <Switch
                   checked={status?.enabled ?? false}
                   onCheckedChange={toggleEnabled}
                   disabled={toggling || !status?.hasApiKeys}
-                  className="w-14 h-8 bg-gray-800 rounded-full relative data-[state=checked]:bg-green-500 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500/50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed border border-gray-700 data-[state=checked]:border-green-400"
-                >
-                  <span className="block w-6 h-6 bg-white rounded-full shadow-lg absolute left-1 top-1 transition-transform data-[state=checked]:translate-x-6 flex items-center justify-center">
-                    {toggling ? (
-                      <div className="w-3 h-3 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin"></div>
-                    ) : status?.enabled ? (
-                      <Play size={12} className="text-green-600 fill-current" />
-                    ) : (
-                      <Square size={10} className="text-gray-400 fill-current" />
-                    )}
-                  </span>
-                </Switch>
+                />
                 <div>
-                  <h2 className="text-lg font-semibold text-white">
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    {toggling ? (
+                       <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    ) : status?.enabled ? (
+                      <Play size={16} className="text-green-500 fill-current" />
+                    ) : (
+                      <Square size={14} className="text-muted-foreground fill-current" />
+                    )}
                     {status?.enabled ? 'Sweeper Running' : 'Sweeper Stopped'}
                   </h2>
-                  <p className="text-sm text-gray-400">
+                  <p className="text-sm text-muted-foreground">
                     {status?.enabled
                       ? 'Monitoring for fills and sweeping assets'
                       : 'Withdrawals are currently paused'}
@@ -175,73 +180,61 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
               </div>
 
               {!status?.hasApiKeys && (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-yellow-500/10 text-yellow-400 rounded-lg border border-yellow-500/20 text-sm">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-yellow-500/10 text-yellow-500 rounded-lg border border-yellow-500/20 text-sm">
                   <AlertCircle size={16} />
                   <span>API keys required</span>
                 </div>
               )}
             </div>
 
-            <div className="flex gap-8 px-6 py-2 bg-gray-950/50 rounded-lg border border-gray-800/50">
+            <div className="flex gap-8 px-6 py-2 bg-muted/50 rounded-lg border">
               <div className="text-center">
-                <div className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-1">Active Jobs</div>
-                <div className="text-xl font-mono text-white">{status?.activeJobs?.length || 0}</div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-1">Active Jobs</div>
+                <div className="text-xl font-mono">{status?.activeJobs?.length || 0}</div>
               </div>
-              <div className="w-px bg-gray-800"></div>
+              <div className="w-px bg-border"></div>
               <div className="text-center">
-                <div className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-1">Pending Assets</div>
-                <div className="text-xl font-mono text-white">{status?.assets?.length || 0}</div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-1">Pending Assets</div>
+                <div className="text-xl font-mono">{status?.assets?.length || 0}</div>
               </div>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="flex gap-1 bg-gray-900/50 p-1 rounded-xl border border-gray-800 w-fit backdrop-blur-sm">
-            <TabsTrigger
-              value="status"
-              className="px-4 py-2 text-sm font-medium text-gray-400 rounded-lg data-[state=active]:bg-gray-800 data-[state=active]:text-white data-[state=active]:shadow-sm transition-all flex items-center gap-2"
-            >
+          <TabsList>
+            <TabsTrigger value="status" className="gap-2">
               <LayoutDashboard size={16} />
               Status
             </TabsTrigger>
-            <TabsTrigger
-              value="orders"
-              className="px-4 py-2 text-sm font-medium text-gray-400 rounded-lg data-[state=active]:bg-gray-800 data-[state=active]:text-white data-[state=active]:shadow-sm transition-all flex items-center gap-2"
-            >
+            <TabsTrigger value="orders" className="gap-2">
               <List size={16} />
               Orders
             </TabsTrigger>
-            <TabsTrigger
-              value="api-keys"
-              className="px-4 py-2 text-sm font-medium text-gray-400 rounded-lg data-[state=active]:bg-gray-800 data-[state=active]:text-white data-[state=active]:shadow-sm transition-all flex items-center gap-2"
-            >
+            <TabsTrigger value="api-keys" className="gap-2">
               <Key size={16} />
               API Keys
             </TabsTrigger>
-            <TabsTrigger
-              value="config"
-              className="px-4 py-2 text-sm font-medium text-gray-400 rounded-lg data-[state=active]:bg-gray-800 data-[state=active]:text-white data-[state=active]:shadow-sm transition-all flex items-center gap-2"
-            >
+            <TabsTrigger value="config" className="gap-2">
               <Settings size={16} />
               Configuration
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="status" className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <TabsContent value="status">
             <StatusPanel status={status} onRefresh={fetchStatus} />
           </TabsContent>
 
-          <TabsContent value="orders" className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <TabsContent value="orders">
             <OrdersPanel />
           </TabsContent>
 
-          <TabsContent value="api-keys" className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <TabsContent value="api-keys">
             <ApiKeysPanel hasKeys={status?.hasApiKeys ?? false} onUpdate={fetchStatus} />
           </TabsContent>
 
-          <TabsContent value="config" className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <TabsContent value="config">
             <ConfigPanel />
           </TabsContent>
         </Tabs>

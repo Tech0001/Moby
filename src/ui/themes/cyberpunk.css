@@ -2,6 +2,47 @@
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800;900&family=Exo+2:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap');
 
 html[data-style="cyberpunk"] {
+  /* Shadcn UI Mappings */
+  --background: 5 0% 2%; /* #050505 - using HSL for opacity support in tailwind if needed, but hex works too usually. Let's stick to hex for direct mapping first, or re-declare as HSL if tailwind config expects it. Default shadcn uses HSL. */
+  /* Actually shadcn default tailwind config expects HSL values without the hsl() wrapper.
+     Let's convert the hex colors to HSL.
+     #050505 -> 0 0% 2%
+     #ffffff -> 0 0% 100%
+     #ff0080 -> 330 100% 50%
+     #9d00ff -> 277 100% 50%
+     #00d9ff -> 189 100% 50%
+     #ff0040 -> 340 100% 63% (approx)
+  */
+  --background: 0 0% 2%;
+  --foreground: 0 0% 100%;
+
+  --card: 270 100% 5%; /* darker purple/black */
+  --card-foreground: 0 0% 100%;
+
+  --popover: 270 100% 5%;
+  --popover-foreground: 0 0% 100%;
+
+  --primary: 330 100% 50%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 277 100% 50%;
+  --secondary-foreground: 0 0% 100%;
+
+  --muted: 270 50% 15%;
+  --muted-foreground: 0 0% 70%;
+
+  --accent: 189 100% 50%;
+  --accent-foreground: 0 0% 0%;
+
+  --destructive: 340 100% 63%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 330 100% 50%; /* primary pink as border */
+  --input: 0 0% 10%;
+  --ring: 330 100% 50%;
+
+  --radius: 0rem; /* Cyberpunk is square */
+
   /* Typography */
   --font-display: 'Orbitron', 'Arial Black', sans-serif;
   --font-body: 'Exo 2', -apple-system, system-ui, sans-serif;
@@ -473,6 +514,35 @@ html[data-style="cyberpunk"] .section-title::after {
 
 html[data-style="cyberpunk"]:not(.dark):not([data-theme="dark"]),
 html[data-theme="light"][data-style="cyberpunk"] {
+  /* Shadcn UI Mappings (Light) */
+  --background: 216 12% 95%;
+  --foreground: 280 80% 8%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 280 80% 8%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 280 80% 8%;
+
+  --primary: 330 100% 50%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 277 100% 44%;
+  --secondary-foreground: 0 0% 100%;
+
+  --muted: 270 20% 90%;
+  --muted-foreground: 280 50% 40%;
+
+  --accent: 192 100% 40%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 330 100% 50%;
+  --input: 0 0% 96%;
+  --ring: 330 100% 50%;
+
   /* Core Colors - High Voltage */
   --primary: #d6006e;
   --primary-foreground: #ffffff;

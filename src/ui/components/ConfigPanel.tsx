@@ -1,4 +1,13 @@
 import { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/components/ui/card";
+import { Button } from "@/ui/components/ui/button";
+import { Input } from "@/ui/components/ui/input";
+import { Label } from "@/ui/components/ui/label";
+import { Badge } from "@/ui/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/ui/components/ui/dialog";
+import { Alert, AlertDescription } from "@/ui/components/ui/alert";
+import { Activity } from 'lucide-react';
 
 interface AssetConfig {
   priority: number;
@@ -42,7 +51,6 @@ interface KrakenAddress {
   key: string;
   createdAt: number;
   lastSeenAt: number;
-  removedAt: number | null;
 }
 
 interface SweeperStatus {
@@ -64,7 +72,7 @@ export function ConfigPanel() {
   const [sweeperStatus, setSweeperStatus] = useState<SweeperStatus | null>(null);
   const [toggling, setToggling] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [syncStats, setSyncStats] = useState<{ new: number; restored: number; flagged: number; fromKraken: number } | null>(null);
+  const [syncStats, setSyncStats] = useState<{ new: number; restored: number; deleted: number; fromKraken: number } | null>(null);
 
   useEffect(() => {
     fetchConfig();
@@ -145,13 +153,8 @@ export function ConfigPanel() {
         parts.push(`${data.stats.fromKraken} from Kraken`);
         if (data.stats.new > 0) parts.push(`${data.stats.new} new`);
         if (data.stats.restored > 0) parts.push(`${data.stats.restored} restored`);
-        if (data.stats.flagged > 0) parts.push(`${data.stats.flagged} removed`);
-
-        if (data.stats.flagged > 0) {
-          setError(`Sync complete (${parts.join(', ')}). Update config for removed addresses.`);
-        } else {
-          setSuccess(`Sync complete: ${parts.join(', ')}`);
-        }
+        if (data.stats.deleted > 0) parts.push(`${data.stats.deleted} deleted`);
+        setSuccess(`Sync complete: ${parts.join(', ')}`);
       } else {
         const data = await res.json();
         setError(data.error || 'Failed to sync addresses');
@@ -194,17 +197,14 @@ export function ConfigPanel() {
     }
   }
 
-  // Group addresses by asset, tracking removed status for each key
+  // Group addresses by asset
   const addressesByAsset = addresses.reduce((acc, addr) => {
     if (!acc[addr.asset]) {
-      acc[addr.asset] = { method: addr.method, keys: [], hasRemoved: false };
+      acc[addr.asset] = { method: addr.method, keys: [] };
     }
-    acc[addr.asset].keys.push({ key: addr.key, removed: addr.removedAt !== null });
-    if (addr.removedAt !== null) {
-      acc[addr.asset].hasRemoved = true;
-    }
+    acc[addr.asset].keys.push(addr.key);
     return acc;
-  }, {} as Record<string, { method: string; keys: Array<{ key: string; removed: boolean }>; hasRemoved: boolean }>);
+  }, {} as Record<string, { method: string; keys: string[] }>);
 
   // Assets available from Kraken but not yet configured
   const unconfiguredAssets = Object.keys(addressesByAsset).filter(
@@ -212,28 +212,28 @@ export function ConfigPanel() {
   );
 
   if (loading) {
-    return <div className="text-gray-400">Loading configuration...</div>;
+    return <div className="text-muted-foreground">Loading configuration...</div>;
   }
 
   if (!config) {
-    return <div className="text-red-400">Failed to load configuration</div>;
+    return <div className="text-destructive">Failed to load configuration</div>;
   }
 
   return (
     <div className="space-y-6">
       {/* Sweeper Control */}
-      <div className="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-800">
-          <h2 className="font-semibold text-white">Sweeper Control</h2>
-        </div>
-        <div className="p-4 flex items-center justify-between">
+      <Card>
+        <CardHeader className="py-4 border-b">
+          <CardTitle>Sweeper Control</CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div
               className={`w-3 h-3 rounded-full ${
                 sweeperStatus?.enabled ? 'bg-green-500' : 'bg-gray-500'
               }`}
             />
-            <span className="text-white font-medium">
+            <span className="font-medium">
               {sweeperStatus?.enabled ? 'Running' : 'Stopped'}
             </span>
             {!sweeperStatus?.hasApiKeys && (
@@ -242,197 +242,174 @@ export function ConfigPanel() {
               </span>
             )}
           </div>
-          <button
+          <Button
             onClick={toggleSweeper}
             disabled={toggling || !sweeperStatus?.hasApiKeys}
-            className={`px-4 py-2 text-sm font-medium rounded transition-colors ${
-              sweeperStatus?.enabled
-                ? 'bg-red-600 hover:bg-red-700 text-white'
-                : 'bg-green-600 hover:bg-green-700 text-white'
-            } disabled:bg-gray-700 disabled:text-gray-500`}
+            variant={sweeperStatus?.enabled ? 'destructive' : 'default'}
           >
             {toggling ? 'Working...' : sweeperStatus?.enabled ? 'Stop Sweeper' : 'Start Sweeper'}
-          </button>
-        </div>
-      </div>
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Kraken Withdrawal Addresses */}
-      <div className="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
-          <h2 className="font-semibold text-white">Kraken Withdrawal Addresses</h2>
-          <button
+      <Card>
+        <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
+          <CardTitle>Kraken Withdrawal Addresses</CardTitle>
+          <Button
             onClick={syncAddresses}
             disabled={syncing || !sweeperStatus?.hasApiKeys}
-            className="bridge-button text-sm"
+            variant="outline"
+            size="sm"
           >
             {syncing ? 'Syncing...' : 'Sync from Kraken'}
-          </button>
-        </div>
+          </Button>
+        </CardHeader>
 
-        {loadingAddresses ? (
-          <div className="p-4 text-gray-400 text-center">
-            Loading addresses...
-          </div>
-        ) : addresses.length === 0 ? (
-          <div className="p-4 text-gray-400 text-center">
-            No withdrawal addresses found. Click "Sync from Kraken" to fetch addresses, or add them in Kraken first.
-          </div>
-        ) : (
-          <div className="p-4">
-            <div className="grid gap-3">
-              {Object.entries(addressesByAsset).map(([asset, { method, keys, hasRemoved }]) => {
+        <CardContent className="p-0">
+          {loadingAddresses ? (
+            <div className="p-4 text-muted-foreground text-center">
+              Loading addresses...
+            </div>
+          ) : addresses.length === 0 ? (
+            <div className="p-4 text-muted-foreground text-center">
+              No withdrawal addresses found. Click "Sync from Kraken" to fetch addresses, or add them in Kraken first.
+            </div>
+          ) : (
+            <div className="p-4 grid gap-3">
+              {Object.entries(addressesByAsset).map(([asset, { method, keys }]) => {
                 const isConfigured = !!config.assets[asset];
                 return (
-                  <div
+                  <Card
                     key={asset}
-                    className={`p-3 rounded-lg border ${
-                      hasRemoved
-                        ? 'bg-red-900/20 border-red-800'
-                        : isConfigured
-                        ? 'bg-green-900/20 border-green-800'
-                        : 'bg-gray-800 border-gray-700'
+                    className={`border ${
+                      isConfigured
+                        ? 'bg-green-500/10 border-green-500/50'
+                        : 'bg-card'
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-white">{asset}</span>
-                        <span className="text-xs text-gray-500">via {method}</span>
-                        {hasRemoved && (
-                          <span className="text-xs bg-red-800 text-red-200 px-2 py-0.5 rounded">
-                            Address Removed
-                          </span>
-                        )}
-                        {isConfigured && !hasRemoved && (
-                          <span className="text-xs bg-green-800 text-green-200 px-2 py-0.5 rounded">
-                            Configured
-                          </span>
+                    <CardContent className="p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{asset}</span>
+                          <Badge variant="outline" className="text-xs">via {method}</Badge>
+                          {isConfigured && (
+                            <Badge variant="outline" className="text-green-500 border-green-500">Configured</Badge>
+                          )}
+                        </div>
+                        {!isConfigured && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowAddAsset(true)}
+                            className="text-primary hover:text-primary/80 h-auto p-0"
+                          >
+                            + Add to sweep
+                          </Button>
                         )}
                       </div>
-                      {!isConfigured && !hasRemoved && (
-                        <button
-                          onClick={() => {
-                            setShowAddAsset(true);
-                            // Pre-select this asset
-                          }}
-                          className="text-xs text-blue-400 hover:text-blue-300"
-                        >
-                          + Add to sweep
-                        </button>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {keys.map(({ key, removed }) => (
-                        <span
-                          key={key}
-                          className={`text-xs px-2 py-1 rounded font-mono ${
-                            removed
-                              ? 'bg-red-900/50 text-red-300 line-through'
-                              : 'bg-gray-700 text-gray-300'
-                          }`}
-                          title={removed ? 'This address was removed from Kraken' : undefined}
-                        >
-                          {key}
-                        </span>
-                      ))}
-                    </div>
-                    {hasRemoved && (
-                      <div className="mt-2 text-xs text-red-400">
-                        One or more withdrawal addresses no longer exist on Kraken. Update your configuration.
+                      <div className="flex flex-wrap gap-1">
+                        {keys.map((key) => (
+                          <span
+                            key={key}
+                            className="text-xs px-2 py-1 rounded font-mono bg-muted text-muted-foreground"
+                          >
+                            {key}
+                          </span>
+                        ))}
                       </div>
-                    )}
-                  </div>
+                    </CardContent>
+                  </Card>
                 );
               })}
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Global Settings */}
-      <div className="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-800">
-          <h2 className="font-semibold text-white">Global Settings</h2>
-        </div>
-        <div className="p-4 grid grid-cols-2 gap-4 text-sm">
+      <Card>
+        <CardHeader className="py-4 border-b">
+          <CardTitle>Global Settings</CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 grid grid-cols-2 gap-4 text-sm">
           <div>
-            <span className="text-gray-400">Max Inflight Withdrawals:</span>
-            <span className="text-white ml-2">{config.global.maxInflightWithdrawals}</span>
+            <span className="text-muted-foreground">Max Inflight Withdrawals:</span>
+            <span className="ml-2">{config.global.maxInflightWithdrawals}</span>
           </div>
           <div>
-            <span className="text-gray-400">Per-Asset Max Inflight:</span>
-            <span className="text-white ml-2">{config.global.perAssetMaxInflight}</span>
+            <span className="text-muted-foreground">Per-Asset Max Inflight:</span>
+            <span className="ml-2">{config.global.perAssetMaxInflight}</span>
           </div>
           <div>
-            <span className="text-gray-400">Allowed Order Types:</span>
-            <span className="text-white ml-2">{config.global.allowedOrderTypes.join(', ')}</span>
+            <span className="text-muted-foreground">Allowed Order Types:</span>
+            <span className="ml-2">{config.global.allowedOrderTypes.join(', ')}</span>
           </div>
           {config.global.keyNamePrefix && (
             <div>
-              <span className="text-gray-400">Key Name Prefix:</span>
-              <span className="text-white ml-2">{config.global.keyNamePrefix}</span>
+              <span className="text-muted-foreground">Key Name Prefix:</span>
+              <span className="ml-2">{config.global.keyNamePrefix}</span>
             </div>
           )}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Configured Assets */}
-      <div className="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
-          <h2 className="font-semibold text-white">Sweep Configuration</h2>
+      <Card>
+        <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
+          <CardTitle>Sweep Configuration</CardTitle>
           {unconfiguredAssets.length > 0 && (
-            <button
-              onClick={() => setShowAddAsset(true)}
-              className="bridge-button text-sm"
-            >
+            <Button onClick={() => setShowAddAsset(true)} size="sm">
               Add Asset ({unconfiguredAssets.length} available)
-            </button>
+            </Button>
           )}
-        </div>
+        </CardHeader>
 
-        {error && <div className="px-4 py-2 text-red-400 text-sm bg-red-900/20">{error}</div>}
-        {success && <div className="px-4 py-2 text-green-400 text-sm bg-green-900/20">{success}</div>}
+        <CardContent className="p-0">
+          {error && <Alert variant="destructive" className="m-4"><AlertDescription>{error}</AlertDescription></Alert>}
+          {success && <Alert className="m-4 text-green-500 border-green-500"><AlertDescription>{success}</AlertDescription></Alert>}
 
-        {Object.keys(config.assets).length === 0 ? (
-          <div className="p-4 text-gray-400 text-center">
-            No assets configured for sweeping.
-            {unconfiguredAssets.length > 0
-              ? ` You have ${unconfiguredAssets.length} asset(s) with withdrawal addresses ready to configure.`
-              : ' Add withdrawal addresses in Kraken first.'}
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-800">
-            {Object.entries(config.assets)
-              .sort(([, a], [, b]) => a.priority - b.priority)
-              .map(([asset, assetConfig]) => (
-                <AssetConfigRow
-                  key={asset}
-                  asset={asset}
-                  config={assetConfig}
-                  availableKeys={addressesByAsset[asset]?.keys || []}
-                  isEditing={editingAsset === asset}
-                  onEdit={() => setEditingAsset(asset)}
-                  onCancel={() => setEditingAsset(null)}
-                  onSave={(newConfig) => saveAssetConfig(asset, newConfig)}
-                  saving={saving}
-                />
-              ))}
-          </div>
-        )}
-      </div>
+          {Object.keys(config.assets).length === 0 ? (
+            <div className="p-4 text-muted-foreground text-center">
+              No assets configured for sweeping.
+              {unconfiguredAssets.length > 0
+                ? ` You have ${unconfiguredAssets.length} asset(s) with withdrawal addresses ready to configure.`
+                : ' Add withdrawal addresses in Kraken first.'}
+            </div>
+          ) : (
+            <div className="divide-y">
+              {Object.entries(config.assets)
+                .sort(([, a], [, b]) => a.priority - b.priority)
+                .map(([asset, assetConfig]) => (
+                  <AssetConfigRow
+                    key={asset}
+                    asset={asset}
+                    config={assetConfig}
+                    availableKeys={addressesByAsset[asset]?.keys || []}
+                    isEditing={editingAsset === asset}
+                    onEdit={() => setEditingAsset(asset)}
+                    onCancel={() => setEditingAsset(null)}
+                    onSave={(newConfig) => saveAssetConfig(asset, newConfig)}
+                    saving={saving}
+                  />
+                ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Add Asset Modal */}
-      {showAddAsset && (
-        <AddAssetModal
-          existingAssets={Object.keys(config.assets)}
-          addressesByAsset={addressesByAsset}
-          onAdd={async (asset, assetConfig) => {
-            const success = await saveAssetConfig(asset, assetConfig);
-            if (success) setShowAddAsset(false);
-          }}
-          onClose={() => setShowAddAsset(false)}
-          saving={saving}
-        />
-      )}
+      <AddAssetDialog
+        open={showAddAsset}
+        onOpenChange={setShowAddAsset}
+        existingAssets={Object.keys(config.assets)}
+        addressesByAsset={addressesByAsset}
+        onAdd={async (asset, assetConfig) => {
+          const success = await saveAssetConfig(asset, assetConfig);
+          if (success) setShowAddAsset(false);
+        }}
+        saving={saving}
+      />
     </div>
   );
 }
@@ -440,7 +417,7 @@ export function ConfigPanel() {
 interface AssetConfigRowProps {
   asset: string;
   config: AssetConfig;
-  availableKeys: Array<{ key: string; removed: boolean }>;
+  availableKeys: string[];
   isEditing: boolean;
   onEdit: () => void;
   onCancel: () => void;
@@ -460,13 +437,6 @@ function AssetConfigRow({
 }: AssetConfigRowProps) {
   const [editConfig, setEditConfig] = useState(config);
 
-  // Filter to only active (non-removed) keys for selection
-  const activeKeys = availableKeys.filter((k) => !k.removed);
-  // Check if any configured keys have been removed
-  const removedConfiguredKeys = config.walletKeys.filter((wk) =>
-    availableKeys.some((k) => k.key === wk && k.removed)
-  );
-
   useEffect(() => {
     setEditConfig(config);
   }, [config, isEditing]);
@@ -480,121 +450,89 @@ function AssetConfigRow({
 
   if (!isEditing) {
     return (
-      <div className={`p-4 ${removedConfiguredKeys.length > 0 ? 'bg-red-900/10' : ''}`}>
+      <div className="p-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
-            <span className="font-medium text-white text-lg">{asset}</span>
-            <span className="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">
-              Priority {config.priority}
-            </span>
-            {removedConfiguredKeys.length > 0 && (
-              <span className="text-xs bg-red-800 text-red-200 px-2 py-0.5 rounded">
-                Has Removed Keys
-              </span>
-            )}
+            <span className="font-medium text-lg">{asset}</span>
+            <Badge variant="secondary">Priority {config.priority}</Badge>
           </div>
-          <button
-            onClick={onEdit}
-            className="px-3 py-1 text-sm text-gray-400 hover:text-white transition-colors"
-          >
-            Edit
-          </button>
+          <Button variant="ghost" size="sm" onClick={onEdit}>Edit</Button>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm mb-2">
           <div>
-            <span className="text-gray-500">Method:</span>
-            <span className="text-gray-300 ml-1">{config.method}</span>
+            <span className="text-muted-foreground">Method:</span>
+            <span className="ml-1">{config.method}</span>
           </div>
           <div>
-            <span className="text-gray-500">Threshold:</span>
-            <span className="text-gray-300 ml-1">
+            <span className="text-muted-foreground">Threshold:</span>
+            <span className="ml-1">
               {config.sweepThresholdCoin
                 ? `${config.sweepThresholdCoin} ${asset}`
                 : `$${config.sweepThresholdUsd}`}
             </span>
           </div>
           <div>
-            <span className="text-gray-500">Chunk:</span>
-            <span className="text-gray-300 ml-1">
+            <span className="text-muted-foreground">Chunk:</span>
+            <span className="ml-1">
               {config.chunk.mode === 'fixedCoin'
                 ? `${config.chunk.amount} ${asset}`
                 : `$${config.chunk.targetUsd}`}
             </span>
           </div>
           <div>
-            <span className="text-gray-500">Cooldown:</span>
-            <span className="text-gray-300 ml-1">{config.cooldownSeconds}s</span>
+            <span className="text-muted-foreground">Cooldown:</span>
+            <span className="ml-1">{config.cooldownSeconds}s</span>
           </div>
         </div>
         <div className="flex flex-wrap gap-1">
-          {config.walletKeys.map((key) => {
-            const isRemoved = removedConfiguredKeys.includes(key);
-            return (
-              <span
-                key={key}
-                className={`text-xs px-2 py-1 rounded font-mono ${
-                  isRemoved
-                    ? 'bg-red-900/50 text-red-300 line-through'
-                    : 'bg-blue-900/50 text-blue-300'
-                }`}
-              >
-                {key}
-              </span>
-            );
-          })}
+          {config.walletKeys.map((key) => (
+            <span
+              key={key}
+              className="text-xs px-2 py-1 rounded font-mono bg-primary/20 text-primary"
+            >
+              {key}
+            </span>
+          ))}
         </div>
-        {removedConfiguredKeys.length > 0 && (
-          <div className="mt-2 text-xs text-red-400">
-            Warning: {removedConfiguredKeys.length} configured wallet key(s) no longer exist on Kraken. Edit to update.
-          </div>
-        )}
       </div>
     );
   }
 
   return (
-    <div className="p-4 bg-gray-800/50">
+    <div className="p-4 bg-muted/30">
       <div className="flex items-center justify-between mb-4">
-        <span className="font-medium text-white text-lg">{asset}</span>
+        <span className="font-medium text-lg">{asset}</span>
         <div className="flex gap-2">
-          <button
-            onClick={onCancel}
-            disabled={saving}
-            className="px-3 py-1 text-sm text-gray-400 hover:text-white transition-colors"
-          >
-            Cancel
-          </button>
-          <button
+          <Button variant="ghost" size="sm" onClick={onCancel} disabled={saving}>Cancel</Button>
+          <Button
+            size="sm"
             onClick={() => onSave(editConfig)}
             disabled={saving || editConfig.walletKeys.length === 0}
-            className="bridge-button text-sm"
           >
             {saving ? 'Saving...' : 'Save'}
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Wallet Keys Selection */}
       <div className="mb-4">
-        <label className="block text-sm text-gray-400 mb-2">
+        <Label className="block mb-2">
           Wallet Keys (select which to use for round-robin)
-        </label>
-        {activeKeys.length > 0 ? (
+        </Label>
+        {availableKeys.length > 0 ? (
           <div className="flex flex-wrap gap-2">
-            {activeKeys.map(({ key }) => {
+            {availableKeys.map((key) => {
               const isSelected = editConfig.walletKeys.includes(key);
               return (
-                <button
+                <Button
                   key={key}
+                  variant={isSelected ? "default" : "outline"}
+                  size="sm"
                   onClick={() => toggleWalletKey(key)}
-                  className={`px-3 py-1.5 text-sm font-mono rounded border transition-colors ${
-                    isSelected
-                      ? 'bg-blue-600 border-blue-500 text-white'
-                      : 'bg-gray-700 border-gray-600 text-gray-300 hover:border-gray-500'
-                  }`}
+                  className="font-mono"
                 >
                   {key}
-                </button>
+                </Button>
               );
             })}
           </div>
@@ -603,43 +541,31 @@ function AssetConfigRow({
             No withdrawal addresses found in Kraken for {asset}. Add them in Kraken first.
           </div>
         )}
-        {removedConfiguredKeys.length > 0 && (
-          <div className="mt-2 p-2 bg-red-900/20 border border-red-800 rounded text-sm">
-            <span className="text-red-400">Removed keys in config: </span>
-            {removedConfiguredKeys.map((key) => (
-              <span key={key} className="text-red-300 font-mono line-through mx-1">{key}</span>
-            ))}
-            <div className="text-red-400 text-xs mt-1">These will be removed when you save.</div>
-          </div>
-        )}
-        {editConfig.walletKeys.length === 0 && activeKeys.length > 0 && (
-          <div className="text-sm text-red-400 mt-1">Select at least one wallet key</div>
+        {editConfig.walletKeys.length === 0 && availableKeys.length > 0 && (
+          <div className="text-sm text-destructive mt-1">Select at least one wallet key</div>
         )}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs text-gray-400 mb-1">Priority (lower = higher)</label>
-          <input
+        <div className="space-y-1">
+          <Label className="text-xs">Priority (lower = higher)</Label>
+          <Input
             type="number"
             value={editConfig.priority}
             onChange={(e) => setEditConfig({ ...editConfig, priority: parseInt(e.target.value) || 1 })}
-            className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
           />
         </div>
-        <div>
-          <label className="block text-xs text-gray-400 mb-1">Method</label>
-          <input
-            type="text"
+        <div className="space-y-1">
+          <Label className="text-xs">Method</Label>
+          <Input
             value={editConfig.method}
-            onChange={(e) => setEditConfig({ ...editConfig, method: e.target.value })}
-            className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
             readOnly
+            className="bg-muted text-muted-foreground"
           />
         </div>
-        <div>
-          <label className="block text-xs text-gray-400 mb-1">Sweep Threshold ({asset})</label>
-          <input
+        <div className="space-y-1">
+          <Label className="text-xs">Sweep Threshold ({asset})</Label>
+          <Input
             type="number"
             step="any"
             value={editConfig.sweepThresholdCoin || ''}
@@ -650,50 +576,51 @@ function AssetConfigRow({
                 sweepThresholdUsd: undefined,
               })
             }
-            className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
             placeholder="e.g., 0.001"
           />
         </div>
-        <div>
-          <label className="block text-xs text-gray-400 mb-1">Reserve ({asset})</label>
-          <input
+        <div className="space-y-1">
+          <Label className="text-xs">Reserve ({asset})</Label>
+          <Input
             type="number"
             step="any"
             value={editConfig.reserveCoin}
             onChange={(e) => setEditConfig({ ...editConfig, reserveCoin: parseFloat(e.target.value) || 0 })}
-            className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
           />
         </div>
-        <div>
-          <label className="block text-xs text-gray-400 mb-1">Cooldown (seconds)</label>
-          <input
+        <div className="space-y-1">
+          <Label className="text-xs">Cooldown (seconds)</Label>
+          <Input
             type="number"
             value={editConfig.cooldownSeconds}
             onChange={(e) => setEditConfig({ ...editConfig, cooldownSeconds: parseInt(e.target.value) || 30 })}
-            className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
           />
         </div>
-        <div>
-          <label className="block text-xs text-gray-400 mb-1">Chunk Mode</label>
-          <select
+        <div className="space-y-1">
+          <Label className="text-xs">Chunk Mode</Label>
+          <Select
             value={editConfig.chunk.mode}
-            onChange={(e) =>
+            onValueChange={(value) =>
               setEditConfig({
                 ...editConfig,
-                chunk: { ...editConfig.chunk, mode: e.target.value as 'fixedCoin' | 'usd' },
+                chunk: { ...editConfig.chunk, mode: value as 'fixedCoin' | 'usd' },
               })
             }
-            className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
           >
-            <option value="fixedCoin">Fixed Coin</option>
-            <option value="usd">USD Based</option>
-          </select>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="fixedCoin">Fixed Coin</SelectItem>
+              <SelectItem value="usd">USD Based</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         {editConfig.chunk.mode === 'fixedCoin' ? (
           <>
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">Chunk Amount ({asset})</label>
-              <input
+            <div className="space-y-1">
+              <Label className="text-xs">Chunk Amount ({asset})</Label>
+              <Input
                 type="number"
                 step="any"
                 value={editConfig.chunk.amount || ''}
@@ -703,12 +630,11 @@ function AssetConfigRow({
                     chunk: { ...editConfig.chunk, amount: parseFloat(e.target.value) || 0 },
                   })
                 }
-                className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
               />
             </div>
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">Max Chunk ({asset})</label>
-              <input
+            <div className="space-y-1">
+              <Label className="text-xs">Max Chunk ({asset})</Label>
+              <Input
                 type="number"
                 step="any"
                 value={editConfig.chunk.max || ''}
@@ -718,16 +644,15 @@ function AssetConfigRow({
                     chunk: { ...editConfig.chunk, max: e.target.value ? parseFloat(e.target.value) : undefined },
                   })
                 }
-                className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
                 placeholder="Optional"
               />
             </div>
           </>
         ) : (
           <>
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">Target USD</label>
-              <input
+            <div className="space-y-1">
+              <Label className="text-xs">Target USD</Label>
+              <Input
                 type="number"
                 value={editConfig.chunk.targetUsd || ''}
                 onChange={(e) =>
@@ -736,12 +661,11 @@ function AssetConfigRow({
                     chunk: { ...editConfig.chunk, targetUsd: parseFloat(e.target.value) || 0 },
                   })
                 }
-                className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
               />
             </div>
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">Max USD</label>
-              <input
+            <div className="space-y-1">
+              <Label className="text-xs">Max USD</Label>
+              <Input
                 type="number"
                 value={editConfig.chunk.maxUsd || ''}
                 onChange={(e) =>
@@ -750,7 +674,6 @@ function AssetConfigRow({
                     chunk: { ...editConfig.chunk, maxUsd: e.target.value ? parseFloat(e.target.value) : undefined },
                   })
                 }
-                className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
                 placeholder="Optional"
               />
             </div>
@@ -761,18 +684,18 @@ function AssetConfigRow({
   );
 }
 
-interface AddAssetModalProps {
+interface AddAssetDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   existingAssets: string[];
-  addressesByAsset: Record<string, { method: string; keys: Array<{ key: string; removed: boolean }>; hasRemoved: boolean }>;
+  addressesByAsset: Record<string, { method: string; keys: string[] }>;
   onAdd: (asset: string, config: AssetConfig) => void;
-  onClose: () => void;
   saving: boolean;
 }
 
-function AddAssetModal({ existingAssets, addressesByAsset, onAdd, onClose, saving }: AddAssetModalProps) {
-  // Only show assets that have at least one active (non-removed) key
+function AddAssetDialog({ open, onOpenChange, existingAssets, addressesByAsset, onAdd, saving }: AddAssetDialogProps) {
   const availableAssets = Object.keys(addressesByAsset).filter(
-    (a) => !existingAssets.includes(a) && addressesByAsset[a].keys.some((k) => !k.removed)
+    (a) => !existingAssets.includes(a) && addressesByAsset[a].keys.length > 0
   );
   const [selectedAsset, setSelectedAsset] = useState(availableAssets[0] || '');
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
@@ -789,16 +712,11 @@ function AddAssetModal({ existingAssets, addressesByAsset, onAdd, onClose, savin
 
   useEffect(() => {
     if (selectedAsset && addressesByAsset[selectedAsset]) {
-      // Pre-select all active (non-removed) keys for this asset
-      const activeKeys = addressesByAsset[selectedAsset].keys
-        .filter((k) => !k.removed)
-        .map((k) => k.key);
-      setSelectedKeys(activeKeys);
+      setSelectedKeys(addressesByAsset[selectedAsset].keys);
     }
   }, [selectedAsset, addressesByAsset]);
 
   const assetInfo = selectedAsset ? addressesByAsset[selectedAsset] : null;
-  const activeKeys = assetInfo?.keys.filter((k) => !k.removed) || [];
 
   function toggleKey(key: string) {
     setSelectedKeys((prev) =>
@@ -815,153 +733,119 @@ function AddAssetModal({ existingAssets, addressesByAsset, onAdd, onClose, savin
     });
   }
 
-  if (availableAssets.length === 0) {
-    return (
-      <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-        <div className="bg-gray-900 rounded-lg border border-gray-700 w-full max-w-md p-6">
-          <h3 className="font-semibold text-white mb-4">No Assets Available</h3>
-          <p className="text-gray-400 mb-4">
-            All assets with withdrawal addresses are already configured, or you need to add
-            withdrawal addresses in Kraken first.
-          </p>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-      <div className="bg-gray-900 rounded-lg border border-gray-700 w-full max-w-lg">
-        <div className="px-4 py-3 border-b border-gray-800">
-          <h3 className="font-semibold text-white">Add Asset to Sweep</h3>
-        </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Asset to Sweep</DialogTitle>
+          <DialogDescription>Configure a new asset for automatic withdrawals.</DialogDescription>
+        </DialogHeader>
 
-        <div className="p-4 space-y-4">
-          {/* Asset Selection */}
-          <div>
-            <label className="block text-sm text-gray-400 mb-2">Select Asset</label>
-            <div className="flex flex-wrap gap-2">
-              {availableAssets.map((asset) => (
-                <button
-                  key={asset}
-                  onClick={() => setSelectedAsset(asset)}
-                  className={`px-4 py-2 rounded border transition-colors ${
-                    selectedAsset === asset
-                      ? 'bg-blue-600 border-blue-500 text-white'
-                      : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-600'
-                  }`}
-                >
-                  {asset}
-                </button>
-              ))}
-            </div>
+        {availableAssets.length === 0 ? (
+          <div className="py-4">
+            <p className="text-muted-foreground">
+              All assets with withdrawal addresses are already configured, or you need to add
+              withdrawal addresses in Kraken first.
+            </p>
           </div>
-
-          {assetInfo && (
-            <>
-              {/* Method (read-only) */}
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Withdrawal Method</label>
-                <div className="px-3 py-2 bg-gray-800 border border-gray-700 rounded text-gray-300">
-                  {assetInfo.method}
-                </div>
+        ) : (
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Select Asset</Label>
+              <div className="flex flex-wrap gap-2">
+                {availableAssets.map((asset) => (
+                  <Button
+                    key={asset}
+                    variant={selectedAsset === asset ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSelectedAsset(asset)}
+                  >
+                    {asset}
+                  </Button>
+                ))}
               </div>
+            </div>
 
-              {/* Wallet Keys Selection */}
-              <div>
-                <label className="block text-sm text-gray-400 mb-2">
-                  Select Wallet Keys ({selectedKeys.length} selected)
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {activeKeys.map(({ key }) => {
-                    const isSelected = selectedKeys.includes(key);
-                    return (
-                      <button
+            {assetInfo && (
+              <>
+                <div className="space-y-1">
+                  <Label>Withdrawal Method</Label>
+                  <div className="px-3 py-2 bg-muted rounded text-sm text-muted-foreground">
+                    {assetInfo.method}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Select Wallet Keys ({selectedKeys.length} selected)</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {assetInfo.keys.map((key) => (
+                      <Button
                         key={key}
+                        variant={selectedKeys.includes(key) ? "default" : "outline"}
+                        size="sm"
                         onClick={() => toggleKey(key)}
-                        className={`px-3 py-1.5 text-sm font-mono rounded border transition-colors ${
-                          isSelected
-                            ? 'bg-blue-600 border-blue-500 text-white'
-                            : 'bg-gray-700 border-gray-600 text-gray-300 hover:border-gray-500'
-                        }`}
+                        className="font-mono"
                       >
                         {key}
-                      </button>
-                    );
-                  })}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              {/* Config */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Sweep Threshold ({selectedAsset})</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={config.sweepThresholdCoin}
-                    onChange={(e) => setConfig({ ...config, sweepThresholdCoin: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Sweep Threshold ({selectedAsset})</Label>
+                    <Input
+                      type="number"
+                      step="any"
+                      value={config.sweepThresholdCoin}
+                      onChange={(e) => setConfig({ ...config, sweepThresholdCoin: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Chunk Amount ({selectedAsset})</Label>
+                    <Input
+                      type="number"
+                      step="any"
+                      value={config.chunk.amount}
+                      onChange={(e) =>
+                        setConfig({ ...config, chunk: { ...config.chunk, amount: parseFloat(e.target.value) || 0 } })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Priority</Label>
+                    <Input
+                      type="number"
+                      value={config.priority}
+                      onChange={(e) => setConfig({ ...config, priority: parseInt(e.target.value) || 1 })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Cooldown (s)</Label>
+                    <Input
+                      type="number"
+                      value={config.cooldownSeconds}
+                      onChange={(e) => setConfig({ ...config, cooldownSeconds: parseInt(e.target.value) || 30 })}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Chunk Amount ({selectedAsset})</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={config.chunk.amount}
-                    onChange={(e) =>
-                      setConfig({ ...config, chunk: { ...config.chunk, amount: parseFloat(e.target.value) || 0 } })
-                    }
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Priority</label>
-                  <input
-                    type="number"
-                    value={config.priority}
-                    onChange={(e) => setConfig({ ...config, priority: parseInt(e.target.value) || 1 })}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Cooldown (seconds)</label>
-                  <input
-                    type="number"
-                    value={config.cooldownSeconds}
-                    onChange={(e) => setConfig({ ...config, cooldownSeconds: parseInt(e.target.value) || 30 })}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white"
-                  />
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+              </>
+            )}
+          </div>
+        )}
 
-        <div className="px-4 py-3 border-t border-gray-800 flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            disabled={saving}
-            className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
-          >
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
-          </button>
-          <button
-            onClick={handleAdd}
-            disabled={saving || !selectedAsset || selectedKeys.length === 0}
-            className="bridge-button"
-          >
-            {saving ? 'Adding...' : 'Add Asset'}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+          {availableAssets.length > 0 && (
+            <Button onClick={handleAdd} disabled={saving || !selectedAsset || selectedKeys.length === 0}>
+              {saving ? 'Adding...' : 'Add Asset'}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

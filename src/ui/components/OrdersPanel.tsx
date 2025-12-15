@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { RefreshCw, ArrowDownLeft, ArrowUpRight, Clock, Activity } from 'lucide-react';
-import { parsePair } from '../../server/domain/types'; // Import parsePair
+import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ui/components/ui/table';
+import { Badge } from '@/ui/components/ui/badge';
+import { Button } from '@/ui/components/ui/button';
+import { parsePair } from '../../server/domain/types';
 
 // Simple fetch lock to prevent concurrent fetches
 let isFetching = false;
@@ -125,7 +129,7 @@ export function OrdersPanel() {
 
   if (loading && fills.length === 0 && openOrders.length === 0) {
     return (
-      <div className="flex items-center justify-center p-12 text-gray-400">
+      <div className="flex items-center justify-center p-12 text-muted-foreground">
         <RefreshCw className="w-6 h-6 animate-spin mr-2" />
         Loading orders...
       </div>
@@ -135,165 +139,165 @@ export function OrdersPanel() {
   return (
     <div className="space-y-6">
       <div className="flex justify-end">
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={forceRefresh}
           disabled={refreshing}
-          className="text-sm flex items-center gap-2 text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+          className="flex items-center gap-2"
         >
           <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
           Refresh
-        </button>
+        </Button>
       </div>
 
       {/* Open Orders Section */}
-      <div className="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-2">
-          <Clock size={16} className="text-blue-400" />
-          <h2 className="font-semibold text-white">Open Orders</h2>
-          <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full">
+      <Card>
+        <CardHeader className="py-4 border-b flex flex-row items-center gap-2">
+          <Clock size={16} className="text-primary" />
+          <CardTitle>Open Orders</CardTitle>
+          <Badge variant="secondary" className="ml-2 rounded-full px-2 py-0.5">
             {openOrders?.length || 0}
-          </span>
-        </div>
+          </Badge>
+        </CardHeader>
 
-        {!openOrders || openOrders.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
-            No open orders found on Kraken.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-gray-400 uppercase bg-gray-900 border-b border-gray-800">
-                <tr>
-                  <th className="px-4 py-3">Opened</th>
-                  <th className="px-4 py-3">Pair</th>
-                  <th className="px-4 py-3">Side</th>
-                  <th className="px-4 py-3">Type</th>
-                  <th className="px-4 py-3 text-right">Price</th>
-                  <th className="px-4 py-3 text-right">Filled / Vol</th>
-                  <th className="px-4 py-3 text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800">
-                {Array.isArray(openOrders) && openOrders.map((order) => (
-                  <tr key={order.txid} className="hover:bg-gray-800/50 transition-colors">
-                    <td className="px-4 py-3 text-gray-400 whitespace-nowrap text-xs">
-                      {formatKrakenTime(order.openTime)}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-white">
-                      {formatPair(order.pair)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
-                          order.type === 'buy'
-                            ? 'bg-green-500/10 text-green-400'
-                            : 'bg-red-500/10 text-red-400'
-                        }`}
-                      >
-                        {order.type === 'buy' ? (
-                          <ArrowDownLeft size={12} />
-                        ) : (
-                          <ArrowUpRight size={12} />
-                        )}
-                        {order.type.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-400 capitalize">
-                      {order.orderType}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-300">
-                      {formatPrice(order.price)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-300">
-                      <span className={Number(order.volumeExecuted) > 0 ? 'text-blue-400' : 'text-gray-500'}>
-                        {Number(order.volumeExecuted).toFixed(8)}
-                      </span>
-                      <span className="text-gray-600 mx-1">/</span>
-                      {Number(order.volume).toFixed(8)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="inline-flex items-center gap-1 text-xs text-blue-400 bg-blue-400/10 px-2 py-0.5 rounded">
-                        <Activity size={8} fill="currentColor" />
-                        {order.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+        <CardContent className="p-0">
+          {!openOrders || openOrders.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">
+              No open orders found on Kraken.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Opened</TableHead>
+                    <TableHead>Pair</TableHead>
+                    <TableHead>Side</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead className="text-right">Price</TableHead>
+                    <TableHead className="text-right">Filled / Vol</TableHead>
+                    <TableHead className="text-right">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Array.isArray(openOrders) && openOrders.map((order) => (
+                    <TableRow key={order.txid}>
+                      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                        {formatKrakenTime(order.openTime)}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {formatPair(order.pair)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={order.type === 'buy' ? 'default' : 'destructive'}
+                          className={`items-center gap-1 ${order.type === 'buy' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}`}
+                        >
+                          {order.type === 'buy' ? (
+                            <ArrowDownLeft size={12} />
+                          ) : (
+                            <ArrowUpRight size={12} />
+                          )}
+                          {order.type.toUpperCase()}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="capitalize text-muted-foreground">
+                        {order.orderType}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatPrice(order.price)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        <span className={Number(order.volumeExecuted) > 0 ? 'text-primary' : 'text-muted-foreground'}>
+                          {Number(order.volumeExecuted).toFixed(8)}
+                        </span>
+                        <span className="text-muted-foreground mx-1">/</span>
+                        {Number(order.volume).toFixed(8)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant="outline" className="gap-1">
+                          <Activity size={8} fill="currentColor" />
+                          {order.status}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Recent Fills Section */}
-      <div className="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-2">
-          <Clock size={16} className="text-gray-400" />
-          <h2 className="font-semibold text-white">Recent Fills</h2>
-        </div>
+      <Card>
+        <CardHeader className="py-4 border-b flex flex-row items-center gap-2">
+          <Clock size={16} className="text-muted-foreground" />
+          <CardTitle>Recent Fills</CardTitle>
+        </CardHeader>
 
-        {!fills || fills.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
-            No recent fills found.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-gray-400 uppercase bg-gray-900 border-b border-gray-800">
-                <tr>
-                  <th className="px-4 py-3">Time</th>
-                  <th className="px-4 py-3">Pair</th>
-                  <th className="px-4 py-3">Side</th>
-                  <th className="px-4 py-3 text-right">Price</th>
-                  <th className="px-4 py-3 text-right">Volume</th>
-                  <th className="px-4 py-3 text-right">Cost</th>
-                  <th className="px-4 py-3 text-right">Fee</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800">
-                {Array.isArray(fills) && fills.map((fill) => (
-                  <tr key={fill.tradeId} className="hover:bg-gray-800/50 transition-colors">
-                    <td className="px-4 py-3 text-gray-400 whitespace-nowrap text-xs">
-                      {formatTime(fill.timestamp)}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-white">
-                      {formatPair(fill.pair)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
-                          fill.side === 'buy'
-                            ? 'bg-green-500/10 text-green-400'
-                            : 'bg-red-500/10 text-red-400'
-                        }`}
-                      >
-                        {fill.side === 'buy' ? (
-                          <ArrowDownLeft size={12} />
-                        ) : (
-                          <ArrowUpRight size={12} />
-                        )}
-                        {fill.side.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-300">
-                      {formatPrice(fill.price)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-300">
-                      {fill.volume.toFixed(8)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-300">
-                      {fill.cost.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-400">
-                      {fill.fee.toFixed(4)} <span className="text-xs">{fill.feeCurrency}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+        <CardContent className="p-0">
+          {!fills || fills.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">
+              No recent fills found.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Pair</TableHead>
+                    <TableHead>Side</TableHead>
+                    <TableHead className="text-right">Price</TableHead>
+                    <TableHead className="text-right">Volume</TableHead>
+                    <TableHead className="text-right">Cost</TableHead>
+                    <TableHead className="text-right">Fee</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Array.isArray(fills) && fills.map((fill) => (
+                    <TableRow key={fill.tradeId}>
+                      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                        {formatTime(fill.timestamp)}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {formatPair(fill.pair)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={fill.side === 'buy' ? 'default' : 'destructive'}
+                          className={`items-center gap-1 ${fill.side === 'buy' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}`}
+                        >
+                          {fill.side === 'buy' ? (
+                            <ArrowDownLeft size={12} />
+                          ) : (
+                            <ArrowUpRight size={12} />
+                          )}
+                          {fill.side.toUpperCase()}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatPrice(fill.price)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {fill.volume.toFixed(8)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {fill.cost.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-muted-foreground">
+                        {fill.fee.toFixed(4)} <span className="text-xs">{fill.feeCurrency}</span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

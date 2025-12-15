@@ -695,29 +695,28 @@ export function upsertKrakenAddress(
   return { isNew: true, wasRemoved: false };
 }
 
-export function flagRemovedAddresses(currentKeys: Array<{ asset: string; key: string }>): number {
+export function deleteRemovedAddresses(currentKeys: Array<{ asset: string; key: string }>): number {
   const db = getDb();
-  const now = Date.now();
 
   // Build a set of current asset+key combinations
   const currentSet = new Set(currentKeys.map((k) => `${k.asset}:${k.key}`));
 
-  // Get all addresses that are currently not flagged as removed
-  const activeAddresses = db
-    .prepare('SELECT id, asset, key FROM kraken_addresses WHERE removed_at IS NULL')
+  // Get all addresses in the database
+  const allAddresses = db
+    .prepare('SELECT id, asset, key FROM kraken_addresses')
     .all() as Array<{ id: number; asset: string; key: string }>;
 
-  let flaggedCount = 0;
+  let deletedCount = 0;
 
-  for (const addr of activeAddresses) {
+  for (const addr of allAddresses) {
     if (!currentSet.has(`${addr.asset}:${addr.key}`)) {
-      // This address is no longer in Kraken, flag it
-      db.prepare('UPDATE kraken_addresses SET removed_at = ? WHERE id = ?').run(now, addr.id);
-      flaggedCount++;
+      // This address is no longer in Kraken, delete it
+      db.prepare('DELETE FROM kraken_addresses WHERE id = ?').run(addr.id);
+      deletedCount++;
     }
   }
 
-  return flaggedCount;
+  return deletedCount;
 }
 
 export function hasAnyKrakenAddresses(): boolean {
