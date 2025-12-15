@@ -7,7 +7,7 @@ export function WhaleIcon(props: React.SVGProps<SVGSVGElement>) {
       <g transform="translate(-18.802 -64.294)">
         <path
           strokeLinejoin="round"
-          stroke="white"
+          stroke="black"
           strokeLinecap="round"
           strokeWidth="15"
           fill="white"
@@ -15,10 +15,10 @@ export function WhaleIcon(props: React.SVGProps<SVGSVGElement>) {
         />
         <path
           strokeLinejoin="round"
-          stroke="white"
+          stroke="black"
           strokeLinecap="round"
           strokeWidth="15"
-          fill="white"
+          fill="black"
           transform="matrix(.85895 0 0 .80874 30.239 43.723)"
           d="m220 314.51a13.571 12.143 0 1 1 -27.14 0 13.571 12.143 0 1 1 27.14 0z"
         />
