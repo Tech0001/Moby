@@ -5,6 +5,7 @@ import { Input } from '@/ui/components/ui/input';
 import { Label } from '@/ui/components/ui/label';
 import { Alert, AlertDescription } from '@/ui/components/ui/alert';
 import { AlertTriangle } from 'lucide-react';
+import { WhaleIcon } from '@/ui/components/ui/WhaleIcon';
 
 interface LoginProps {
   onLogin: (user: { userId: string; username: string }) => void;
@@ -50,7 +51,9 @@ export function Login({ onLogin }: LoginProps) {
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-2xl">Moby</CardTitle>
+          <CardTitle className="text-2xl flex items-center gap-2">
+            Moby <WhaleIcon width="80" height="30" />
+          </CardTitle>
           <CardDescription>Sign in to continue</CardDescription>
         </CardHeader>
         <CardContent>
