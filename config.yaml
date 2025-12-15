@@ -1,0 +1,38 @@
+# Kraken Auto-Sweeper Configuration
+global:
+  enabledOnBoot: false
+  maxInflightWithdrawals: 2
+  perAssetMaxInflight: 1
+  schedulerTickMs: 1000
+  backoffSeconds: [15, 30, 60, 120, 300, 600]
+  allowedOrderTypes: ["limit", "take_profit", "take_profit_limit"]
+  # keyNamePrefix: "COLD_"  # Optional: only use wallet keys starting with this prefix
+
+polling:
+  withdrawStatus:
+    fastSeconds: 10
+    fastCount: 6
+    mediumSeconds: 30
+    mediumCount: 10
+    slowSeconds: 120
+    stuckMinutes: 30
+
+web:
+  port: 3000
+  host: "0.0.0.0"
+  trustProxy: false
+
+# Configure assets to sweep below
+# assets:
+#   BTC:
+#     priority: 1
+#     method: "Bitcoin"
+#     walletKeys: ["BTC_COLD_01", "BTC_COLD_02"]
+#     sweepThresholdCoin: 0.001
+#     reserveCoin: 0.0002
+#     cooldownSeconds: 45
+#     chunk:
+#       mode: fixedCoin
+#       amount: 0.005
+#       max: 0.05
+#     perWalletCapUsd: 5000

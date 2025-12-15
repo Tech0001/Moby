@@ -1,0 +1,21 @@
+# Local deployment - single instance
+version: '3.8'
+
+services:
+  moby:
+    build: .
+    container_name: moby
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/setup/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
