@@ -2,13 +2,35 @@
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&display=swap');
 
 html[data-style="warp"] {
+  /* Shadcn UI Mappings */
+  --background: 232 59% 10%;
+  --foreground: 247 100% 95%;
+  --card: 232 59% 12%;
+  --card-foreground: 247 100% 95%;
+  --popover: 232 59% 12%;
+  --popover-foreground: 247 100% 95%;
+  --primary: 251 100% 68%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 290 100% 64%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 232 40% 20%;
+  --muted-foreground: 247 20% 70%;
+  --accent: 251 100% 68%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 340 100% 71%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 251 100% 68%;
+  --input: 232 40% 20%;
+  --ring: 251 100% 68%;
+  --radius: 1rem;
+
   /* Typography */
   --font-display: 'Space Grotesk', -apple-system, system-ui, sans-serif;
   --font-body: 'Manrope', -apple-system, system-ui, sans-serif;
   --theme-font-amount: var(--font-display);
 
   /* Core Colors - Cosmic Nebula */
-  --primary: #7a5cff;
+  /* --primary: #7a5cff; */
   --primary-foreground: #ffffff;
   --cosmic-purple: #7a5cff;
   --cosmic-magenta: #e047ff;
@@ -63,11 +85,6 @@ html[data-style="warp"] {
   --theme-link-color: #9d7bff;
   --theme-link-hover-color: #d4c5ff;
 
-  /* Success States */
-  --theme-success-bg: rgba(47, 225, 192, 0.15);
-  --theme-success-border: rgba(47, 225, 192, 0.4);
-  --theme-success-text: #2fe1c0;
-
   /* Accents */
   --accent-primary: #7a5cff;
   --accent-primary-strong: #5e3fe6;
@@ -75,6 +92,17 @@ html[data-style="warp"] {
   --accent-signal: #2fe1c0;
   --accent-warning: #ffb347;
   --accent-danger: #ff6b9d;
+
+  /* Badges */
+  --badge-success-bg: rgba(47, 225, 192, 0.15);
+  --badge-success-text: #2fe1c0;
+  --badge-success-border: rgba(47, 225, 192, 0.4);
+  --badge-success-hover-bg: rgba(47, 225, 192, 0.25);
+
+  --badge-danger-bg: rgba(255, 107, 157, 0.15);
+  --badge-danger-text: #ff6b9d;
+  --badge-danger-border: rgba(255, 107, 157, 0.4);
+  --badge-danger-hover-bg: rgba(255, 107, 157, 0.25);
 
   /* Hero Section */
   --hero-bg: radial-gradient(ellipse at center top, rgba(122, 92, 255, 0.2) 0%, transparent 50%),
@@ -562,8 +590,29 @@ html[data-style="warp"] .section-title::after {
 /* Warp Light Mode - Cosmic Aesthetic on Light Background */
 html[data-style="warp"]:not(.dark):not([data-theme="dark"]),
 html[data-theme="light"][data-style="warp"] {
+  /* Shadcn UI Mappings (Light) */
+  --background: 270 50% 99%; /* #fdfcff */
+  --foreground: 244 35% 18%; /* #1f1d3d */
+  --card: 0 0% 100%;
+  --card-foreground: 244 35% 18%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 244 35% 18%;
+  --primary: 251 100% 68%; /* #7a5cff */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 270 40% 96%;
+  --secondary-foreground: 244 35% 18%;
+  --muted: 270 40% 96%;
+  --muted-foreground: 244 20% 60%;
+  --accent: 270 40% 96%;
+  --accent-foreground: 244 35% 18%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 251 50% 80%;
+  --input: 251 50% 80%;
+  --ring: 251 100% 68%;
+
   /* Core Colors - Cosmic Light */
-  --primary: #7a5cff;
+  /* --primary: #7a5cff; */
   --primary-foreground: #ffffff;
   --cosmic-purple: #7a5cff;
   --cosmic-magenta: #e047ff;

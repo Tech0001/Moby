@@ -2,13 +2,35 @@
 @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300&family=Lora:ital,wght@0,400;0,500;0,600;1,400&display=swap');
 
 html[data-style="moss"] {
+  /* Shadcn UI Mappings */
+  --background: 120 10% 97%;
+  --foreground: 130 18% 15%;
+  --card: 0 0% 100%;
+  --card-foreground: 130 18% 15%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 130 18% 15%;
+  --primary: 138 25% 39%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 138 20% 90%;
+  --secondary-foreground: 138 25% 39%;
+  --muted: 138 20% 90%;
+  --muted-foreground: 138 10% 40%;
+  --accent: 138 25% 39%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 80% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 138 20% 80%;
+  --input: 138 20% 80%;
+  --ring: 138 25% 39%;
+  --radius: 0.75rem;
+
   /* Typography */
   --font-display: 'Lora', serif;
   --font-body: 'Merriweather', serif;
   --theme-font-amount: var(--font-display);
 
   /* Core Colors - Deep Forest & Clay */
-  --primary: #4a7c59;
+  /* --primary: #4a7c59; */
   --primary-foreground: #ffffff;
   --moss-forest: #1e3323;
   --moss-sage: #8eb396;
@@ -57,6 +79,17 @@ html[data-style="moss"] {
   /* Links */
   --theme-link-color: #3d6b4c;
   --theme-link-hover-color: #d68c65;
+
+  /* Badges */
+  --badge-success-bg: rgba(85, 107, 47, 0.1);
+  --badge-success-text: #3d4d22;
+  --badge-success-border: rgba(85, 107, 47, 0.4);
+  --badge-success-hover-bg: rgba(85, 107, 47, 0.2);
+
+  --badge-danger-bg: rgba(188, 75, 81, 0.1);
+  --badge-danger-text: #bc4b51;
+  --badge-danger-border: rgba(188, 75, 81, 0.4);
+  --badge-danger-hover-bg: rgba(188, 75, 81, 0.2);
 
   /* Hero */
   --hero-bg: radial-gradient(circle at 80% 20%, rgba(214, 140, 101, 0.15) 0%, transparent 50%),
@@ -268,8 +301,29 @@ html[data-style="moss"] .tab-button.active {
 
 html.dark[data-style="moss"],
 html[data-theme="dark"][data-style="moss"] {
+  /* Shadcn UI Mappings (Dark) */
+  --background: 130 18% 7%; /* #0f1510 */
+  --foreground: 138 20% 93%; /* #e8f0eb */
+  --card: 130 18% 10%; /* #161f18 */
+  --card-foreground: 138 20% 93%;
+  --popover: 130 18% 10%;
+  --popover-foreground: 138 20% 93%;
+  --primary: 133 19% 63%; /* #8eb396 */
+  --primary-foreground: 130 18% 7%;
+  --secondary: 130 18% 10%;
+  --secondary-foreground: 138 20% 93%;
+  --muted: 130 18% 10%;
+  --muted-foreground: 138 10% 40%;
+  --accent: 130 18% 10%;
+  --accent-foreground: 138 20% 93%;
+  --destructive: 0 63% 31%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 130 18% 20%; /* #2a3d30 */
+  --input: 130 18% 20%;
+  --ring: 133 19% 63%;
+
   /* Core Colors - Night Forest */
-  --primary: #8eb396; /* Glowing Sage */
+  /* --primary: #8eb396; */ /* Glowing Sage */
   --primary-foreground: #0f1510;
   
   /* Background - Deep Canopy */

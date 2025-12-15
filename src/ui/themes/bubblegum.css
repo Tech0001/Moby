@@ -28,7 +28,7 @@ html[data-style="bubblegum"] {
   --destructive-foreground: 0 0% 100%;
 
   --border: 330 100% 85%;
-  --input: 330 50% 95%;
+  --input: 330 30% 85%;
   --ring: 330 100% 70%;
 
   --radius: 1.5rem; /* Rounded toyetic look */
@@ -39,7 +39,6 @@ html[data-style="bubblegum"] {
   --theme-font-amount: var(--font-display);
 
   /* Core Colors - Candy Pastels */
-  --primary: #ff69b4;
   --primary-foreground: #ffffff;
   --bubble-pink: #ff69b4;
   --bubble-mint: #98ff98;
@@ -107,6 +106,17 @@ html[data-style="bubblegum"] {
   --accent-signal: #98ff98;
   --accent-warning: #ffff99;
   --accent-danger: #ff69b4;
+
+  /* Badges */
+  --badge-success-bg: rgba(152, 255, 152, 0.2);
+  --badge-success-text: #4db84d;
+  --badge-success-border: rgba(152, 255, 152, 0.5);
+  --badge-success-hover-bg: rgba(152, 255, 152, 0.3);
+
+  --badge-danger-bg: rgba(255, 105, 180, 0.2);
+  --badge-danger-text: #ff69b4;
+  --badge-danger-border: rgba(255, 105, 180, 0.5);
+  --badge-danger-hover-bg: rgba(255, 105, 180, 0.3);
 
   /* Hero Section */
   --hero-bg: radial-gradient(ellipse at center, rgba(255, 105, 180, 0.12) 0%, transparent 60%);
@@ -570,11 +580,10 @@ html[data-theme="dark"][data-style="bubblegum"] {
   --destructive-foreground: 0 0% 100%;
 
   --border: 330 50% 30%;
-  --input: 260 20% 20%;
+  --input: 260 20% 30%;
   --ring: 330 100% 70%;
 
   /* Core Colors - Neon Candy */
-  --primary: #ff85c8;
   --primary-foreground: #ffffff;
   --bubble-pink: #ff85c8;
   --bubble-mint: #a8ffa8;

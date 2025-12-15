@@ -39,7 +39,7 @@ html[data-style="glacier"] {
   --theme-font-amount: var(--font-display);
 
   /* Core Colors - Arctic Ice */
-  --primary: #00d4ff;
+  /* --primary: #00d4ff; */
   --primary-foreground: #0a1929;
   --glacier-ice: #e3f2fd;
   --glacier-frost: #b3e5fc;
@@ -105,6 +105,17 @@ html[data-style="glacier"] {
   --accent-signal: #4fc3f7;
   --accent-warning: #ffa726;
   --accent-danger: #ef5350;
+
+  /* Badges */
+  --badge-success-bg: rgba(0, 212, 255, 0.1);
+  --badge-success-text: #00d4ff;
+  --badge-success-border: rgba(0, 212, 255, 0.3);
+  --badge-success-hover-bg: rgba(0, 212, 255, 0.2);
+
+  --badge-danger-bg: rgba(239, 83, 80, 0.1);
+  --badge-danger-text: #ef5350;
+  --badge-danger-border: rgba(239, 83, 80, 0.3);
+  --badge-danger-hover-bg: rgba(239, 83, 80, 0.2);
 
   /* Hero Section */
   --hero-bg: radial-gradient(ellipse at top, rgba(0, 212, 255, 0.05) 0%, transparent 60%);
@@ -521,7 +532,7 @@ html[data-theme="dark"][data-style="glacier"] {
   --ring: 183 67% 71%;
 
   /* Core Colors - Arctic Night */
-  --primary: #80deea; /* Brighter Cyan */
+  /* --primary: #80deea; */ /* Brighter Cyan */
   --primary-foreground: #006064;
   --glacier-ice: #0d1f2d;
   --glacier-frost: #1a3a4f;

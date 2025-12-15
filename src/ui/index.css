@@ -96,4 +96,26 @@
            bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500
            disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-700 disabled:to-gray-700;
   }
+
+  .badge-success {
+    @apply bg-green-500 hover:bg-green-600 border-transparent text-white;
+    background-color: var(--badge-success-bg, var(--color-green-500)) !important;
+    color: var(--badge-success-text, #ffffff) !important;
+    border-color: var(--badge-success-border, transparent) !important;
+  }
+
+  .badge-success:hover {
+    background-color: var(--badge-success-hover-bg, var(--color-green-600)) !important;
+  }
+
+  .badge-danger {
+    @apply bg-red-500 hover:bg-red-600 border-transparent text-white;
+    background-color: var(--badge-danger-bg, var(--color-red-500)) !important;
+    color: var(--badge-danger-text, #ffffff) !important;
+    border-color: var(--badge-danger-border, transparent) !important;
+  }
+
+  .badge-danger:hover {
+    background-color: var(--badge-danger-hover-bg, var(--color-red-600)) !important;
+  }
 }

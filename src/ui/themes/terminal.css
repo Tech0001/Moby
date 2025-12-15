@@ -2,13 +2,35 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 
 html[data-style="terminal"] {
+  /* Shadcn UI Mappings */
+  --background: 216 33% 6%;
+  --foreground: 0 0% 90%;
+  --card: 216 33% 8%;
+  --card-foreground: 0 0% 90%;
+  --popover: 216 33% 8%;
+  --popover-foreground: 0 0% 90%;
+  --primary: 157 100% 50%;
+  --primary-foreground: 216 33% 6%;
+  --secondary: 180 100% 50%;
+  --secondary-foreground: 216 33% 6%;
+  --muted: 216 20% 15%;
+  --muted-foreground: 216 10% 60%;
+  --accent: 157 100% 50%;
+  --accent-foreground: 216 33% 6%;
+  --destructive: 0 100% 58%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 157 100% 50%;
+  --input: 216 20% 15%;
+  --ring: 157 100% 50%;
+  --radius: 0rem;
+
   /* Typography */
   --font-mono: 'JetBrains Mono', 'Courier New', monospace;
   --font-display: 'Space Grotesk', -apple-system, system-ui, sans-serif;
   --theme-font-amount: var(--font-mono);
 
   /* Core Colors - Terminal Dark */
-  --primary: #00ff9f;
+  /* --primary: #00ff9f; */
   --primary-foreground: #0a0e14;
   --terminal-green: #00ff9f;
   --terminal-cyan: #00d9ff;
@@ -78,6 +100,17 @@ html[data-style="terminal"] {
   --accent-signal: #00d9ff;
   --accent-warning: #ffb000;
   --accent-danger: #ff2a2a;
+
+  /* Badges */
+  --badge-success-bg: rgba(0, 255, 159, 0.1);
+  --badge-success-text: #00ff9f;
+  --badge-success-border: rgba(0, 255, 159, 0.4);
+  --badge-success-hover-bg: rgba(0, 255, 159, 0.2);
+
+  --badge-danger-bg: rgba(255, 42, 42, 0.1);
+  --badge-danger-text: #ff2a2a;
+  --badge-danger-border: rgba(255, 42, 42, 0.4);
+  --badge-danger-hover-bg: rgba(255, 42, 42, 0.2);
 
   /* Hero Section */
   --hero-bg: radial-gradient(ellipse at top, rgba(0, 255, 159, 0.08) 0%, transparent 60%),
@@ -484,8 +517,29 @@ html[data-style="terminal"] .modern-table {
 /* Terminal Light Mode - "Retro Computer" Aesthetic */
 html[data-style="terminal"]:not(.dark):not([data-theme="dark"]),
 html[data-theme="light"][data-style="terminal"] {
+  /* Shadcn UI Mappings (Light) */
+  --background: 52 26% 87%; /* #e6e4d5 */
+  --foreground: 24 5% 15%; /* #292524 */
+  --card: 52 17% 93%; /* #f0efe9 */
+  --card-foreground: 24 5% 15%;
+  --popover: 52 17% 93%;
+  --popover-foreground: 24 5% 15%;
+  --primary: 20 89% 48%; /* #ea580c */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 52 20% 85%;
+  --secondary-foreground: 24 5% 15%;
+  --muted: 52 20% 85%;
+  --muted-foreground: 24 5% 45%;
+  --accent: 20 89% 48%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 72% 42%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 20 89% 48%;
+  --input: 52 20% 85%;
+  --ring: 20 89% 48%;
+
   /* Core Colors - Vintage Beige Case */
-  --primary: #ea580c; /* Burnt Orange */
+  /* --primary: #ea580c; */ /* Burnt Orange */
   --primary-foreground: #ffffff;
   --terminal-green: #15803d; /* Darker Green */
   --terminal-cyan: #0e7490;

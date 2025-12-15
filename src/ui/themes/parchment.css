@@ -2,6 +2,28 @@
 @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Crimson+Pro:wght@400;500;600&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap');
 
 html[data-style="parchment"] {
+  /* Shadcn UI Mappings */
+  --background: 32 46% 92%;
+  --foreground: 28 33% 13%;
+  --card: 32 46% 95%;
+  --card-foreground: 28 33% 13%;
+  --popover: 32 46% 95%;
+  --popover-foreground: 28 33% 13%;
+  --primary: 359 58% 39%;
+  --primary-foreground: 35 70% 95%;
+  --secondary: 32 30% 85%;
+  --secondary-foreground: 28 33% 13%;
+  --muted: 32 30% 85%;
+  --muted-foreground: 28 20% 40%;
+  --accent: 359 58% 39%;
+  --accent-foreground: 35 70% 95%;
+  --destructive: 359 58% 39%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 35 25% 41%;
+  --input: 32 30% 85%;
+  --ring: 359 58% 39%;
+  --radius: 0.25rem;
+
   /* Typography - Classical book fonts */
   --font-display: 'Libre Baskerville', Baskerville, Georgia, serif;
   --font-body: 'Crimson Pro', 'Times New Roman', serif;
@@ -9,7 +31,7 @@ html[data-style="parchment"] {
   --theme-font-amount: var(--font-display);
 
   /* Core Colors - Wax Seal Red & Aged Paper */
-  --primary: #9e2a2b; /* Wax Seal Red */
+  /* --primary: #9e2a2b; */ /* Wax Seal Red */
   --primary-foreground: #faf4ed;
 
   /* Real parchment color palette */
@@ -80,6 +102,17 @@ html[data-style="parchment"] {
   --accent-signal: #8b6f47;     /* Sepia */
   --accent-warning: #d4a017;    /* Gold ink */
   --accent-danger: #9e2a2b;
+
+  /* Badges */
+  --badge-success-bg: rgba(85, 107, 47, 0.1);
+  --badge-success-text: #3d4d22;
+  --badge-success-border: rgba(85, 107, 47, 0.4);
+  --badge-success-hover-bg: rgba(85, 107, 47, 0.2);
+
+  --badge-danger-bg: rgba(158, 42, 43, 0.1);
+  --badge-danger-text: #9e2a2b;
+  --badge-danger-border: rgba(158, 42, 43, 0.4);
+  --badge-danger-hover-bg: rgba(158, 42, 43, 0.2);
 
   /* Hero Section */
   --hero-bg: radial-gradient(ellipse at center top, rgba(158, 42, 43, 0.05) 0%, transparent 60%);
@@ -464,8 +497,29 @@ html[data-style="parchment"] .form-section {
 /* Dark Mode - Darker Aged Parchment (Tea-Stained) */
 html.dark[data-style="parchment"],
 html[data-theme="dark"][data-style="parchment"] {
+  /* Shadcn UI Mappings (Dark) */
+  --background: 38 33% 75%; /* #d4c3a8 approx */
+  --foreground: 28 33% 12%; /* #2a1f15 */
+  --card: 38 33% 75%;
+  --card-foreground: 28 33% 12%;
+  --popover: 38 33% 75%;
+  --popover-foreground: 28 33% 12%;
+  --primary: 359 58% 39%; /* #9e2a2b */
+  --primary-foreground: 35 70% 95%;
+  --secondary: 38 25% 65%;
+  --secondary-foreground: 28 33% 12%;
+  --muted: 38 25% 65%;
+  --muted-foreground: 28 20% 30%;
+  --accent: 38 25% 65%;
+  --accent-foreground: 28 33% 12%;
+  --destructive: 359 58% 39%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 38 20% 50%;
+  --input: 38 20% 50%;
+  --ring: 359 58% 39%;
+
   /* Darker aged paper palette - still parchment, just more weathered */
-  --primary: #9e2a2b; /* Wax Seal Red */
+  /* --primary: #9e2a2b; */ /* Wax Seal Red */
   --primary-foreground: #faf4ed;
 
   /* Deeper aged parchment tones - like old tea-stained paper */

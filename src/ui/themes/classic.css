@@ -2,12 +2,34 @@
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@300;400;500;600&display=swap');
 
 html[data-style="classic"] {
+  /* Shadcn UI Mappings (Light) */
+  --background: 210 14% 98%;
+  --foreground: 217 33% 17%;
+  --card: 0 0% 100%;
+  --card-foreground: 217 33% 17%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 217 33% 17%;
+  --primary: 222 47% 11%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 46 45% 55%;
+  --accent-foreground: 222 47% 11%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 222 47% 11%;
+  --radius: 0.5rem;
+
   /* Typography */
   --font-display: 'Playfair Display', serif;
   --font-mono: 'Inter', sans-serif; /* Using Inter for cleaner UI text */
 
   /* Core Colors - Navy & Gold */
-  --primary: #0f172a; /* Deep Navy */
+  /* --primary: #0f172a; */ /* Deep Navy */
   --primary-foreground: #ffffff;
 
   /* Background */
@@ -62,6 +84,17 @@ html[data-style="classic"] {
   --accent-signal: #0ea5e9;
   --accent-warning: #d97706;
   --accent-danger: #be123c;
+
+  /* Badges */
+  --badge-success-bg: rgba(21, 128, 61, 0.1);
+  --badge-success-text: #15803d;
+  --badge-success-border: rgba(21, 128, 61, 0.3);
+  --badge-success-hover-bg: rgba(21, 128, 61, 0.2);
+
+  --badge-danger-bg: rgba(190, 18, 60, 0.1);
+  --badge-danger-text: #be123c;
+  --badge-danger-border: rgba(190, 18, 60, 0.3);
+  --badge-danger-hover-bg: rgba(190, 18, 60, 0.2);
 
   /* Hero Section */
   --hero-bg: linear-gradient(to bottom, #f8f9fa, #ffffff);
@@ -278,9 +311,29 @@ html[data-style="classic"] .form-section {
 /* Classic Dark Mode - Rich Navy */
 html.dark[data-style="classic"],
 html[data-theme="dark"][data-style="classic"] {
+  /* Shadcn UI Mappings (Dark) */
+  --background: 218 64% 11%;
+  --foreground: 214 100% 95%;
+  --card: 218 58% 16%;
+  --card-foreground: 214 100% 95%;
+  --popover: 218 58% 16%;
+  --popover-foreground: 214 100% 95%;
+  --primary: 40 48% 56%;
+  --primary-foreground: 222 47% 11%;
+  --secondary: 218 58% 16%;
+  --secondary-foreground: 214 100% 95%;
+  --muted: 218 58% 16%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 218 58% 16%;
+  --accent-foreground: 40 48% 56%;
+  --destructive: 0 91% 71%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 218 41% 23%;
+  --input: 218 41% 23%;
+  --ring: 40 48% 56%;
+
   /* Core Colors */
-  --primary: #e2e8f0;
-  --primary-foreground: #0f172a;
+  /* Removed colliding --primary hex definitions */
 
   /* Background - Rich Navy */
   --theme-bg: #0a192f; /* Darkest Navy */

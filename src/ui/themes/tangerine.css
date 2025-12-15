@@ -2,13 +2,35 @@
 @import url('https://fonts.googleapis.com/css2?family=Righteous&family=Outfit:wght@400;500;600;700&display=swap');
 
 html[data-style="tangerine"] {
+  /* Shadcn UI Mappings */
+  --background: 40 100% 97%;
+  --foreground: 261 48% 21%;
+  --card: 0 0% 100%;
+  --card-foreground: 261 48% 21%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 261 48% 21%;
+  --primary: 25 100% 50%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 335 100% 60%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 40 50% 90%;
+  --muted-foreground: 261 20% 40%;
+  --accent: 25 100% 50%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 335 100% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 25 100% 50%;
+  --input: 40 50% 90%;
+  --ring: 25 100% 50%;
+  --radius: 0.75rem;
+
   /* Typography */
   --font-display: 'Righteous', cursive;
   --font-body: 'Outfit', -apple-system, system-ui, sans-serif;
   --theme-font-amount: var(--font-display);
 
   /* Core Colors - Citrus Sunset */
-  --primary: #ff6b00;
+  /* --primary: #ff6b00; */
   --primary-foreground: #ffffff;
   --retro-pink: #ff2a6d;
   --retro-orange: #ff6b00;
@@ -72,6 +94,17 @@ html[data-style="tangerine"] {
   --accent-signal: #7d2ae8;
   --accent-warning: #ffab00;
   --accent-danger: #ff2a6d;
+
+  /* Badges */
+  --badge-success-bg: rgba(255, 171, 0, 0.15);
+  --badge-success-text: #e65100;
+  --badge-success-border: rgba(255, 171, 0, 0.45);
+  --badge-success-hover-bg: rgba(255, 171, 0, 0.25);
+
+  --badge-danger-bg: rgba(255, 42, 109, 0.15);
+  --badge-danger-text: #ff2a6d;
+  --badge-danger-border: rgba(255, 42, 109, 0.45);
+  --badge-danger-hover-bg: rgba(255, 42, 109, 0.25);
 
   /* Hero Section */
   --hero-bg: radial-gradient(ellipse at top left, rgba(255, 107, 0, 0.15) 0%, transparent 55%),
@@ -496,8 +529,29 @@ html[data-style="tangerine"] .section-title::after {
 /* Tangerine Dark Mode */
 html.dark[data-style="tangerine"],
 html[data-theme="dark"][data-style="tangerine"] {
+  /* Shadcn UI Mappings (Dark) */
+  --background: 295 27% 8%; /* #1a0f1a */
+  --foreground: 325 100% 95%; /* #ffe8f5 */
+  --card: 280 23% 13%; /* #231928 */
+  --card-foreground: 325 100% 95%;
+  --popover: 280 23% 13%;
+  --popover-foreground: 325 100% 95%;
+  --primary: 333 100% 59%; /* #ff2e8a */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 280 23% 13%;
+  --secondary-foreground: 325 100% 95%;
+  --muted: 280 23% 13%;
+  --muted-foreground: 280 15% 60%;
+  --accent: 280 23% 13%;
+  --accent-foreground: 333 100% 59%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 333 100% 59%;
+  --input: 280 23% 20%;
+  --ring: 333 100% 59%;
+
   /* Core Colors - Neon Retro on Dark */
-  --primary: #ff2e8a;
+  /* --primary: #ff2e8a; */
   --primary-foreground: #ffffff;
   --retro-pink: #ff2e8a;
   --retro-orange: #ff8533;

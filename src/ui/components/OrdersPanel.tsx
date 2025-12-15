@@ -191,8 +191,7 @@ export function OrdersPanel() {
                       </TableCell>
                       <TableCell>
                         <Badge
-                          variant={order.type === 'buy' ? 'default' : 'destructive'}
-                          className={`items-center gap-1 ${order.type === 'buy' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}`}
+                          className={`items-center gap-1 ${order.type === 'buy' ? 'badge-success' : 'badge-danger'}`}
                         >
                           {order.type === 'buy' ? (
                             <ArrowDownLeft size={12} />
@@ -267,8 +266,7 @@ export function OrdersPanel() {
                       </TableCell>
                       <TableCell>
                         <Badge
-                          variant={fill.side === 'buy' ? 'default' : 'destructive'}
-                          className={`items-center gap-1 ${fill.side === 'buy' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}`}
+                          className={`items-center gap-1 ${fill.side === 'buy' ? 'badge-success' : 'badge-danger'}`}
                         >
                           {fill.side === 'buy' ? (
                             <ArrowDownLeft size={12} />

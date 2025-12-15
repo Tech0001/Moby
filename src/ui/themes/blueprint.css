@@ -2,6 +2,28 @@
 @import url('https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Orbitron:wght@500;700&display=swap');
 
 html[data-style="blueprint"] {
+  /* Shadcn UI Mappings */
+  --background: 206 100% 14%;
+  --foreground: 201 100% 95%;
+  --card: 204 100% 15%;
+  --card-foreground: 201 100% 95%;
+  --popover: 204 100% 15%;
+  --popover-foreground: 201 100% 95%;
+  --primary: 189 100% 50%;
+  --primary-foreground: 206 100% 10%;
+  --secondary: 206 80% 20%;
+  --secondary-foreground: 201 100% 95%;
+  --muted: 206 50% 20%;
+  --muted-foreground: 201 50% 70%;
+  --accent: 189 100% 50%;
+  --accent-foreground: 206 100% 10%;
+  --destructive: 0 80% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 189 100% 50%;
+  --input: 206 50% 20%;
+  --ring: 189 100% 50%;
+  --radius: 0rem;
+
   /* Typography - Technical/Engineering fonts */
   --font-display: 'Saira Condensed', 'Arial Narrow', 'Univers Condensed', sans-serif;
   --font-mono: 'JetBrains Mono', 'Courier New', monospace;
@@ -9,7 +31,7 @@ html[data-style="blueprint"] {
   --theme-font-amount: var(--font-technical);
 
   /* Core Colors - Classic Blueprint */
-  --primary: #00d9ff;
+  /* --primary: #00d9ff; */
   --primary-foreground: #001f33;
   --blueprint-blue: #003d6b;      /* Deep blueprint background */
   --blueprint-cyan: #00d9ff;      /* Bright line color */
@@ -75,6 +97,17 @@ html[data-style="blueprint"] {
   --accent-signal: #e8f7ff;
   --accent-warning: #ffe57a;
   --accent-danger: #ff6b6b;
+
+  /* Badges */
+  --badge-success-bg: rgba(0, 217, 255, 0.15);
+  --badge-success-text: #00d9ff;
+  --badge-success-border: rgba(0, 217, 255, 0.5);
+  --badge-success-hover-bg: rgba(0, 217, 255, 0.25);
+
+  --badge-danger-bg: rgba(255, 107, 107, 0.15);
+  --badge-danger-text: #ff6b6b;
+  --badge-danger-border: rgba(255, 107, 107, 0.5);
+  --badge-danger-hover-bg: rgba(255, 107, 107, 0.25);
 
   /* Hero Section */
   --hero-bg: radial-gradient(ellipse at center, rgba(0, 217, 255, 0.08) 0%, transparent 70%);
@@ -560,8 +593,29 @@ html[data-style="blueprint"] .chain-selector-container {
 /* Light Mode - Inverted Blueprint (Dark Lines on White) */
 html[data-style="blueprint"]:not(.dark):not([data-theme="dark"]),
 html[data-theme="light"][data-style="blueprint"] {
+  /* Shadcn UI Mappings (Light) */
+  --background: 210 100% 98%; /* #f8fbff */
+  --foreground: 208 30% 10%; /* #001c33 */
+  --card: 0 0% 100%;
+  --card-foreground: 208 30% 10%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 208 30% 10%;
+  --primary: 207 43% 18%; /* #00315a */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 207 43% 18%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 25% 40%;
+  --accent: 210 40% 96%;
+  --accent-foreground: 207 43% 18%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 207 30% 27%; /* lighter version of primary */
+  --input: 207 30% 27%;
+  --ring: 207 43% 18%;
+
   /* Inverted colors for light mode - stronger contrast with deep prussian blue */
-  --primary: #00315a;
+  /* --primary: #00315a; */
   --primary-foreground: #ffffff;
   --blueprint-blue: #ffffff;
   --blueprint-cyan: #00315a;

@@ -2,13 +2,35 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
 
 html[data-style="nebula"] {
+  /* Shadcn UI Mappings */
+  --background: 269 100% 4%;
+  --foreground: 0 0% 100%;
+  --card: 269 50% 10%;
+  --card-foreground: 0 0% 100%;
+  --popover: 269 50% 10%;
+  --popover-foreground: 0 0% 100%;
+  --primary: 262 83% 58%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 269 50% 20%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 269 50% 20%;
+  --muted-foreground: 265 20% 70%;
+  --accent: 262 83% 58%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 80% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 262 50% 30%;
+  --input: 269 50% 20%;
+  --ring: 262 83% 58%;
+  --radius: 1rem;
+
   /* Typography */
   --font-display: 'Space Grotesk', sans-serif;
   --font-body: 'Outfit', sans-serif;
   --theme-font-amount: var(--font-display);
 
   /* Core Colors - Cosmic Void */
-  --primary: #7c3aed; /* Violet 600 */
+  /* --primary: #7c3aed; */ /* Violet 600 */
   --primary-foreground: #ffffff;
   --nebula-void: #030014;
   --nebula-deep: #0f0728;
@@ -75,6 +97,17 @@ html[data-style="nebula"] {
   --accent-signal: #06b6d4;
   --accent-warning: #f59e0b;
   --accent-danger: #ec4899;
+
+  /* Badges */
+  --badge-success-bg: rgba(52, 211, 153, 0.15);
+  --badge-success-text: #34d399;
+  --badge-success-border: rgba(52, 211, 153, 0.4);
+  --badge-success-hover-bg: rgba(52, 211, 153, 0.25);
+
+  --badge-danger-bg: rgba(236, 72, 153, 0.15);
+  --badge-danger-text: #ec4899;
+  --badge-danger-border: rgba(236, 72, 153, 0.4);
+  --badge-danger-hover-bg: rgba(236, 72, 153, 0.25);
 
   /* Hero Section */
   --hero-bg: radial-gradient(circle at top, rgba(124, 58, 237, 0.15) 0%, transparent 60%),
@@ -384,6 +417,27 @@ html[data-style="nebula"] .router-card:hover::before {
 /* Starlight Light Mode - Pearlescent */
 html[data-style="nebula"]:not(.dark):not([data-theme="dark"]),
 html[data-theme="light"][data-style="nebula"] {
+  /* Shadcn UI Mappings (Light) */
+  --background: 290 50% 98%; /* #fdf4ff */
+  --foreground: 242 47% 34%; /* #312e81 */
+  --card: 0 0% 100%;
+  --card-foreground: 242 47% 34%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 242 47% 34%;
+  --primary: 262 83% 58%; /* #7c3aed */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 290 40% 96%;
+  --secondary-foreground: 242 47% 34%;
+  --muted: 290 40% 96%;
+  --muted-foreground: 242 30% 60%;
+  --accent: 290 40% 96%;
+  --accent-foreground: 242 47% 34%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 262 50% 90%;
+  --input: 262 50% 90%;
+  --ring: 262 83% 58%;
+
   /* Background - Ethereal Cloud */
   --theme-bg: linear-gradient(135deg, #fdf4ff 0%, #f5f3ff 50%, #f0f9ff 100%);
   --theme-card-bg: rgba(255, 255, 255, 0.7);
@@ -394,7 +448,7 @@ html[data-theme="light"][data-style="nebula"] {
   --theme-text-muted: rgba(49, 46, 129, 0.6);
   
   /* Accents - Holographic */
-  --primary: #7c3aed;
+  /* --primary: #7c3aed; */
   --nebula-glow: #8b5cf6;
   
   /* Button Gradient - Deep Nebula */

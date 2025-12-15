@@ -24,6 +24,17 @@ html[data-style="luxury"] {
   --accent: 46 63% 52%; /* #d4af37 Gold */
   --accent-foreground: 240 5% 5%;
 
+  /* Badges */
+  --badge-success-bg: rgba(212, 175, 55, 0.1);
+  --badge-success-text: #d4af37;
+  --badge-success-border: rgba(212, 175, 55, 0.4);
+  --badge-success-hover-bg: rgba(212, 175, 55, 0.2);
+
+  --badge-danger-bg: rgba(158, 42, 43, 0.1);
+  --badge-danger-text: #9e2a2b;
+  --badge-danger-border: rgba(158, 42, 43, 0.4);
+  --badge-danger-hover-bg: rgba(158, 42, 43, 0.2);
+
   --destructive: 0 50% 30%;
   --destructive-foreground: 0 0% 100%;
 
@@ -40,7 +51,7 @@ html[data-style="luxury"] {
   --theme-font-amount: var(--font-sans);
 
   /* Core Colors - Midnight Velvet & Champagne */
-  --primary: #e5d3b3; /* Champagne */
+  /* --primary: #e5d3b3; */ /* Champagne */
   --primary-foreground: #050505;
   --luxury-gold: #d4af37;
   --luxury-bronze: #b08d55;
@@ -361,8 +372,8 @@ html[data-theme="light"][data-style="luxury"] {
   --input: 0 0% 100%;
   --ring: 46 63% 52%;
 
-  /* Core Colors - Warm Alabaster */
-  --primary: #b08d55;
+  /* Core Colors - Light Luxury */
+  /* --primary: #b08d55; */
   --primary-foreground: #ffffff;
   
   /* Background - Premium Stationery */

@@ -50,7 +50,6 @@ html[data-style="cyberpunk"] {
   --theme-font-amount: var(--font-display);
 
   /* Core Colors - Neon Cyberpunk */
-  --primary: #ff0080;
   --primary-foreground: #ffffff;
   --cyber-pink: #ff0080;
   --cyber-purple: #9d00ff;
@@ -215,6 +214,17 @@ html[data-style="cyberpunk"] {
   --fee-button-hover-border: #ff0080;
   --fee-button-hover-text: #ffffff;
   --fee-button-hover-shadow: rgba(255, 0, 128, 0.6);
+
+  /* Badges */
+  --badge-success-bg: rgba(0, 217, 255, 0.15);
+  --badge-success-text: #00d9ff;
+  --badge-success-border: #00d9ff;
+  --badge-success-hover-bg: rgba(0, 217, 255, 0.3);
+
+  --badge-danger-bg: rgba(255, 0, 64, 0.15);
+  --badge-danger-text: #ff0040;
+  --badge-danger-border: #ff0040;
+  --badge-danger-hover-bg: rgba(255, 0, 64, 0.3);
 }
 
 /* Fee Quote Button */
@@ -540,11 +550,10 @@ html[data-theme="light"][data-style="cyberpunk"] {
   --destructive-foreground: 0 0% 100%;
 
   --border: 330 100% 50%;
-  --input: 0 0% 96%;
+  --input: 0 0% 80%;
   --ring: 330 100% 50%;
 
   /* Core Colors - High Voltage */
-  --primary: #d6006e;
   --primary-foreground: #ffffff;
   --cyber-pink: #ff0080;
   --cyber-purple: #8b00e0;
