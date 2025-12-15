@@ -11,6 +11,7 @@ import {
 import {
   getAllAssetStates,
   getActiveWithdrawalJobs,
+  getRecentFills,
   isEnabled,
   setEnabled,
   getAppStateValue,
@@ -382,6 +383,18 @@ export function createRoutes(context: RoutesContext): Router {
     }
   });
 
+  // Get recent fills
+  router.get('/api/fills', requireAuth, (req: Request, res: Response) => {
+    try {
+      const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+      const fills = getRecentFills(limit);
+      res.json(fills);
+    } catch (error) {
+      logger.error({ error }, 'Failed to get fills');
+      res.status(500).json({ error: 'Failed to get fills' });
+    }
+  });
+
   // ============== Configuration ==============
 
   // Get current config (sanitized)
@@ -456,23 +469,41 @@ export function createRoutes(context: RoutesContext): Router {
       // Fetch all addresses from Kraken using pool
       const krakenAddresses = await pool.execute((client) => client.getWithdrawAddresses());
 
+      logger.info(
+        { count: krakenAddresses.length, addresses: krakenAddresses },
+        'Fetched addresses from Kraken API'
+      );
+
       let newCount = 0;
       let restoredCount = 0;
       const currentKeys: Array<{ asset: string; key: string }> = [];
 
       // Upsert each address
       for (const addr of krakenAddresses) {
+        logger.debug({ addr }, 'Upserting address');
         currentKeys.push({ asset: addr.asset, key: addr.key });
         const result = upsertKrakenAddress(addr.asset, addr.method, addr.key, addr.address);
-        if (result.isNew) newCount++;
-        if (result.wasRemoved) restoredCount++;
+        if (result.isNew) {
+          newCount++;
+          logger.debug({ asset: addr.asset, key: addr.key }, 'New address added');
+        }
+        if (result.wasRemoved) {
+          restoredCount++;
+          logger.debug({ asset: addr.asset, key: addr.key }, 'Removed address restored');
+        }
       }
 
       // Flag addresses that no longer exist in Kraken
+      logger.debug({ currentKeys }, 'Current keys from Kraken');
       const flaggedCount = flagRemovedAddresses(currentKeys);
 
       logger.info(
-        { new: newCount, restored: restoredCount, flagged: flaggedCount },
+        {
+          krakenCount: krakenAddresses.length,
+          new: newCount,
+          restored: restoredCount,
+          flagged: flaggedCount
+        },
         'Synced Kraken withdrawal addresses'
       );
 
@@ -493,6 +524,7 @@ export function createRoutes(context: RoutesContext): Router {
           new: newCount,
           restored: restoredCount,
           flagged: flaggedCount,
+          fromKraken: krakenAddresses.length,
         },
       });
     } catch (error) {

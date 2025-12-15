@@ -64,7 +64,7 @@ export function ConfigPanel() {
   const [sweeperStatus, setSweeperStatus] = useState<SweeperStatus | null>(null);
   const [toggling, setToggling] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [syncStats, setSyncStats] = useState<{ new: number; restored: number; flagged: number } | null>(null);
+  const [syncStats, setSyncStats] = useState<{ new: number; restored: number; flagged: number; fromKraken: number } | null>(null);
 
   useEffect(() => {
     fetchConfig();
@@ -141,12 +141,16 @@ export function ConfigPanel() {
         setAddresses(data.addresses);
         setAddressesFetched(true);
         setSyncStats(data.stats);
+        const parts: string[] = [];
+        parts.push(`${data.stats.fromKraken} from Kraken`);
+        if (data.stats.new > 0) parts.push(`${data.stats.new} new`);
+        if (data.stats.restored > 0) parts.push(`${data.stats.restored} restored`);
+        if (data.stats.flagged > 0) parts.push(`${data.stats.flagged} removed`);
+
         if (data.stats.flagged > 0) {
-          setError(`Warning: ${data.stats.flagged} address(es) no longer found on Kraken`);
-        } else if (data.stats.new > 0) {
-          setSuccess(`Found ${data.stats.new} new address(es)`);
+          setError(`Sync complete (${parts.join(', ')}). Update config for removed addresses.`);
         } else {
-          setSuccess('Addresses synced successfully');
+          setSuccess(`Sync complete: ${parts.join(', ')}`);
         }
       } else {
         const data = await res.json();
@@ -259,7 +263,7 @@ export function ConfigPanel() {
           <button
             onClick={syncAddresses}
             disabled={syncing || !sweeperStatus?.hasApiKeys}
-            className="text-sm text-gray-400 hover:text-white transition-colors disabled:text-gray-600"
+            className="bridge-button text-sm"
           >
             {syncing ? 'Syncing...' : 'Sync from Kraken'}
           </button>
@@ -378,7 +382,7 @@ export function ConfigPanel() {
           {unconfiguredAssets.length > 0 && (
             <button
               onClick={() => setShowAddAsset(true)}
-              className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+              className="bridge-button text-sm"
             >
               Add Asset ({unconfiguredAssets.length} available)
             </button>
@@ -563,7 +567,7 @@ function AssetConfigRow({
           <button
             onClick={() => onSave(editConfig)}
             disabled={saving || editConfig.walletKeys.length === 0}
-            className="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded transition-colors"
+            className="bridge-button text-sm"
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
@@ -952,7 +956,7 @@ function AddAssetModal({ existingAssets, addressesByAsset, onAdd, onClose, savin
           <button
             onClick={handleAdd}
             disabled={saving || !selectedAsset || selectedKeys.length === 0}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded transition-colors"
+            className="bridge-button"
           >
             {saving ? 'Adding...' : 'Add Asset'}
           </button>

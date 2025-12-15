@@ -128,7 +128,7 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
           <h2 className="font-semibold text-white">Kraken API Keys</h2>
           <button
             onClick={() => setShowAddForm(true)}
-            className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+            className="bridge-button text-sm"
           >
             + Add Key
           </button>
@@ -504,7 +504,7 @@ function AddKeyModal({ onClose, onSuccess }: AddKeyModalProps) {
             <button
               type="submit"
               disabled={loading}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white font-medium rounded-md transition-colors"
+              className="bridge-button"
             >
               {loading ? 'Adding...' : 'Add Key'}
             </button>

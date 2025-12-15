@@ -1,0 +1,390 @@
+/* Classic Theme - True Classic / Timeless Elegance */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@300;400;500;600&display=swap');
+
+html[data-style="classic"] {
+  /* Typography */
+  --font-display: 'Playfair Display', serif;
+  --font-mono: 'Inter', sans-serif; /* Using Inter for cleaner UI text */
+
+  /* Core Colors - Navy & Gold */
+  --primary: #0f172a; /* Deep Navy */
+  --primary-foreground: #ffffff;
+
+  /* Background */
+  --theme-bg: #f8f9fa; /* Soft White */
+  --theme-card-bg: #ffffff;
+  --theme-card-border: #e2e8f0;
+  --theme-text-primary: #1e293b;
+  --theme-text-secondary: #475569;
+  --theme-text-muted: #64748b;
+  --theme-input-bg: #ffffff;
+  --theme-input-border: #cbd5e1;
+  --theme-input-focus-border: #c5a059; /* Gold focus */
+  --theme-section-bg: #f1f5f9;
+  --theme-section-hover-bg: #e2e8f0;
+  --theme-section-border: #cbd5e1;
+
+  /* Buttons */
+  --theme-button-gradient-start: #0f172a;
+  --theme-button-gradient-mid: #1e293b;
+  --theme-button-gradient-end: #334155;
+  --theme-button-hover-start: #1e293b;
+  --theme-button-hover-mid: #334155;
+  --theme-button-hover-end: #475569;
+
+  /* Shadows - Soft & Elegant */
+  --theme-shadow-color: rgba(15, 23, 42, 0.08);
+  --theme-shadow-hover: rgba(15, 23, 42, 0.12);
+  --theme-percent-25-bg: rgba(197, 160, 89, 0.1);
+  --theme-percent-50-bg: rgba(197, 160, 89, 0.2);
+  --theme-percent-75-bg: rgba(197, 160, 89, 0.3);
+  --theme-percent-border: rgba(197, 160, 89, 0.4);
+
+  /* Navigation */
+  --theme-navbar-bg: rgba(255, 255, 255, 0.95);
+  --theme-navbar-border: #e2e8f0;
+  --theme-modal-bg: #ffffff;
+  --theme-modal-section-bg: #f8f9fa;
+
+  /* Links */
+  --theme-link-color: #c5a059; /* Gold */
+  --theme-link-hover-color: #b08d4c;
+
+  /* Success States */
+  --theme-success-bg: rgba(21, 128, 61, 0.08);
+  --theme-success-border: rgba(21, 128, 61, 0.2);
+  --theme-success-text: #15803d;
+
+  /* Accents */
+  --accent-primary: #0f172a;
+  --accent-primary-strong: #020617;
+  --accent-secondary: #c5a059; /* Gold */
+  --accent-signal: #0ea5e9;
+  --accent-warning: #d97706;
+  --accent-danger: #be123c;
+
+  /* Hero Section */
+  --hero-bg: linear-gradient(to bottom, #f8f9fa, #ffffff);
+  --hero-border: transparent;
+  --hero-heading-color: #0f172a;
+  --hero-heading-shadow: none;
+  --hero-subtitle-color: #475569;
+  --hero-button-border: #e2e8f0;
+  --hero-button-color: #0f172a;
+
+  /* Navigation Tabs */
+  --nav-tab-color: #64748b;
+  --nav-tab-hover-color: #0f172a;
+  --nav-tab-hover-border: #cbd5e1;
+  --nav-tab-active-color: #0f172a;
+  --nav-tab-active-shadow: 0 2px 4px rgba(0,0,0,0.05);
+
+  /* Stat Cards */
+  --stat-card-bg: #ffffff;
+  --stat-card-border: #e2e8f0;
+  --stat-card-hover-bg: #ffffff;
+  --stat-card-hover-border: #c5a059;
+  --stat-card-hover-shadow: 0 10px 30px rgba(0,0,0,0.08);
+  --stat-label-color: #64748b;
+  --stat-value-color: #0f172a;
+  --stat-value-shadow: none;
+  --stat-description-color: #64748b;
+  --stat-link-color: #c5a059;
+  --stat-link-hover-color: #b08d4c;
+
+  /* Section Headers */
+  --section-title-color: #0f172a;
+  --section-title-shadow: none;
+  --section-subtitle-color: #64748b;
+
+  /* Router Cards */
+  --router-card-bg: #ffffff;
+  --router-card-border: #e2e8f0;
+  --router-card-hover-border: #c5a059;
+  --router-card-hover-shadow: 0 4px 20px rgba(0,0,0,0.06);
+  --router-card-address-color: #64748b;
+  --router-card-label-color: #475569;
+
+  /* Connection Chips */
+  --chip-connected-bg: rgba(21, 128, 61, 0.1);
+  --chip-connected-color: #15803d;
+  --chip-connected-border: rgba(21, 128, 61, 0.2);
+  --chip-disconnected-bg: rgba(100, 116, 139, 0.1);
+  --chip-disconnected-color: #475569;
+  --chip-disconnected-border: rgba(100, 116, 139, 0.2);
+
+  /* Router Limit Cards */
+  --router-limit-card-bg: #ffffff;
+  --router-limit-card-border: #e2e8f0;
+  --router-limit-card-active-bg: #f8fafc;
+  --router-limit-card-active-border: #c5a059;
+  --router-limit-card-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  --router-limit-card-connected-border: #15803d;
+  --router-limit-card-divider: #f1f5f9;
+
+  /* Tables */
+  --table-bg: #ffffff;
+  --table-border: #e2e8f0;
+  --table-header-bg: #f8fafc;
+  --table-header-color: #0f172a;
+  --table-row-border: #f1f5f9;
+  --table-row-hover-bg: #f8fafc;
+  --table-row-hover-border: #e2e8f0;
+  --table-link-color: #c5a059;
+  --table-link-hover-color: #b08d4c;
+
+  /* Forms */
+  --form-section-bg: #f8fafc;
+  --form-section-border: #e2e8f0;
+  --form-section-hover-bg: #f1f5f9;
+  --form-section-hover-border: #cbd5e1;
+  --form-label-color: #475569;
+  --form-text-color: #64748b;
+  --form-check-border: #cbd5e1;
+  --form-check-active-bg: #0f172a;
+
+  /* Alerts */
+  --alert-info-bg: #f0f9ff;
+  --alert-info-border: #bae6fd;
+  --alert-info-text: #0369a1;
+
+  --brand-gradient: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  --brand-shadow: rgba(15, 23, 42, 0.2);
+  --brand-shadow-strong: rgba(15, 23, 42, 0.4);
+  --brand-glow-animation: none;
+
+  --fee-button-bg: #f8fafc;
+  --fee-button-border: #e2e8f0;
+  --fee-button-text: #475569;
+  --fee-button-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  --fee-button-hover-bg: #ffffff;
+  --fee-button-hover-border: #c5a059;
+  --fee-button-hover-text: #c5a059;
+  --fee-button-hover-shadow: 0 4px 6px rgba(0,0,0,0.05);
+
+  --banner-bg: #f8fafc;
+  --banner-border: #e2e8f0;
+  --banner-text: #0f172a;
+  --banner-dismiss: #64748b;
+}
+
+/* Classic Typography */
+html[data-style="classic"] body {
+  font-family: var(--font-mono); /* Inter for UI */
+  letter-spacing: normal;
+}
+
+html[data-style="classic"] h1,
+html[data-style="classic"] h2,
+html[data-style="classic"] h3,
+html[data-style="classic"] .multisig-hero h1 {
+  font-family: var(--font-display); /* Playfair for Headers */
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-style: italic; /* Classic elegant touch */
+}
+
+/* Freedom Bridge Title Styling - Gold Serif */
+html[data-style="classic"] .navbar-brand-custom span {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent-secondary); /* Gold title */
+  text-transform: uppercase;
+}
+
+html[data-style="classic"] code,
+html[data-style="classic"] .font-mono {
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+}
+
+/* Soft, Elevated Cards */
+html[data-style="classic"] .stat-card,
+html[data-style="classic"] .modern-card,
+html[data-style="classic"] .router-card {
+  border-radius: 8px;
+  border: 1px solid var(--theme-card-border);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+  transition: all 0.3s ease;
+}
+
+html[data-style="classic"] .stat-card:hover,
+html[data-style="classic"] .modern-card:hover,
+html[data-style="classic"] .router-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(0,0,0,0.08);
+  border-color: var(--accent-secondary);
+}
+
+/* Refined Buttons */
+html[data-style="classic"] .btn-primary {
+  border-radius: 6px;
+  font-weight: 500;
+  text-transform: none; /* Standard casing */
+  letter-spacing: 0.01em;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.1);
+}
+
+html[data-style="classic"] .btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(15, 23, 42, 0.15);
+}
+
+/* Soft Input Borders */
+html[data-style="classic"] .form-control,
+html[data-style="classic"] .form-select {
+  border-radius: 6px;
+  border: 1px solid var(--theme-input-border) !important;
+  transition: all 0.2s ease;
+}
+
+html[data-style="classic"] .form-control:focus,
+html[data-style="classic"] .form-select:focus {
+  border-color: var(--accent-secondary) !important;
+  box-shadow: 0 0 0 3px rgba(197, 160, 89, 0.15) !important;
+}
+
+/* Elegant Tables */
+html[data-style="classic"] .modern-table {
+  border-radius: 8px;
+  border: 1px solid var(--theme-card-border);
+  overflow: hidden;
+}
+
+/* Section Decorators */
+html[data-style="classic"] .section-title {
+  position: relative;
+  padding-bottom: 12px;
+  margin-bottom: 24px;
+}
+
+html[data-style="classic"] .section-title::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 40px;
+  height: 2px;
+  background: var(--accent-secondary); /* Gold underline */
+}
+
+/* Clean Form Sections */
+html[data-style="classic"] .form-section {
+  border-radius: 8px;
+  border: 1px solid var(--theme-card-border);
+  background: #ffffff;
+}
+
+/* Classic Dark Mode - Rich Navy */
+html.dark[data-style="classic"],
+html[data-theme="dark"][data-style="classic"] {
+  /* Core Colors */
+  --primary: #e2e8f0;
+  --primary-foreground: #0f172a;
+
+  /* Background - Rich Navy */
+  --theme-bg: #0a192f; /* Darkest Navy */
+  --theme-card-bg: #112240; /* Lighter Navy */
+  --theme-card-border: #233554;
+  --theme-text-primary: #e6f1ff; /* Off-white */
+  --theme-text-secondary: #8892b0; /* Slate */
+  --theme-text-muted: #64748b;
+  --theme-input-bg: #112240;
+  --theme-input-border: #233554;
+  --theme-input-focus-border: #c5a059;
+  --theme-section-bg: #112240;
+  --theme-section-hover-bg: #1e2f4d;
+  --theme-section-border: #233554;
+
+  /* Buttons */
+  --theme-button-gradient-start: #c5a059; /* Gold buttons in dark mode */
+  --theme-button-gradient-mid: #d4af37;
+  --theme-button-gradient-end: #b08d4c;
+  --theme-button-hover-start: #d4af37;
+  --theme-button-hover-mid: #b08d4c;
+  --theme-button-hover-end: #997b3f;
+
+  /* Shadows */
+  --theme-shadow-color: rgba(0, 0, 0, 0.4);
+  --theme-shadow-hover: rgba(0, 0, 0, 0.6);
+  
+  /* Navigation */
+  --theme-navbar-bg: rgba(10, 25, 47, 0.95);
+  --theme-navbar-border: #233554;
+  --theme-modal-bg: #112240;
+  --theme-modal-section-bg: #0a192f;
+
+  /* Links */
+  --theme-link-color: #c5a059;
+  --theme-link-hover-color: #e2c586;
+
+  /* Success States */
+  --theme-success-bg: rgba(21, 128, 61, 0.15);
+  --theme-success-border: rgba(21, 128, 61, 0.3);
+  --theme-success-text: #4ade80;
+
+  /* Accents */
+  --accent-primary: #c5a059;
+  --accent-primary-strong: #e2c586;
+  --accent-secondary: #c5a059;
+  --accent-signal: #38bdf8;
+  --accent-warning: #fbbf24;
+  --accent-danger: #f87171;
+
+  /* Hero Section */
+  --hero-bg: radial-gradient(circle at top, #112240, #0a192f);
+  --hero-border: transparent;
+  --hero-heading-color: #e6f1ff;
+  --hero-subtitle-color: #8892b0;
+  --hero-button-border: #233554;
+  --hero-button-color: #e6f1ff;
+
+  /* Tabs */
+  --nav-tab-color: #8892b0;
+  --nav-tab-hover-color: #c5a059;
+  --nav-tab-hover-border: #233554;
+  --nav-tab-active-color: #c5a059;
+  
+  /* Stats */
+  --stat-card-bg: #112240;
+  --stat-card-border: #233554;
+  --stat-card-hover-bg: #172a45;
+  --stat-card-hover-border: #c5a059;
+  --stat-label-color: #8892b0;
+  --stat-value-color: #e6f1ff;
+  
+  /* Router */
+  --router-card-bg: #112240;
+  --router-card-border: #233554;
+  --router-card-hover-border: #c5a059;
+  --router-card-address-color: #8892b0;
+  
+  /* Tables */
+  --table-bg: #112240;
+  --table-border: #233554;
+  --table-header-bg: #0a192f;
+  --table-header-color: #e6f1ff;
+  --table-row-border: #233554;
+  --table-row-hover-bg: #172a45;
+
+  /* Forms */
+  --form-section-bg: #112240;
+  --form-section-border: #233554;
+  --form-label-color: #8892b0;
+  --form-text-color: #64748b;
+  
+  /* Brand */
+  --brand-gradient: linear-gradient(135deg, #c5a059 0%, #e2c586 100%);
+
+  --banner-bg: rgba(17, 34, 64, 0.8); /* Lighter Navy with transparency */
+  --banner-border: rgba(197, 160, 89, 0.3); /* Muted gold border */
+  --banner-text: #e6f1ff; /* Off-white text */
+  --banner-dismiss: #c5a059; /* Gold dismiss icon/text */
+}
+
+/* Dark Mode Error Alert override */
+html.dark[data-style="classic"] .error-alert {
+  background: rgba(127, 29, 29, 0.2);
+  border: 1px solid #991b1b;
+  color: #fca5a5;
+}

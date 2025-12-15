@@ -1,0 +1,521 @@
+/* Nebula Theme - Ethereal Glassmorphism */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+html[data-style="nebula"] {
+  /* Typography */
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-body: 'Outfit', sans-serif;
+  --theme-font-amount: var(--font-display);
+
+  /* Core Colors - Cosmic Void */
+  --primary: #7c3aed; /* Violet 600 */
+  --primary-foreground: #ffffff;
+  --nebula-void: #030014;
+  --nebula-deep: #0f0728;
+  --nebula-surface: #1c1040;
+  --nebula-accent: #7c3aed;
+  --nebula-glow: #a78bfa;
+  --nebula-starlight: #e0e7ff;
+
+  /* Background */
+  --theme-bg: linear-gradient(180deg, #030014 0%, #0f0728 100%);
+  --theme-card-bg: rgba(28, 16, 64, 0.3);
+  --theme-card-border: rgba(124, 58, 237, 0.2);
+  
+  /* Text */
+  --theme-text-primary: #ffffff;
+  --theme-text-secondary: rgba(224, 231, 255, 0.7);
+  --theme-text-muted: rgba(224, 231, 255, 0.4);
+
+  /* Inputs - Increased brightness for contrast */
+  --theme-input-bg: rgba(28, 20, 65, 0.7);
+  --theme-input-border: rgba(124, 58, 237, 0.3);
+  --theme-input-focus-border: #a78bfa;
+
+  /* Sections */
+  --theme-section-bg: rgba(28, 16, 64, 0.25);
+  --theme-section-hover-bg: rgba(45, 27, 105, 0.4);
+  --theme-section-border: rgba(124, 58, 237, 0.15);
+
+  /* Buttons */
+  --theme-button-gradient-start: #7c3aed;
+  --theme-button-gradient-mid: #8b5cf6;
+  --theme-button-gradient-end: #6366f1;
+  --theme-button-hover-start: #8b5cf6;
+  --theme-button-hover-mid: #a78bfa;
+  --theme-button-hover-end: #818cf8;
+
+  /* Shadows */
+  --theme-shadow-color: rgba(124, 58, 237, 0.25);
+  --theme-shadow-hover: rgba(167, 139, 250, 0.4);
+  --theme-percent-25-bg: rgba(124, 58, 237, 0.15);
+  --theme-percent-50-bg: rgba(124, 58, 237, 0.25);
+  --theme-percent-75-bg: rgba(124, 58, 237, 0.35);
+  --theme-percent-border: rgba(124, 58, 237, 0.4);
+
+  /* Navigation */
+  --theme-navbar-bg: rgba(3, 0, 20, 0.85);
+  --theme-navbar-border: rgba(124, 58, 237, 0.2);
+  --theme-modal-bg: rgba(15, 7, 40, 0.95);
+  --theme-modal-section-bg: rgba(28, 16, 64, 0.5);
+
+  /* Links */
+  --theme-link-color: #a78bfa;
+  --theme-link-hover-color: #c4b5fd;
+
+  /* Success States */
+  --theme-success-bg: rgba(52, 211, 153, 0.15);
+  --theme-success-border: rgba(52, 211, 153, 0.4);
+  --theme-success-text: #34d399;
+
+  /* Accents */
+  --accent-primary: #7c3aed;
+  --accent-primary-strong: #6d28d9;
+  --accent-secondary: #d946f5;
+  --accent-signal: #06b6d4;
+  --accent-warning: #f59e0b;
+  --accent-danger: #ec4899;
+
+  /* Hero Section */
+  --hero-bg: radial-gradient(circle at top, rgba(124, 58, 237, 0.15) 0%, transparent 60%),
+             radial-gradient(circle at bottom right, rgba(6, 182, 212, 0.1) 0%, transparent 50%);
+  --hero-border: rgba(124, 58, 237, 0.2);
+  --hero-heading-color: #ffffff;
+  --hero-heading-shadow: 0 0 40px rgba(124, 58, 237, 0.5);
+  --hero-subtitle-color: rgba(224, 231, 255, 0.8);
+  --hero-button-border: rgba(167, 139, 250, 0.5);
+  --hero-button-color: #ffffff;
+
+  /* Navigation Tabs */
+  --nav-tab-color: rgba(224, 231, 255, 0.6);
+  --nav-tab-hover-color: #ffffff;
+  --nav-tab-hover-border: rgba(167, 139, 250, 0.6);
+  --nav-tab-active-color: #ffffff;
+  --nav-tab-active-shadow: 0 0 25px rgba(124, 58, 237, 0.6);
+
+  /* Stat Cards */
+  --stat-card-bg: rgba(28, 16, 64, 0.4);
+  --stat-card-border: rgba(124, 58, 237, 0.2);
+  --stat-card-hover-bg: rgba(45, 27, 105, 0.6);
+  --stat-card-hover-border: rgba(167, 139, 250, 0.5);
+  --stat-card-hover-shadow: rgba(124, 58, 237, 0.3);
+  --stat-label-color: rgba(167, 139, 250, 0.9);
+  --stat-value-color: #ffffff;
+  --stat-value-shadow: 0 0 20px rgba(124, 58, 237, 0.4);
+  --stat-description-color: rgba(224, 231, 255, 0.6);
+  --stat-link-color: #a78bfa;
+  --stat-link-hover-color: #c4b5fd;
+
+  /* Section Headers */
+  --section-title-color: #ffffff;
+  --section-title-shadow: 0 0 20px rgba(124, 58, 237, 0.4);
+  --section-subtitle-color: rgba(224, 231, 255, 0.7);
+
+  /* Router Cards */
+  --router-card-bg: rgba(28, 16, 64, 0.5);
+  --router-card-border: rgba(124, 58, 237, 0.25);
+  --router-card-hover-border: rgba(167, 139, 250, 0.6);
+  --router-card-hover-shadow: rgba(124, 58, 237, 0.4);
+  --router-card-address-color: rgba(167, 139, 250, 0.8);
+  --router-card-label-color: rgba(224, 231, 255, 0.8);
+
+  /* Connection Chips */
+  --chip-connected-bg: rgba(52, 211, 153, 0.15);
+  --chip-connected-color: #34d399;
+  --chip-connected-border: rgba(52, 211, 153, 0.4);
+  --chip-disconnected-bg: rgba(224, 231, 255, 0.05);
+  --chip-disconnected-color: rgba(224, 231, 255, 0.5);
+  --chip-disconnected-border: rgba(224, 231, 255, 0.2);
+
+  /* Router Limit Cards */
+  --router-limit-card-bg: rgba(28, 16, 64, 0.6);
+  --router-limit-card-border: rgba(124, 58, 237, 0.25);
+  --router-limit-card-active-bg: rgba(124, 58, 237, 0.15);
+  --router-limit-card-active-border: rgba(167, 139, 250, 0.6);
+  --router-limit-card-shadow: rgba(124, 58, 237, 0.3);
+  --router-limit-card-connected-border: rgba(52, 211, 153, 0.4);
+  --router-limit-card-divider: rgba(124, 58, 237, 0.2);
+
+  /* Tables */
+  --table-bg: rgba(28, 16, 64, 0.5);
+  --table-border: rgba(124, 58, 237, 0.25);
+  --table-header-bg: rgba(124, 58, 237, 0.1);
+  --table-header-color: #a78bfa;
+  --table-row-border: rgba(124, 58, 237, 0.15);
+  --table-row-hover-bg: rgba(124, 58, 237, 0.1);
+  --table-row-hover-border: rgba(167, 139, 250, 0.3);
+  --table-link-color: #a78bfa;
+  --table-link-hover-color: #c4b5fd;
+
+  /* Forms */
+  --form-section-bg: rgba(28, 16, 64, 0.4);
+  --form-section-border: rgba(124, 58, 237, 0.25);
+  --form-section-hover-bg: rgba(45, 27, 105, 0.5);
+  --form-section-hover-border: rgba(167, 139, 250, 0.4);
+  --form-label-color: rgba(224, 231, 255, 0.9);
+  --form-text-color: rgba(224, 231, 255, 0.7);
+  --form-check-border: rgba(167, 139, 250, 0.4);
+  --form-check-active-bg: #7c3aed;
+
+  /* Alerts */
+  --alert-info-bg: rgba(6, 182, 212, 0.15);
+  --alert-info-border: rgba(6, 182, 212, 0.4);
+  --alert-info-text: #22d3ee;
+
+  --brand-gradient: linear-gradient(135deg, #7c3aed 0%, #c026d3 50%, #6366f1 100%);
+  --brand-shadow: rgba(124, 58, 237, 0.2);
+  --brand-shadow-strong: rgba(124, 58, 237, 0.4);
+
+  --fee-button-bg: rgba(124, 58, 237, 0.1);
+  --fee-button-border: #7c3aed;
+  --fee-button-text: #a78bfa;
+  --fee-button-shadow: rgba(124, 58, 237, 0.2);
+  --fee-button-hover-bg: #7c3aed;
+  --fee-button-hover-border: #a78bfa;
+  --fee-button-hover-text: #ffffff;
+  --fee-button-hover-shadow: rgba(124, 58, 237, 0.5);
+
+  --banner-bg: rgba(124, 58, 237, 0.1);
+  --banner-border: rgba(124, 58, 237, 0.3);
+  --banner-text: #e0e7ff;
+  --banner-dismiss: #a78bfa;
+}
+
+/* Fee Quote Button */
+html[data-style="nebula"] .fee-quote-button {
+  background: var(--fee-button-bg);
+  border: 1px solid var(--fee-button-border);
+  color: var(--fee-button-text);
+  box-shadow: var(--fee-button-shadow);
+  border-radius: 16px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  transition: all 0.3s ease;
+  width: 100%;
+  backdrop-filter: blur(10px);
+}
+
+html[data-style="nebula"] .fee-quote-button:hover {
+  background: var(--fee-button-hover-bg);
+  border-color: var(--fee-button-hover-border);
+  color: var(--fee-button-hover-text);
+  box-shadow: var(--fee-button-hover-shadow);
+  transform: translateY(-2px);
+}
+
+/* Fee Quote Alert */
+html[data-style="nebula"] .fee-quote-alert {
+  background: var(--fee-button-bg);
+  border: 1px solid var(--fee-button-border);
+  color: var(--fee-button-text);
+  box-shadow: var(--fee-button-shadow);
+  border-radius: 16px;
+  backdrop-filter: blur(10px);
+}
+
+/* Error Alert */
+html[data-style="nebula"] .error-alert {
+  background: rgba(236, 72, 153, 0.15) !important;
+  border: 1px solid #ec4899 !important;
+  color: #ec4899 !important;
+  border-radius: 16px !important;
+  box-shadow: 0 0 20px rgba(236, 72, 153, 0.25) !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+/* Nebula Typography */
+html[data-style="nebula"] body {
+  font-family: var(--font-body);
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  line-height: 1.7;
+}
+
+html[data-style="nebula"] h1,
+html[data-style="nebula"] h2,
+html[data-style="nebula"] h3,
+html[data-style="nebula"] .multisig-hero h1,
+html[data-style="nebula"] .section-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Freedom Bridge Title Styling */
+html[data-style="nebula"] .navbar-brand-custom span {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--theme-text-primary);
+  text-shadow: 0 0 20px rgba(124, 58, 237, 0.3);
+  -webkit-text-fill-color: initial;
+  background: none;
+}
+
+html[data-style="nebula"] .navbar-brand-custom .brand-bridge {
+  background: linear-gradient(135deg, #e0e7ff 0%, #a78bfa 50%, #e0e7ff 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: nebula-shimmer 8s ease-in-out infinite;
+}
+
+@keyframes nebula-shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* Glass Cards */
+html[data-style="nebula"] .stat-card,
+html[data-style="nebula"] .modern-card,
+html[data-style="nebula"] .router-card {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 24px;
+  box-shadow: 
+    0 8px 32px rgba(3, 0, 20, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+html[data-style="nebula"] .stat-card:hover,
+html[data-style="nebula"] .modern-card:hover,
+html[data-style="nebula"] .router-card:hover {
+  transform: translateY(-5px) scale(1.02);
+  background: rgba(45, 27, 105, 0.6);
+  box-shadow: 
+    0 16px 48px rgba(3, 0, 20, 0.5),
+    0 0 30px rgba(124, 58, 237, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+/* Global Starfield & Aurora */
+html[data-style="nebula"]::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: 
+    radial-gradient(1px 1px at 10% 10%, #fff, transparent),
+    radial-gradient(1px 1px at 20% 20%, #fff, transparent),
+    radial-gradient(2px 2px at 30% 30%, #fff, transparent),
+    radial-gradient(1px 1px at 40% 40%, #fff, transparent),
+    radial-gradient(1px 1px at 50% 50%, #fff, transparent),
+    radial-gradient(1px 1px at 60% 60%, #fff, transparent),
+    radial-gradient(2px 2px at 70% 70%, #fff, transparent),
+    radial-gradient(1px 1px at 80% 80%, #fff, transparent),
+    radial-gradient(1px 1px at 90% 90%, #fff, transparent);
+  background-size: 550px 550px;
+  animation: stars-move 100s linear infinite;
+  opacity: 0.3;
+  z-index: 0;
+  pointer-events: none;
+}
+
+html[data-style="nebula"]::after {
+  content: "";
+  position: fixed;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at 50% 50%, 
+    rgba(124, 58, 237, 0.15), 
+    rgba(6, 182, 212, 0.1), 
+    rgba(236, 72, 153, 0.05), 
+    transparent 60%);
+  animation: nebula-drift 30s ease-in-out infinite alternate;
+  z-index: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+@keyframes stars-move {
+  0% { background-position: 0 0; }
+  100% { background-position: 550px 550px; }
+}
+
+@keyframes nebula-drift {
+  0% { transform: rotate(0deg) translate(0,0); }
+  100% { transform: rotate(15deg) translate(-5%, -5%); }
+}
+
+/* Holographic Card Borders */
+html[data-style="nebula"] .stat-card,
+html[data-style="nebula"] .modern-card,
+html[data-style="nebula"] .router-card {
+  position: relative;
+  background: var(--theme-card-bg); /* Use variable for mode switching */
+  border: 1px solid transparent; /* Prepare for gradient border */
+  background-clip: padding-box; /* Important for border effect */
+  border-radius: 24px;
+}
+
+html[data-style="nebula"] .stat-card::before,
+html[data-style="nebula"] .modern-card::before,
+html[data-style="nebula"] .router-card::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 24px;
+  padding: 1px; /* Border width */
+  background: linear-gradient(45deg, #7c3aed, #06b6d4, #ec4899);
+  -webkit-mask: 
+     linear-gradient(#fff 0 0) content-box, 
+     linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.5;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+html[data-style="nebula"] .stat-card:hover::before,
+html[data-style="nebula"] .modern-card:hover::before,
+html[data-style="nebula"] .router-card:hover::before {
+  opacity: 1;
+  animation: border-flow 2s linear infinite;
+}
+
+/* Starlight Light Mode - Pearlescent */
+html[data-style="nebula"]:not(.dark):not([data-theme="dark"]),
+html[data-theme="light"][data-style="nebula"] {
+  /* Background - Ethereal Cloud */
+  --theme-bg: linear-gradient(135deg, #fdf4ff 0%, #f5f3ff 50%, #f0f9ff 100%);
+  --theme-card-bg: rgba(255, 255, 255, 0.7);
+  
+  /* Text - Deep Space Blue */
+  --theme-text-primary: #312e81; /* Indigo 900 */
+  --theme-text-secondary: #5b21b6; /* Violet 800 */
+  --theme-text-muted: rgba(49, 46, 129, 0.6);
+  
+  /* Accents - Holographic */
+  --primary: #7c3aed;
+  --nebula-glow: #8b5cf6;
+  
+  /* Button Gradient - Deep Nebula */
+  --theme-button-gradient-start: #4f46e5; /* Indigo 600 */
+  --theme-button-gradient-mid: #6366f1; /* Indigo 500 */
+  --theme-button-gradient-end: #8b5cf6; /* Violet 500 */
+  --theme-button-hover-start: #4338ca; /* Indigo 700 */
+  --theme-button-hover-mid: #4f46e5; /* Indigo 600 */
+  --theme-button-hover-end: #7c3aed; /* Violet 600 */
+
+  /* Inputs */
+  --theme-input-bg: rgba(255, 255, 255, 0.6);
+  --theme-input-border: rgba(124, 58, 237, 0.2);
+  --theme-input-focus-border: #7c3aed;
+
+  /* Sections */
+  --theme-section-bg: rgba(255, 255, 255, 0.5);
+  --theme-section-hover-bg: rgba(255, 255, 255, 0.8);
+  --theme-section-border: rgba(124, 58, 237, 0.15);
+
+  /* Navigation */
+  --theme-navbar-bg: rgba(255, 255, 255, 0.8);
+  --theme-navbar-border: rgba(124, 58, 237, 0.1);
+  --theme-modal-bg: #ffffff;
+  --theme-modal-section-bg: #f5f3ff;
+
+  /* Stat Cards */
+  --stat-card-bg: rgba(255, 255, 255, 0.6);
+  --stat-card-border: rgba(124, 58, 237, 0.2);
+  --stat-card-hover-bg: #ffffff;
+  --stat-label-color: #6d28d9;
+  --stat-value-color: #312e81;
+  --stat-description-color: #6b7280;
+
+  /* Section Headers */
+  --section-title-color: #312e81;
+  --section-subtitle-color: #4b5563;
+
+  /* Router Cards */
+  --router-card-bg: rgba(255, 255, 255, 0.7);
+  --router-card-label-color: #4b5563;
+  --router-card-address-color: #7c3aed;
+
+  /* Forms */
+  --form-section-bg: rgba(255, 255, 255, 0.5);
+  --form-label-color: #312e81;
+  --form-text-color: #4b5563;
+  
+  /* Hero */
+  --hero-heading-color: #312e81;
+  --hero-subtitle-color: #5b21b6;
+
+  /* Navigation Tabs */
+  --nav-tab-color: #6b7280;
+  --nav-tab-hover-color: #312e81;
+  --nav-tab-active-color: #7c3aed;
+  
+  /* Banner Fix - Ensure readable dark text on light bg */
+  --banner-text: #312e81;
+  --banner-bg: rgba(124, 58, 237, 0.1);
+  --banner-border: #7c3aed;
+}
+
+html[data-style="nebula"]:not(.dark):not([data-theme="dark"])::before,
+html[data-theme="light"][data-style="nebula"]::before {
+  /* Remove stars in light mode for clean look */
+  display: none;
+}
+
+html[data-style="nebula"]:not(.dark):not([data-theme="dark"])::after,
+html[data-theme="light"][data-style="nebula"]::after {
+  /* Pearl Borealis - Soft Pastel */
+  background: radial-gradient(circle at 50% 50%, 
+    rgba(139, 92, 246, 0.08), 
+    rgba(34, 211, 238, 0.08), 
+    rgba(244, 114, 182, 0.05), 
+    transparent 70%);
+  opacity: 0.6;
+}
+
+/* Light mode specific overrides */
+html[data-style="nebula"]:not(.dark):not([data-theme="dark"]) .form-control,
+html[data-style="nebula"]:not(.dark):not([data-theme="dark"]) .form-select,
+html[data-theme="light"][data-style="nebula"] .form-control,
+html[data-theme="light"][data-style="nebula"] .form-select {
+  color: #1e1b4b !important;
+  background: #ffffff !important; /* Pure white inputs */
+  border: 1px solid rgba(139, 92, 246, 0.3) !important;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+}
+
+html[data-style="nebula"]:not(.dark):not([data-theme="dark"]) .btn-primary,
+html[data-theme="light"][data-style="nebula"] .btn-primary {
+  color: #ffffff;
+  box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
+}
+
+/* Success Section - Nebula */
+html[data-style="nebula"] .alert-custom-success {
+  background: var(--theme-success-bg) !important;
+  border: 1px solid var(--theme-success-border) !important;
+  color: var(--theme-success-text) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 0 20px rgba(52, 211, 153, 0.15) !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+html[data-style="nebula"] .success-link-button,
+html[data-style="nebula"] .wallet-add-button {
+  border: 1px solid var(--theme-link-color) !important;
+  color: var(--theme-link-color) !important;
+  background: transparent !important;
+  border-radius: 16px !important;
+  font-family: var(--font-display) !important;
+  letter-spacing: 0.05em !important;
+}
+
+html[data-style="nebula"] .success-link-button:hover,
+html[data-style="nebula"] .wallet-add-button:hover:not(:disabled) {
+  background: var(--theme-link-color) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 20px var(--theme-link-color) !important;
+  transform: translateY(-2px) !important;
+}

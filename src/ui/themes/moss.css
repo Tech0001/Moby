@@ -1,0 +1,423 @@
+/* Moss Theme - Organic Biophilic Design */
+@import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300&family=Lora:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+
+html[data-style="moss"] {
+  /* Typography */
+  --font-display: 'Lora', serif;
+  --font-body: 'Merriweather', serif;
+  --theme-font-amount: var(--font-display);
+
+  /* Core Colors - Deep Forest & Clay */
+  --primary: #4a7c59;
+  --primary-foreground: #ffffff;
+  --moss-forest: #1e3323;
+  --moss-sage: #8eb396;
+  --moss-fern: #4a7c59;
+  --moss-terracotta: #d68c65;
+  --moss-clay: #8f5e48;
+  --moss-mist: #e8f0eb;
+
+  /* Background - Forest Floor */
+  --theme-bg: #f7f9f7;
+  --theme-card-bg: #ffffff;
+  --theme-card-border: #c2d6c9;
+
+  /* Text - Earthy */
+  --theme-text-primary: #1e2b21;
+  --theme-text-secondary: #3a4f40;
+  --theme-text-muted: #6b8272;
+
+  /* Inputs */
+  --theme-input-bg: #ffffff;
+  --theme-input-border: #c2d6c9;
+  --theme-input-focus-border: #4a7c59;
+
+  /* Sections */
+  --theme-section-bg: #f0f5f2;
+  --theme-section-hover-bg: #e6efe9;
+  --theme-section-border: #dbebe2;
+
+  /* Buttons */
+  --theme-button-gradient-start: #4a7c59;
+  --theme-button-gradient-mid: #5a8c69;
+  --theme-button-gradient-end: #3d6b4c;
+
+  /* Shadows - Soft Canopy */
+  --theme-shadow-color: rgba(30, 51, 35, 0.08);
+  --theme-shadow-hover: rgba(30, 51, 35, 0.15);
+
+  /* Navigation */
+  --theme-navbar-bg: rgba(255, 255, 255, 0.9);
+  --theme-navbar-border: #dbebe2;
+
+  /* Modal */
+  --theme-modal-bg: #ffffff;
+  --theme-modal-section-bg: #f7f9f7;
+
+  /* Links */
+  --theme-link-color: #3d6b4c;
+  --theme-link-hover-color: #d68c65;
+
+  /* Hero */
+  --hero-bg: radial-gradient(circle at 80% 20%, rgba(214, 140, 101, 0.15) 0%, transparent 50%),
+             radial-gradient(circle at 20% 80%, rgba(74, 124, 89, 0.1) 0%, transparent 50%),
+             #f7f9f7;
+  --hero-border: #c2d6c9;
+  --hero-heading-color: #1e2b21;
+  --hero-subtitle-color: #4a6b54;
+
+  /* Router Cards */
+  --router-card-bg: #ffffff;
+  --router-card-border: #dbebe2;
+  --router-card-hover-border: #8eb396;
+  --router-card-hover-shadow: 0 15px 30px rgba(45, 89, 64, 0.1);
+  --router-card-address-color: #4a7c59;
+  --router-card-label-color: #3a4f40;
+  /* Fee Button */
+  --fee-button-bg: rgba(74, 124, 89, 0.1);
+  --fee-button-border: #4a7c59;
+  --fee-button-text: #4a7c59;
+  --fee-button-shadow: rgba(74, 124, 89, 0.2);
+  --fee-button-hover-bg: #4a7c59;
+  --fee-button-hover-border: #3d6b4c;
+  --fee-button-hover-text: #ffffff;
+  --fee-button-hover-shadow: rgba(74, 124, 89, 0.4);
+}
+
+/* Fee Quote Button */
+html[data-style="moss"] .fee-quote-button {
+  background: var(--fee-button-bg);
+  border: 1px solid var(--fee-button-border);
+  color: var(--fee-button-text);
+  box-shadow: var(--fee-button-shadow);
+  border-radius: 12px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: all 0.3s ease;
+  width: 100%;
+}
+
+html[data-style="moss"] .fee-quote-button:hover {
+  background: var(--fee-button-hover-bg);
+  border-color: var(--fee-button-hover-border);
+  color: var(--fee-button-hover-text);
+  box-shadow: var(--fee-button-hover-shadow);
+  transform: translateY(-2px);
+}
+
+/* Fee Quote Alert */
+html[data-style="moss"] .fee-quote-alert {
+  background: var(--fee-button-bg);
+  border: 1px solid var(--fee-button-border);
+  color: var(--fee-button-text);
+  box-shadow: var(--fee-button-shadow);
+  border-radius: 12px;
+}
+
+/* Error Alert */
+html[data-style="moss"] .error-alert {
+  background: rgba(188, 75, 81, 0.1) !important;
+  border: 1px solid #bc4b51 !important;
+  color: #bc4b51 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 12px rgba(188, 75, 81, 0.15) !important;
+}
+
+/* Global Texture - Organic Noise (Paper/Earth feel) */
+html[data-style="moss"]::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+}
+
+/* Typography Polish */
+html[data-style="moss"] body {
+  font-family: var(--font-body);
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  line-height: 1.7;
+}
+
+html[data-style="moss"] h1,
+html[data-style="moss"] h2,
+html[data-style="moss"] .multisig-hero h1 {
+  font-family: var(--font-display);
+  font-weight: 600; /* Lora bold is beautiful */
+  font-style: italic;
+  letter-spacing: -0.01em;
+}
+
+html[data-style="moss"] .section-title {
+  font-family: var(--font-display);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.85rem;
+  color: var(--moss-clay);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+html[data-style="moss"] .section-title::after {
+  content: "";
+  height: 1px;
+  flex-grow: 1;
+  background: linear-gradient(90deg, var(--moss-sage), transparent);
+  opacity: 0.5;
+}
+
+/* Freedom Bridge Title Styling */
+html[data-style="moss"] .navbar-brand-custom span {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--theme-text-primary) !important;
+  background: none;
+  -webkit-text-fill-color: initial;
+  background-clip: border-box;
+}
+
+html[data-style="moss"] .navbar-brand-custom .brand-bridge {
+  color: var(--primary) !important;
+}
+
+/* Organic Cards - Soft & Grown */
+html[data-style="moss"] .stat-card,
+html[data-style="moss"] .modern-card,
+html[data-style="moss"] .router-card {
+  border-radius: 16px; /* Softer, but not blobby */
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.4s ease, border-color 0.4s ease;
+}
+
+html[data-style="moss"] .stat-card:hover,
+html[data-style="moss"] .modern-card:hover,
+html[data-style="moss"] .router-card:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow:
+    0 20px 40px -10px rgba(45, 89, 64, 0.15),
+    0 0 20px rgba(142, 179, 150, 0.2); /* Soft green glow */
+  border-color: var(--moss-sage);
+}
+
+/* Leaf Accent on Cards */
+html[data-style="moss"] .stat-card::before {
+  content: "";
+  position: absolute;
+  top: -20px;
+  right: -20px;
+  width: 60px;
+  height: 60px;
+  background: radial-gradient(circle, var(--moss-sage) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+html[data-style="moss"] .stat-card:hover::before {
+  opacity: 0.2;
+}
+
+/* Buttons - Tactile & Matte */
+html[data-style="moss"] .btn-primary {
+  background: var(--primary);
+  color: #fff;
+  border-radius: 12px;
+  border: none !important;
+  box-shadow:
+    0 4px 10px rgba(74, 124, 89, 0.25),
+    inset 0 2px 0 rgba(255, 255, 255, 0.2);
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 10px 24px;
+  transition: all 0.3s ease;
+}
+
+html[data-style="moss"] .btn-primary:hover {
+  background: #3d6b4c;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(74, 124, 89, 0.4);
+}
+
+/* Tab Navigation - Soft Pill */
+html[data-style="moss"] .nav-background-slider {
+  background: #e8f0eb !important; /* Mist */
+  border: 1px solid #c2d6c9;
+  border-radius: 12px;
+}
+
+html[data-style="moss"] .tab-button.active {
+  color: #1e3323 !important;
+  font-weight: 600;
+}
+
+
+/* ==========================================================================
+   Moss Dark Mode - "Deep Forest / Bioluminescence"
+   ========================================================================== */
+
+html.dark[data-style="moss"],
+html[data-theme="dark"][data-style="moss"] {
+  /* Core Colors - Night Forest */
+  --primary: #8eb396; /* Glowing Sage */
+  --primary-foreground: #0f1510;
+  
+  /* Background - Deep Canopy */
+  --theme-bg: #0f1510; /* Almost black green */
+  --theme-card-bg: #161f18;
+  --theme-card-border: #2a3d30;
+
+  /* Text - Moonlight */
+  --theme-text-primary: #e8f0eb;
+  --theme-text-secondary: #a6c2ad;
+  --theme-text-muted: #5f7565;
+
+  /* Inputs */
+  --theme-input-bg: #121a14;
+  --theme-input-border: #2a3d30;
+  --theme-input-focus-border: #8eb396;
+
+  /* Sections */
+  --theme-section-bg: #121a14;
+  --theme-section-hover-bg: #1a261d;
+  --theme-section-border: #2a3d30;
+
+  /* Shadows - Firefly Glow */
+  --theme-shadow-color: rgba(0, 0, 0, 0.6);
+  --theme-shadow-hover: rgba(142, 179, 150, 0.15);
+
+  /* Navigation */
+  --theme-navbar-bg: rgba(15, 21, 16, 0.95);
+  --theme-navbar-border: #2a3d30;
+
+  /* Modal */
+  --theme-modal-bg: #161f18;
+  --theme-modal-section-bg: #121a14;
+
+  /* Links */
+  --theme-link-color: #8eb396;
+  --theme-link-hover-color: #d68c65;
+
+  /* Hero - Night Ambience */
+  --hero-bg: radial-gradient(circle at 50% 0%, rgba(142, 179, 150, 0.08) 0%, transparent 60%),
+             #0f1510;
+  --hero-border: #2a3d30;
+  --hero-heading-color: #ffffff;
+  --hero-subtitle-color: #a6c2ad;
+
+  /* Router Cards */
+  --router-card-bg: #161f18;
+  --router-card-border: #2a3d30;
+  --router-card-hover-border: #8eb396;
+  --router-card-hover-shadow: 0 15px 40px rgba(0,0,0,0.6);
+  --router-card-address-color: #8eb396;
+}
+
+/* Dark Mode - Texture */
+html.dark[data-style="moss"]::before,
+html[data-theme="dark"][data-style="moss"]::before {
+  opacity: 0.3; /* Subtle grain in dark mode */
+  mix-blend-mode: overlay;
+}
+
+/* Dark Mode - Bioluminescent Cards */
+html.dark[data-style="moss"] .stat-card,
+html.dark[data-style="moss"] .modern-card,
+html.dark[data-style="moss"] .router-card,
+html[data-theme="dark"][data-style="moss"] .stat-card,
+html[data-theme="dark"][data-style="moss"] .modern-card,
+html[data-theme="dark"][data-style="moss"] .router-card {
+  background: #161f18;
+  border: 1px solid #2a3d30;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+html.dark[data-style="moss"] .stat-card:hover,
+html[data-theme="dark"][data-style="moss"] .stat-card:hover {
+  border-color: #8eb396;
+  box-shadow:
+    0 10px 30px rgba(0,0,0,0.6),
+    0 0 15px rgba(142, 179, 150, 0.15); /* Green glow */
+}
+
+/* Dark Mode Button - Glowing Seed */
+html.dark[data-style="moss"] .btn-primary,
+html[data-theme="dark"][data-style="moss"] .btn-primary {
+  background: #8eb396;
+  color: #0f1510;
+  box-shadow: 0 0 15px rgba(142, 179, 150, 0.2);
+}
+
+html.dark[data-style="moss"] .btn-primary:hover,
+html[data-theme="dark"][data-style="moss"] .btn-primary:hover {
+  background: #a6c2ad;
+  box-shadow: 0 0 25px rgba(142, 179, 150, 0.4);
+}
+
+/* Dark Mode Tabs */
+html.dark[data-style="moss"] .nav-background-slider,
+html[data-theme="dark"][data-style="moss"] .nav-background-slider {
+  background: #1e2b21 !important;
+  border: 1px solid #3a4f40;
+}
+
+html.dark[data-style="moss"] .tab-button.active,
+html[data-theme="dark"][data-style="moss"] .tab-button.active {
+  color: #8eb396 !important;
+}
+
+/* Dark Mode Inputs */
+html.dark[data-style="moss"] .form-control,
+html.dark[data-style="moss"] .form-select,
+html[data-theme="dark"][data-style="moss"] .form-control,
+html[data-theme="dark"][data-style="moss"] .form-select {
+  background: #121a14 !important;
+  border-color: #2a3d30 !important;
+  color: #e8f0eb !important;
+}
+
+html.dark[data-style="moss"] .form-control:focus,
+html.dark[data-style="moss"] .form-select:focus,
+html[data-theme="dark"][data-style="moss"] .form-control:focus,
+html[data-theme="dark"][data-style="moss"] .form-select:focus {
+  border-color: #8eb396 !important;
+  box-shadow: 0 0 10px rgba(142, 179, 150, 0.1) !important;
+}
+
+/* Success Section - Moss */
+html[data-style="moss"] .alert-custom-success {
+  background: var(--theme-success-bg) !important;
+  border: 1px solid var(--theme-success-border) !important;
+  color: var(--theme-success-text) !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+html[data-style="moss"] .success-link-button,
+html[data-style="moss"] .wallet-add-button {
+  border: 1px solid var(--theme-link-color) !important;
+  color: var(--theme-link-color) !important;
+  background: transparent !important;
+  border-radius: 12px !important;
+  font-family: var(--font-display) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.02em !important;
+}
+
+html[data-style="moss"] .success-link-button:hover,
+html[data-style="moss"] .wallet-add-button:hover:not(:disabled) {
+  background: var(--theme-link-color) !important;
+  color: #ffffff !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 12px rgba(45, 89, 64, 0.15) !important;
+}

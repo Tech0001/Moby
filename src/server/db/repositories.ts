@@ -39,6 +39,29 @@ export function getAssetState(asset: string): AssetState | null {
   };
 }
 
+/**
+ * Get recent fill events
+ */
+export function getRecentFills(limit = 50): FillEvent[] {
+  const db = getDb();
+  const stmt = db.prepare<[number]>('SELECT * FROM fill_events ORDER BY ts DESC LIMIT ?');
+  const rows = stmt.all(limit) as any[];
+
+  return rows.map((row) => ({
+    tradeId: row.id, // map id back to tradeId
+    orderId: row.order_id,
+    pair: row.pair,
+    side: row.side,
+    orderType: row.order_type,
+    price: row.price,
+    volume: row.volume,
+    cost: row.cost,
+    fee: row.fee,
+    feeCurrency: row.fee_currency,
+    timestamp: row.ts,
+  }));
+}
+
 export function getAllAssetStates(): AssetState[] {
   const db = getDb();
   const rows = db

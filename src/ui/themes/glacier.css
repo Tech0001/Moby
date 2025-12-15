@@ -1,0 +1,631 @@
+/* Glacier Theme - Arctic Minimalism */
+@import url('https://fonts.googleapis.com/css2?family=Bellefair&family=Archivo:wght@300;400;500;600&display=swap');
+
+html[data-style="glacier"] {
+  /* Typography */
+  --font-display: 'Bellefair', Georgia, serif;
+  --font-body: 'Archivo', -apple-system, system-ui, sans-serif;
+  --theme-font-amount: var(--font-display);
+
+  /* Core Colors - Arctic Ice */
+  --primary: #00d4ff;
+  --primary-foreground: #0a1929;
+  --glacier-ice: #e3f2fd;
+  --glacier-frost: #b3e5fc;
+  --glacier-deep: #0277bd;
+  --glacier-crystal: #00d4ff;
+  --glacier-shadow: #01579b;
+
+  /* Background */
+  --theme-bg: radial-gradient(ellipse at top, rgba(227, 242, 253, 0.4) 0%, transparent 50%),
+              radial-gradient(ellipse at bottom right, rgba(179, 229, 252, 0.3) 0%, transparent 60%),
+              linear-gradient(180deg, #f8fcff 0%, #ffffff 100%);
+  --theme-card-bg: rgba(255, 255, 255, 0.7);
+  --theme-card-border: rgba(0, 212, 255, 0.12);
+  --theme-text-primary: #0a1929;
+  --theme-text-secondary: rgba(10, 25, 41, 0.7);
+  --theme-text-muted: rgba(10, 25, 41, 0.45);
+
+  /* Inputs */
+  --theme-input-bg: rgba(255, 255, 255, 0.85);
+  --theme-input-border: rgba(0, 212, 255, 0.15);
+  --theme-input-focus-border: #00d4ff;
+
+  /* Sections */
+  --theme-section-bg: rgba(227, 242, 253, 0.25);
+  --theme-section-hover-bg: rgba(227, 242, 253, 0.4);
+  --theme-section-border: rgba(0, 212, 255, 0.1);
+
+  /* Buttons */
+  --theme-button-gradient-start: #00d4ff;
+  --theme-button-gradient-mid: #0288d1;
+  --theme-button-gradient-end: #0277bd;
+  --theme-button-hover-start: #1de1ff;
+  --theme-button-hover-mid: #039be5;
+  --theme-button-hover-end: #0288d1;
+
+  /* Shadows */
+  --theme-shadow-color: rgba(0, 212, 255, 0.08);
+  --theme-shadow-hover: rgba(0, 212, 255, 0.2);
+  --theme-percent-25-bg: rgba(0, 212, 255, 0.05);
+  --theme-percent-50-bg: rgba(0, 212, 255, 0.1);
+  --theme-percent-75-bg: rgba(0, 212, 255, 0.15);
+  --theme-percent-border: rgba(0, 212, 255, 0.2);
+
+  /* Navigation */
+  --theme-navbar-bg: rgba(248, 252, 255, 0.85);
+  --theme-navbar-border: rgba(0, 212, 255, 0.12);
+  --theme-modal-bg: rgba(255, 255, 255, 0.95);
+  --theme-modal-section-bg: rgba(227, 242, 253, 0.3);
+
+  /* Links */
+  --theme-link-color: #0277bd;
+  --theme-link-hover-color: #00d4ff;
+
+  /* Success States */
+  --theme-success-bg: rgba(0, 212, 255, 0.08);
+  --theme-success-border: rgba(0, 212, 255, 0.25);
+  --theme-success-text: #0277bd;
+
+  /* Accents */
+  --accent-primary: #00d4ff;
+  --accent-primary-strong: #0288d1;
+  --accent-secondary: #b3e5fc;
+  --accent-signal: #4fc3f7;
+  --accent-warning: #ffa726;
+  --accent-danger: #ef5350;
+
+  /* Hero Section */
+  --hero-bg: radial-gradient(ellipse at top, rgba(0, 212, 255, 0.05) 0%, transparent 60%);
+  --hero-border: rgba(0, 212, 255, 0.12);
+  --hero-heading-color: #0a1929;
+  --hero-heading-shadow: 0 2px 30px rgba(0, 212, 255, 0.15);
+  --hero-subtitle-color: rgba(10, 25, 41, 0.65);
+  --hero-button-border: rgba(0, 212, 255, 0.2);
+  --hero-button-color: #0a1929;
+
+  /* Navigation Tabs */
+  --nav-tab-color: rgba(10, 25, 41, 0.5);
+  --nav-tab-hover-color: #0277bd;
+  --nav-tab-hover-border: rgba(0, 212, 255, 0.3);
+  --nav-tab-active-color: #00d4ff;
+  --nav-tab-active-shadow: 0 2px 8px rgba(0, 212, 255, 0.2);
+
+  /* Stat Cards */
+  --stat-card-bg: rgba(255, 255, 255, 0.7);
+  --stat-card-border: rgba(0, 212, 255, 0.12);
+  --stat-card-hover-bg: rgba(255, 255, 255, 0.85);
+  --stat-card-hover-border: rgba(0, 212, 255, 0.25);
+  --stat-card-hover-shadow: rgba(0, 212, 255, 0.15);
+  --stat-label-color: rgba(2, 119, 189, 0.75);
+  --stat-value-color: #0a1929;
+  --stat-value-shadow: none;
+  --stat-description-color: rgba(10, 25, 41, 0.6);
+  --stat-link-color: #0277bd;
+  --stat-link-hover-color: #00d4ff;
+
+  /* Section Headers */
+  --section-title-color: #0a1929;
+  --section-title-shadow: none;
+  --section-subtitle-color: rgba(10, 25, 41, 0.6);
+
+  /* Router Cards */
+  --router-card-bg: rgba(255, 255, 255, 0.65);
+  --router-card-border: rgba(0, 212, 255, 0.12);
+  --router-card-hover-border: rgba(0, 212, 255, 0.3);
+  --router-card-hover-shadow: rgba(0, 212, 255, 0.2);
+  --router-card-address-color: rgba(2, 119, 189, 0.7);
+  --router-card-label-color: rgba(10, 25, 41, 0.7);
+
+  /* Connection Chips */
+  --chip-connected-bg: rgba(0, 212, 255, 0.1);
+  --chip-connected-color: #0277bd;
+  --chip-connected-border: rgba(0, 212, 255, 0.3);
+  --chip-disconnected-bg: rgba(10, 25, 41, 0.05);
+  --chip-disconnected-color: rgba(10, 25, 41, 0.5);
+  --chip-disconnected-border: rgba(10, 25, 41, 0.15);
+
+  /* Router Limit Cards */
+  --router-limit-card-bg: rgba(255, 255, 255, 0.7);
+  --router-limit-card-border: rgba(0, 212, 255, 0.12);
+  --router-limit-card-active-bg: rgba(0, 212, 255, 0.08);
+  --router-limit-card-active-border: rgba(0, 212, 255, 0.3);
+  --router-limit-card-shadow: rgba(0, 212, 255, 0.15);
+  --router-limit-card-connected-border: rgba(0, 212, 255, 0.25);
+  --router-limit-card-divider: rgba(0, 212, 255, 0.1);
+
+  /* Tables */
+  --table-bg: rgba(255, 255, 255, 0.7);
+  --table-border: rgba(0, 212, 255, 0.12);
+  --table-header-bg: rgba(0, 212, 255, 0.05);
+  --table-header-color: #0a1929;
+  --table-row-border: rgba(0, 212, 255, 0.08);
+  --table-row-hover-bg: rgba(0, 212, 255, 0.05);
+  --table-row-hover-border: rgba(0, 212, 255, 0.15);
+  --table-link-color: #0277bd;
+  --table-link-hover-color: #00d4ff;
+
+  /* Forms */
+  --form-section-bg: rgba(227, 242, 253, 0.3);
+  --form-section-border: rgba(0, 212, 255, 0.12);
+  --form-section-hover-bg: rgba(227, 242, 253, 0.45);
+  --form-section-hover-border: rgba(0, 212, 255, 0.25);
+  --form-label-color: rgba(2, 119, 189, 0.85);
+  --form-text-color: rgba(10, 25, 41, 0.7);
+  --form-check-border: rgba(0, 212, 255, 0.25);
+  --form-check-active-bg: #00d4ff;
+
+  /* Alerts */
+  --alert-info-bg: rgba(0, 212, 255, 0.08);
+  --alert-info-border: rgba(0, 212, 255, 0.25);
+  --alert-info-text: #0277bd;
+
+  --brand-gradient: linear-gradient(135deg, #e3f2fd 0%, #b3e5fc 50%, #81d4fa 100%);
+  --brand-shadow: transparent;
+  --brand-shadow-strong: transparent;
+  --brand-glow-animation: glacier-float 6s ease-in-out infinite;
+
+  --fee-button-bg: rgba(0, 212, 255, 0.08);
+  --fee-button-border: rgba(0, 212, 255, 0.25);
+  --fee-button-text: #0277bd;
+  --fee-button-shadow: rgba(0, 212, 255, 0.1);
+  --fee-button-hover-bg: rgba(0, 212, 255, 0.15);
+  --fee-button-hover-border: rgba(0, 212, 255, 0.4);
+  --fee-button-hover-text: #01579b;
+  --fee-button-hover-shadow: rgba(0, 212, 255, 0.25);
+
+  --banner-bg: rgba(0, 212, 255, 0.08);
+  --banner-border: rgba(0, 212, 255, 0.2);
+  --banner-text: #0a1929;
+  --banner-dismiss: #0277bd;
+}
+
+/* Fee Quote Button */
+html[data-style="glacier"] .fee-quote-button {
+  background: var(--fee-button-bg);
+  border: 1px solid var(--fee-button-border);
+  color: var(--fee-button-text);
+  box-shadow: var(--fee-button-shadow);
+  border-radius: 16px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  transition: all 0.3s ease;
+  width: 100%;
+  backdrop-filter: blur(10px);
+}
+
+html[data-style="glacier"] .fee-quote-button:hover {
+  background: var(--fee-button-hover-bg);
+  border-color: var(--fee-button-hover-border);
+  color: var(--fee-button-hover-text);
+  box-shadow: var(--fee-button-hover-shadow);
+  transform: translateY(-2px);
+}
+
+/* Fee Quote Alert */
+html[data-style="glacier"] .fee-quote-alert {
+  background: var(--fee-button-bg);
+  border: 1px solid var(--fee-button-border);
+  color: var(--fee-button-text);
+  box-shadow: var(--fee-button-shadow);
+  border-radius: 16px;
+  backdrop-filter: blur(10px);
+}
+
+/* Error Alert */
+html[data-style="glacier"] .error-alert {
+  background: rgba(239, 83, 80, 0.1) !important;
+  border: 1px solid #ef5350 !important;
+  color: #ef5350 !important;
+  border-radius: 16px !important;
+  box-shadow: 0 4px 16px rgba(239, 83, 80, 0.15) !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+/* Arctic Typography */
+html[data-style="glacier"] body {
+  font-family: var(--font-body);
+  font-weight: 300;
+  letter-spacing: 0.03em;
+  line-height: 1.8;
+}
+
+html[data-style="glacier"] h1,
+html[data-style="glacier"] h2,
+html[data-style="glacier"] h3,
+html[data-style="glacier"] .multisig-hero h1,
+html[data-style="glacier"] .section-title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.05em;
+}
+
+/* Freedom Bridge Title Styling */
+html[data-style="glacier"] .navbar-brand-custom span {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: var(--theme-text-primary);
+  text-shadow: 0 2px 20px rgba(0, 212, 255, 0.15);
+}
+
+/* Frosted Glass Cards */
+html[data-style="glacier"] .stat-card,
+html[data-style="glacier"] .modern-card,
+html[data-style="glacier"] .router-card {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(40px) saturate(150%);
+  -webkit-backdrop-filter: blur(40px) saturate(150%);
+  border: 1px solid rgba(0, 212, 255, 0.12);
+  border-radius: 32px;
+  box-shadow:
+    0 8px 32px rgba(0, 212, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(0, 212, 255, 0.05);
+  transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+html[data-style="glacier"] .stat-card:hover,
+html[data-style="glacier"] .modern-card:hover,
+html[data-style="glacier"] .router-card:hover {
+  transform: translateY(-8px);
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(0, 212, 255, 0.25);
+  box-shadow:
+    0 16px 48px rgba(0, 212, 255, 0.15),
+    0 0 60px rgba(0, 212, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 0 rgba(0, 212, 255, 0.1);
+}
+
+/* Crystalline Reflection Effect */
+html[data-style="glacier"] .stat-card::after,
+html[data-style="glacier"] .modern-card::after,
+html[data-style="glacier"] .router-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, transparent 100%);
+  border-radius: 32px 32px 0 0;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* Gentle Floating Animation */
+html[data-style="glacier"] .stat-card {
+  animation: glacier-float 8s ease-in-out infinite;
+}
+
+html[data-style="glacier"] .stat-card:nth-child(1) { animation-delay: 0s; }
+html[data-style="glacier"] .stat-card:nth-child(2) { animation-delay: 2s; }
+html[data-style="glacier"] .stat-card:nth-child(3) { animation-delay: 4s; }
+html[data-style="glacier"] .stat-card:nth-child(4) { animation-delay: 6s; }
+
+@keyframes glacier-float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+/* Serene Heading */
+html[data-style="glacier"] .multisig-hero h1 {
+  animation: glacier-breathe 8s ease-in-out infinite;
+}
+
+@keyframes glacier-breathe {
+  0%, 100% {
+    opacity: 0.95;
+    letter-spacing: 0.05em;
+  }
+  50% {
+    opacity: 1;
+    letter-spacing: 0.08em;
+  }
+}
+
+/* Minimal Tab Styling */
+html[data-style="glacier"] .multisig-nav-tab {
+  font-weight: 300;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  color: var(--nav-tab-color);
+  border-bottom: 2px solid transparent;
+  transition: all 0.4s ease;
+}
+
+html[data-style="glacier"] .multisig-nav-tab:hover {
+  color: var(--nav-tab-hover-color);
+  letter-spacing: 0.12em;
+}
+
+html[data-style="glacier"] .multisig-nav-tab.active {
+  font-weight: 400;
+  color: var(--nav-tab-active-color);
+  border-bottom-color: var(--nav-tab-active-color);
+}
+
+/* Crystalline Button */
+html[data-style="glacier"] .btn-primary {
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.08) 0%, rgba(2, 119, 189, 0.12) 100%);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 212, 255, 0.25) !important;
+  border-radius: 24px;
+  box-shadow:
+    0 4px 16px rgba(0, 212, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  color: #0277bd;
+  transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+html[data-style="glacier"] .btn-primary:hover {
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.15) 0%, rgba(2, 119, 189, 0.2) 100%);
+  transform: translateY(-4px);
+  box-shadow:
+    0 12px 32px rgba(0, 212, 255, 0.2),
+    0 0 40px rgba(0, 212, 255, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
+  color: #01579b;
+}
+
+/* Frosted Input Style */
+html[data-style="glacier"] .form-control,
+html[data-style="glacier"] .form-select {
+  background: rgba(255, 255, 255, 0.85) !important;
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 212, 255, 0.15) !important;
+  border-radius: 16px;
+  color: #0a1929 !important;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+}
+
+html[data-style="glacier"] .form-control:focus,
+html[data-style="glacier"] .form-select:focus {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-color: rgba(0, 212, 255, 0.35) !important;
+  box-shadow:
+    0 0 0 4px rgba(0, 212, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 1) !important;
+}
+
+/* Frosted Table */
+html[data-style="glacier"] .modern-table {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(30px);
+  border: 1px solid rgba(0, 212, 255, 0.12);
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+/* Ice Particle Effect Background */
+html[data-style="glacier"] .multisig-page::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image:
+    radial-gradient(2px 2px at 20% 30%, rgba(0, 212, 255, 0.15), transparent),
+    radial-gradient(1px 1px at 60% 70%, rgba(179, 229, 252, 0.2), transparent),
+    radial-gradient(1px 1px at 50% 50%, rgba(0, 212, 255, 0.1), transparent),
+    radial-gradient(2px 2px at 80% 10%, rgba(227, 242, 253, 0.3), transparent),
+    radial-gradient(1px 1px at 90% 60%, rgba(0, 212, 255, 0.12), transparent);
+  background-size:
+    200% 200%,
+    180% 180%,
+    220% 220%,
+    190% 190%,
+    210% 210%;
+  animation: glacier-drift 120s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.4;
+}
+
+@keyframes glacier-drift {
+  0% { background-position: 0% 0%, 0% 0%, 0% 0%, 0% 0%, 0% 0%; }
+  100% { background-position: 100% 100%, -100% 100%, 50% -50%, 75% 75%, 25% 125%; }
+}
+
+/* Section Title Ice Bar */
+html[data-style="glacier"] .section-title {
+  position: relative;
+  padding-bottom: 20px;
+}
+
+html[data-style="glacier"] .section-title::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 60px;
+  height: 2px;
+  background: linear-gradient(90deg, #00d4ff 0%, rgba(0, 212, 255, 0) 100%);
+  border-radius: 2px;
+}
+
+/* Glacier Dark Mode */
+html.dark[data-style="glacier"],
+html[data-theme="dark"][data-style="glacier"] {
+  /* Core Colors - Arctic Night */
+  --primary: #80deea; /* Brighter Cyan */
+  --primary-foreground: #006064;
+  --glacier-ice: #0d1f2d;
+  --glacier-frost: #1a3a4f;
+  --glacier-deep: #4dd0e1;
+  --glacier-crystal: #b2ebf2;
+  --glacier-shadow: #006064;
+
+  /* Background - Deep Ocean */
+  --theme-bg: radial-gradient(circle at top center, rgba(77, 208, 225, 0.15) 0%, transparent 60%),
+              linear-gradient(180deg, #050b14 0%, #0a1420 100%);
+  
+  /* Cards - Ice Blocks */
+  --theme-card-bg: rgba(26, 58, 79, 0.4);
+  --theme-card-border: rgba(128, 222, 234, 0.3); /* Brighter border */
+  
+  /* Text - Icy White */
+  --theme-text-primary: #e0f7fa;
+  --theme-text-secondary: rgba(224, 247, 250, 0.9);
+  --theme-text-muted: rgba(224, 247, 250, 0.6);
+
+  /* Inputs */
+  --theme-input-bg: rgba(10, 20, 32, 0.6);
+  --theme-input-border: rgba(128, 222, 234, 0.3);
+  --theme-input-focus-border: #80deea;
+
+  /* Sections */
+  --theme-section-bg: rgba(13, 31, 45, 0.4);
+  --theme-section-hover-bg: rgba(26, 58, 79, 0.6);
+  --theme-section-border: rgba(77, 208, 225, 0.2);
+
+  /* Buttons */
+  --theme-button-gradient-start: #4dd0e1;
+  --theme-button-gradient-mid: #26c6da;
+  --theme-button-gradient-end: #00acc1;
+
+  /* Shadows */
+  --theme-shadow-color: rgba(0, 0, 0, 0.6);
+  --theme-shadow-hover: rgba(77, 208, 225, 0.4);
+
+  /* Navigation */
+  --theme-navbar-bg: rgba(5, 10, 16, 0.9);
+  --theme-navbar-border: rgba(128, 222, 234, 0.2);
+  --theme-modal-bg: #0a1420;
+  --theme-modal-section-bg: rgba(13, 31, 45, 0.8);
+
+  /* Links */
+  --theme-link-color: #80deea;
+  --theme-link-hover-color: #b2ebf2;
+
+  /* Success States */
+  --theme-success-bg: rgba(38, 198, 218, 0.15);
+  --theme-success-border: #26c6da;
+  --theme-success-text: #80deea;
+
+  /* Banner - Fix Readability */
+  --banner-bg: rgba(0, 96, 100, 0.4);
+  --banner-border: #00acc1;
+  --banner-text: #e0f7fa; /* Light text for dark mode */
+  --banner-dismiss: #80deea;
+
+  /* Stat Cards */
+  --stat-card-bg: rgba(26, 58, 79, 0.4);
+  --stat-card-border: rgba(128, 222, 234, 0.25);
+  --stat-card-hover-bg: rgba(26, 58, 79, 0.7);
+  --stat-card-hover-border: #80deea;
+  --stat-label-color: #80deea;
+  --stat-value-color: #ffffff;
+
+  /* Router Cards */
+  --router-card-bg: rgba(26, 58, 79, 0.4);
+  --router-card-border: rgba(128, 222, 234, 0.2);
+  --router-card-address-color: #80deea;
+  --router-card-label-color: #e0f7fa;
+}
+
+/* Dark mode cards - Enhanced Frost */
+html.dark[data-style="glacier"] .stat-card,
+html.dark[data-style="glacier"] .modern-card,
+html.dark[data-style="glacier"] .router-card,
+html[data-theme="dark"][data-style="glacier"] .stat-card,
+html[data-theme="dark"][data-style="glacier"] .modern-card,
+html[data-theme="dark"][data-style="glacier"] .router-card {
+  background: rgba(26, 58, 79, 0.3);
+  backdrop-filter: blur(16px);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4);
+}
+
+html.dark[data-style="glacier"] .stat-card:hover,
+html.dark[data-style="glacier"] .modern-card:hover,
+html.dark[data-style="glacier"] .router-card:hover,
+html[data-theme="dark"][data-style="glacier"] .stat-card:hover,
+html[data-theme="dark"][data-style="glacier"] .modern-card:hover,
+html[data-theme="dark"][data-style="glacier"] .router-card:hover {
+  background: rgba(26, 58, 79, 0.5);
+  border-color: #80deea;
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.7),
+    0 0 30px rgba(77, 208, 225, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+/* Dark mode inputs - Depth */
+html.dark[data-style="glacier"] .form-control,
+html.dark[data-style="glacier"] .form-select,
+html[data-theme="dark"][data-style="glacier"] .form-control,
+html[data-theme="dark"][data-style="glacier"] .form-select {
+  background: rgba(10, 20, 32, 0.7) !important;
+  color: #e0f7fa !important;
+  border: 1px solid rgba(128, 222, 234, 0.2) !important;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.4);
+}
+
+html.dark[data-style="glacier"] .form-control:focus,
+html.dark[data-style="glacier"] .form-select:focus,
+html[data-theme="dark"][data-style="glacier"] .form-control:focus,
+html[data-theme="dark"][data-style="glacier"] .form-select:focus {
+  border-color: #80deea !important;
+  box-shadow: 0 0 15px rgba(77, 208, 225, 0.2) !important;
+}
+
+/* Dark mode button - Glowing Ice */
+html.dark[data-style="glacier"] .btn-primary,
+html[data-theme="dark"][data-style="glacier"] .btn-primary {
+  background: rgba(77, 208, 225, 0.1);
+  border: 1px solid #4dd0e1 !important;
+  color: #80deea;
+  box-shadow: 0 0 15px rgba(77, 208, 225, 0.15);
+}
+
+html.dark[data-style="glacier"] .btn-primary:hover,
+html[data-theme="dark"][data-style="glacier"] .btn-primary:hover {
+  background: rgba(77, 208, 225, 0.2);
+  color: #ffffff;
+  box-shadow: 0 0 25px rgba(77, 208, 225, 0.3);
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+}
+
+/* Success Section - Glacier */
+html[data-style="glacier"] .alert-custom-success {
+  background: var(--theme-success-bg) !important;
+  border: 1px solid var(--theme-success-border) !important;
+  color: var(--theme-success-text) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 8px 32px rgba(0, 212, 255, 0.1) !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+html[data-style="glacier"] .success-link-button,
+html[data-style="glacier"] .wallet-add-button {
+  border: 1px solid var(--theme-link-color) !important;
+  color: var(--theme-link-color) !important;
+  background: transparent !important;
+  border-radius: 16px !important;
+  font-family: var(--font-display) !important;
+  letter-spacing: 0.05em !important;
+}
+
+html[data-style="glacier"] .success-link-button:hover,
+html[data-style="glacier"] .wallet-add-button:hover:not(:disabled) {
+  background: var(--theme-link-color) !important;
+  color: #ffffff !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 16px rgba(0, 212, 255, 0.2) !important;
+}

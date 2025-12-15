@@ -1,0 +1,755 @@
+/* Parchment Theme - Authentic Aged Paper & Antique Leather */
+@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Crimson+Pro:wght@400;500;600&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap');
+
+html[data-style="parchment"] {
+  /* Typography - Classical book fonts */
+  --font-display: 'Libre Baskerville', Baskerville, Georgia, serif;
+  --font-body: 'Crimson Pro', 'Times New Roman', serif;
+  --font-text: 'EB Garamond', Garamond, serif;
+  --theme-font-amount: var(--font-display);
+
+  /* Core Colors - Wax Seal Red & Aged Paper */
+  --primary: #9e2a2b; /* Wax Seal Red */
+  --primary-foreground: #faf4ed;
+
+  /* Real parchment color palette */
+  --parchment-base: #f5ebe0;
+  --parchment-light: #faf4ed;
+  --parchment-aged: #ead7c3;
+  --ink-brown: #3d2817;
+  --ink-blue: #2c3e50; /* Deep Indigo Ink for links */
+  --wax-red: #9e2a2b;  /* Accent */
+
+  /* Background - Layered aged paper texture */
+  --theme-bg:
+    radial-gradient(circle at 20% 30%, rgba(217, 196, 174, 0.2) 0%, transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(201, 185, 154, 0.15) 0%, transparent 35%),
+    linear-gradient(180deg, #faf4ed 0%, #f5ebe0 50%, #ead7c3 100%);
+
+  --theme-card-bg: rgba(250, 244, 237, 0.9);
+  --theme-card-border: rgba(139, 111, 71, 0.3);
+  --theme-text-primary: #2a1f15;
+  --theme-text-secondary: rgba(42, 31, 21, 0.85);
+  --theme-text-muted: rgba(61, 40, 23, 0.65);
+
+  /* Inputs */
+  --theme-input-bg: rgba(255, 252, 248, 0.95);
+  --theme-input-border: rgba(139, 111, 71, 0.25);
+  --theme-input-focus-border: #9e2a2b;
+
+  /* Sections */
+  --theme-section-bg: rgba(234, 215, 195, 0.4);
+  --theme-section-hover-bg: rgba(217, 196, 174, 0.5);
+  --theme-section-border: rgba(139, 111, 71, 0.2);
+
+  /* Buttons - Wax Seal Red Gradient */
+  --theme-button-gradient-start: #9e2a2b;
+  --theme-button-gradient-mid: #8a2425;
+  --theme-button-gradient-end: #751e1f;
+  --theme-button-hover-start: #b83233;
+  --theme-button-hover-mid: #9e2a2b;
+  --theme-button-hover-end: #8a2425;
+
+  /* Shadows */
+  --theme-shadow-color: rgba(61, 40, 23, 0.15);
+  --theme-shadow-hover: rgba(158, 42, 43, 0.25);
+  --theme-percent-25-bg: rgba(158, 42, 43, 0.08);
+  --theme-percent-50-bg: rgba(158, 42, 43, 0.15);
+  --theme-percent-75-bg: rgba(158, 42, 43, 0.22);
+  --theme-percent-border: rgba(158, 42, 43, 0.3);
+
+  /* Navigation */
+  --theme-navbar-bg: rgba(250, 244, 237, 0.98);
+  --theme-navbar-border: rgba(139, 111, 71, 0.2);
+  --theme-modal-bg: rgba(250, 244, 237, 0.98);
+  --theme-modal-section-bg: rgba(234, 215, 195, 0.5);
+
+  /* Links - Indigo Ink */
+  --theme-link-color: #2c3e50;
+  --theme-link-hover-color: #9e2a2b;
+
+  /* Success States */
+  --theme-success-bg: rgba(85, 107, 47, 0.1); /* Olive Green */
+  --theme-success-border: rgba(85, 107, 47, 0.3);
+  --theme-success-text: #3d4d22;
+
+  /* Accents */
+  --accent-primary: #9e2a2b;    /* Wax Red */
+  --accent-primary-strong: #751e1f;
+  --accent-secondary: #2c3e50;  /* Indigo Ink */
+  --accent-signal: #8b6f47;     /* Sepia */
+  --accent-warning: #d4a017;    /* Gold ink */
+  --accent-danger: #9e2a2b;
+
+  /* Hero Section */
+  --hero-bg: radial-gradient(ellipse at center top, rgba(158, 42, 43, 0.05) 0%, transparent 60%);
+  --hero-border: rgba(139, 111, 71, 0.25);
+  --hero-heading-color: #2a1f15;
+  --hero-heading-shadow: 1px 1px 2px rgba(139, 111, 71, 0.15);
+  --hero-subtitle-color: rgba(42, 31, 21, 0.75);
+  --hero-button-border: rgba(158, 42, 43, 0.3);
+  --hero-button-color: #2a1f15;
+
+  /* Navigation Tabs */
+  --nav-tab-color: rgba(42, 31, 21, 0.6);
+  --nav-tab-hover-color: #9e2a2b;
+  --nav-tab-hover-border: rgba(158, 42, 43, 0.3);
+  --nav-tab-active-color: #9e2a2b;
+  --nav-tab-active-shadow: 0 2px 4px rgba(158, 42, 43, 0.15);
+
+  /* Stat Cards */
+  --stat-card-bg: rgba(250, 244, 237, 0.9);
+  --stat-card-border: rgba(139, 111, 71, 0.25);
+  --stat-card-hover-bg: rgba(255, 252, 248, 1);
+  --stat-card-hover-border: rgba(158, 42, 43, 0.35);
+  --stat-card-hover-shadow: rgba(158, 42, 43, 0.15);
+  --stat-label-color: rgba(90, 73, 51, 0.85);
+  --stat-value-color: #9e2a2b;
+  --stat-value-shadow: none;
+  --stat-description-color: rgba(61, 40, 23, 0.7);
+  --stat-link-color: #2c3e50;
+  --stat-link-hover-color: #9e2a2b;
+
+  /* Section Headers */
+  --section-title-color: #2a1f15;
+  --section-title-shadow: none;
+  --section-subtitle-color: rgba(42, 31, 21, 0.75);
+
+  /* Router Cards */
+  --router-card-bg: rgba(250, 244, 237, 0.85);
+  --router-card-border: rgba(139, 111, 71, 0.25);
+  --router-card-hover-border: rgba(158, 42, 43, 0.4);
+  --router-card-hover-shadow: rgba(158, 42, 43, 0.2);
+  --router-card-address-color: rgba(61, 40, 23, 0.85);
+  --router-card-label-color: rgba(42, 31, 21, 0.75);
+
+  /* Connection Chips */
+  --chip-connected-bg: rgba(85, 107, 47, 0.12);
+  --chip-connected-color: #3d4d22;
+  --chip-connected-border: rgba(85, 107, 47, 0.35);
+  --chip-disconnected-bg: rgba(61, 40, 23, 0.08);
+  --chip-disconnected-color: rgba(61, 40, 23, 0.55);
+  --chip-disconnected-border: rgba(61, 40, 23, 0.2);
+
+  /* Router Limit Cards */
+  --router-limit-card-bg: rgba(250, 244, 237, 0.9);
+  --router-limit-card-border: rgba(139, 111, 71, 0.25);
+  --router-limit-card-active-bg: rgba(158, 42, 43, 0.08);
+  --router-limit-card-active-border: rgba(158, 42, 43, 0.3);
+  --router-limit-card-shadow: rgba(158, 42, 43, 0.15);
+  --router-limit-card-connected-border: rgba(85, 107, 47, 0.35);
+  --router-limit-card-divider: rgba(139, 111, 71, 0.15);
+
+  /* Tables */
+  --table-bg: rgba(250, 244, 237, 0.9);
+  --table-border: rgba(139, 111, 71, 0.25);
+  --table-header-bg: rgba(234, 215, 195, 0.4);
+  --table-header-color: #2a1f15;
+  --table-row-border: rgba(139, 111, 71, 0.15);
+  --table-row-hover-bg: rgba(158, 42, 43, 0.05);
+  --table-row-hover-border: rgba(158, 42, 43, 0.2);
+  --table-link-color: #2c3e50;
+  --table-link-hover-color: #9e2a2b;
+
+  /* Forms */
+  --form-section-bg: rgba(234, 215, 195, 0.35);
+  --form-section-border: rgba(139, 111, 71, 0.25);
+  --form-section-hover-bg: rgba(217, 196, 174, 0.5);
+  --form-section-hover-border: rgba(158, 42, 43, 0.3);
+  --form-label-color: rgba(42, 31, 21, 0.9);
+  --form-text-color: rgba(61, 40, 23, 0.8);
+  --form-check-border: rgba(139, 111, 71, 0.4);
+  --form-check-active-bg: #9e2a2b;
+
+  /* Alerts */
+  --alert-info-bg: rgba(44, 62, 80, 0.1);
+  --alert-info-border: rgba(44, 62, 80, 0.3);
+  --alert-info-text: #2c3e50;
+
+  --brand-gradient: linear-gradient(135deg, #9e2a2b 0%, #751e1f 100%);
+  --brand-shadow: rgba(158, 42, 43, 0.2);
+  --brand-shadow-strong: rgba(158, 42, 43, 0.4);
+
+  --fee-button-bg: rgba(158, 42, 43, 0.1);
+  --fee-button-border: #9e2a2b;
+  --fee-button-text: #751e1f;
+  --fee-button-shadow: rgba(158, 42, 43, 0.15);
+  --fee-button-hover-bg: #9e2a2b;
+  --fee-button-hover-border: #751e1f;
+  --fee-button-hover-text: #faf4ed;
+  --fee-button-hover-shadow: rgba(158, 42, 43, 0.3);
+
+  --banner-bg: rgba(234, 215, 195, 0.5);
+  --banner-border: rgba(139, 111, 71, 0.3);
+  --banner-text: #2a1f15;
+  --banner-dismiss: #9e2a2b;
+}
+
+/* Fee Quote Button */
+html[data-style="parchment"] .fee-quote-button {
+  background: var(--fee-button-bg);
+  border: 1px solid var(--fee-button-border);
+  color: var(--fee-button-text);
+  box-shadow: var(--fee-button-shadow);
+  border-radius: 4px;
+  font-family: var(--font-body);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: all 0.25s ease;
+  width: 100%;
+}
+
+html[data-style="parchment"] .fee-quote-button:hover {
+  background: var(--fee-button-hover-bg);
+  border-color: var(--fee-button-hover-border);
+  color: var(--fee-button-hover-text);
+  box-shadow: var(--fee-button-hover-shadow);
+  transform: translateY(-1px);
+}
+
+/* Fee Quote Alert */
+html[data-style="parchment"] .fee-quote-alert {
+  background: var(--fee-button-bg);
+  border: 1px solid var(--fee-button-border);
+  color: var(--fee-button-text);
+  box-shadow: var(--fee-button-shadow);
+  border-radius: 4px;
+}
+
+/* Error Alert */
+html[data-style="parchment"] .error-alert {
+  background: rgba(158, 42, 43, 0.1) !important;
+  border: 1px solid #9e2a2b !important;
+  color: #9e2a2b !important;
+  border-radius: 4px !important;
+  box-shadow: 0 2px 8px rgba(158, 42, 43, 0.15) !important;
+}
+
+/* Classical Book Typography */
+html[data-style="parchment"] body {
+  font-family: var(--font-text);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  line-height: 1.75;
+  color: var(--ink-brown);
+}
+
+html[data-style="parchment"] h1,
+html[data-style="parchment"] h2,
+html[data-style="parchment"] h3,
+html[data-style="parchment"] .multisig-hero h1,
+html[data-style="parchment"] .section-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+}
+
+/* Freedom Bridge Title - Elegant serif */
+html[data-style="parchment"] .navbar-brand-custom span {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #3d2817;
+  text-shadow: 1px 1px 2px rgba(139, 111, 71, 0.15);
+}
+
+/* Authentic Paper Texture Overlay */
+html[data-style="parchment"] .multisig-page::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image:
+    /* Fine paper grain */
+    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><filter id="paper-noise"><feTurbulence type="fractalNoise" baseFrequency="0.95" numOctaves="6" seed="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="200" height="200" filter="url(%23paper-noise)" opacity="0.15"/></svg>'),
+    /* Subtle fiber texture */
+    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><filter id="fibers"><feTurbulence type="turbulence" baseFrequency="0.08" numOctaves="3" seed="5"/><feColorMatrix values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.05 0"/></filter><rect width="100" height="100" filter="url(%23fibers)"/></svg>');
+  background-size: 200px 200px, 100px 100px;
+  background-blend-mode: multiply, overlay;
+  pointer-events: none;
+  z-index: 1;
+  mix-blend-mode: multiply;
+  opacity: 0.5;
+}
+
+/* Age Spots and Stains */
+html[data-style="parchment"] .multisig-page::after {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background:
+    /* Top right stain */
+    radial-gradient(ellipse 250px 200px at 85% 12%, rgba(201, 185, 154, 0.15) 0%, transparent 70%),
+    /* Center left stain */
+    radial-gradient(ellipse 180px 180px at 15% 45%, rgba(217, 196, 174, 0.12) 0%, transparent 65%),
+    /* Bottom center stain */
+    radial-gradient(ellipse 300px 150px at 50% 92%, rgba(201, 185, 154, 0.1) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Aged Paper Card Style */
+html[data-style="parchment"] .stat-card,
+html[data-style="parchment"] .modern-card,
+html[data-style="parchment"] .router-card {
+  background: rgba(250, 244, 237, 0.9);
+  border: 1px solid rgba(139, 111, 71, 0.25);
+  border-radius: 4px;
+  box-shadow:
+    /* Subtle lift shadow like paper */
+    0 2px 8px rgba(61, 40, 23, 0.12),
+    /* Edge definition */
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    /* Subtle aged edge darkening */
+    inset 0 0 0 1px rgba(217, 196, 174, 0.3);
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+/* Weathered edge effect on cards */
+html[data-style="parchment"] .stat-card::before,
+html[data-style="parchment"] .modern-card::before,
+html[data-style="parchment"] .router-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 4px;
+  background:
+    /* Darker aged edges */
+    linear-gradient(to bottom, rgba(217, 196, 174, 0.15) 0%, transparent 8%, transparent 92%, rgba(217, 196, 174, 0.15) 100%),
+    linear-gradient(to right, rgba(217, 196, 174, 0.1) 0%, transparent 6%, transparent 94%, rgba(217, 196, 174, 0.1) 100%);
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+html[data-style="parchment"] .stat-card:hover,
+html[data-style="parchment"] .modern-card:hover,
+html[data-style="parchment"] .router-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(158, 42, 43, 0.4);
+  box-shadow:
+    0 4px 16px rgba(61, 40, 23, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 0 0 1px rgba(217, 196, 174, 0.4);
+}
+
+/* Gentle Page Turn Animation */
+html[data-style="parchment"] .stat-card {
+  animation: parchment-reveal 0.6s ease-out backwards;
+}
+
+html[data-style="parchment"] .stat-card:nth-child(1) { animation-delay: 0.05s; }
+html[data-style="parchment"] .stat-card:nth-child(2) { animation-delay: 0.1s; }
+html[data-style="parchment"] .stat-card:nth-child(3) { animation-delay: 0.15s; }
+html[data-style="parchment"] .stat-card:nth-child(4) { animation-delay: 0.2s; }
+
+@keyframes parchment-reveal {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Classical Serif Headings */
+html[data-style="parchment"] .section-title {
+  position: relative;
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+}
+
+html[data-style="parchment"] .section-title::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 80px;
+  height: 2px;
+  background: linear-gradient(90deg,
+    rgba(158, 42, 43, 0.6) 0%,
+    rgba(139, 111, 71, 0.4) 70%,
+    transparent 100%
+  );
+}
+
+/* Underlined Tab Style */
+html[data-style="parchment"] .multisig-nav-tab {
+  font-family: var(--font-body);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+html[data-style="parchment"] .multisig-nav-tab.active {
+  color: #9e2a2b !important;
+  font-weight: 600;
+  border-bottom: 2px solid #9e2a2b;
+}
+
+/* Wax Seal Button */
+html[data-style="parchment"] .btn-primary {
+  background: linear-gradient(180deg, #9e2a2b 0%, #751e1f 100%);
+  border: 1px solid rgba(117, 30, 31, 0.4) !important;
+  border-radius: 4px;
+  box-shadow:
+    0 2px 6px rgba(117, 30, 31, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  font-family: var(--font-body);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #faf4ed;
+  transition: all 0.25s ease;
+}
+
+html[data-style="parchment"] .btn-primary:hover {
+  background: linear-gradient(180deg, #b83233 0%, #9e2a2b 100%);
+  transform: translateY(-1px);
+  box-shadow:
+    0 3px 10px rgba(117, 30, 31, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+html[data-style="parchment"] .btn-primary:active {
+  transform: translateY(0);
+  box-shadow:
+    0 1px 3px rgba(117, 30, 31, 0.3),
+    inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Subtle Paper-like Inputs */
+html[data-style="parchment"] .form-control,
+html[data-style="parchment"] .form-select {
+  background: rgba(255, 252, 248, 0.9) !important;
+  border: 1px solid rgba(139, 111, 71, 0.25) !important;
+  border-radius: 3px;
+  color: #2a1f15 !important;
+  font-family: var(--font-text);
+  box-shadow: inset 0 1px 3px rgba(61, 40, 23, 0.06);
+}
+
+html[data-style="parchment"] .form-control:focus,
+html[data-style="parchment"] .form-select:focus {
+  border-color: #9e2a2b !important;
+  box-shadow:
+    inset 0 1px 3px rgba(61, 40, 23, 0.08),
+    0 0 0 3px rgba(158, 42, 43, 0.15) !important;
+}
+
+/* Simple Table on Paper */
+html[data-style="parchment"] .modern-table {
+  background: rgba(250, 244, 237, 0.9);
+  border: 1px solid rgba(139, 111, 71, 0.25);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* Minimal Form Sections */
+html[data-style="parchment"] .form-section {
+  border: 1px solid rgba(139, 111, 71, 0.25);
+  border-radius: 4px;
+  background: rgba(234, 215, 195, 0.35);
+}
+
+/* Dark Mode - Darker Aged Parchment (Tea-Stained) */
+html.dark[data-style="parchment"],
+html[data-theme="dark"][data-style="parchment"] {
+  /* Darker aged paper palette - still parchment, just more weathered */
+  --primary: #9e2a2b; /* Wax Seal Red */
+  --primary-foreground: #faf4ed;
+
+  /* Deeper aged parchment tones - like old tea-stained paper */
+  --parchment-base: #c9b59a;        /* Darker base parchment */
+  --parchment-light: #d4c3a8;       /* Slightly lighter areas */
+  --parchment-aged: #b5a086;        /* More aged edges */
+  --parchment-dark: #a08a6f;        /* Darker weathered spots */
+  --parchment-stain: #9a8670;       /* Deeper age stains */
+  --ink-brown: #2a1f15;             /* Darker brown ink */
+  --ink-blue: #2c3e50;              /* Deep Indigo Ink */
+  --wax-red: #9e2a2b;               /* Accent */
+
+  /* Background - Layered darker aged paper texture */
+  --theme-bg:
+    radial-gradient(circle at 20% 30%, rgba(160, 138, 111, 0.3) 0%, transparent 45%),
+    radial-gradient(circle at 80% 70%, rgba(154, 134, 112, 0.25) 0%, transparent 40%),
+    radial-gradient(circle at 50% 90%, rgba(181, 160, 134, 0.2) 0%, transparent 55%),
+    linear-gradient(180deg, #d4c3a8 0%, #c9b59a 50%, #b5a086 100%);
+
+  --theme-card-bg: rgba(212, 195, 168, 0.9);
+  --theme-card-border: rgba(107, 88, 64, 0.35);
+  --theme-text-primary: #2a1f15;
+  --theme-text-secondary: rgba(42, 31, 21, 0.85);
+  --theme-text-muted: rgba(74, 56, 40, 0.65);
+
+  /* Inputs */
+  --theme-input-bg: rgba(201, 181, 154, 0.85);
+  --theme-input-border: rgba(107, 88, 64, 0.3);
+  --theme-input-focus-border: #9e2a2b;
+
+  /* Sections */
+  --theme-section-bg: rgba(181, 160, 134, 0.5);
+  --theme-section-hover-bg: rgba(160, 138, 111, 0.7);
+  --theme-section-border: rgba(107, 88, 64, 0.25);
+
+  /* Buttons - Wax Seal Red Gradient */
+  --theme-button-gradient-start: #9e2a2b;
+  --theme-button-gradient-mid: #8a2425;
+  --theme-button-gradient-end: #751e1f;
+  --theme-button-hover-start: #b83233;
+  --theme-button-hover-mid: #9e2a2b;
+  --theme-button-hover-end: #8a2425;
+
+  /* Shadows - Deeper like aged paper */
+  --theme-shadow-color: rgba(42, 31, 21, 0.2);
+  --theme-shadow-hover: rgba(74, 56, 40, 0.3);
+  --theme-percent-25-bg: rgba(158, 42, 43, 0.08);
+  --theme-percent-50-bg: rgba(158, 42, 43, 0.15);
+  --theme-percent-75-bg: rgba(158, 42, 43, 0.22);
+  --theme-percent-border: rgba(158, 42, 43, 0.3);
+
+  /* Navigation */
+  --theme-navbar-bg: rgba(212, 195, 168, 0.95);
+  --theme-navbar-border: rgba(107, 88, 64, 0.2);
+  --theme-modal-bg: rgba(201, 181, 154, 0.98);
+  --theme-modal-section-bg: rgba(181, 160, 134, 0.6);
+
+  /* Links - Indigo Ink */
+  --theme-link-color: #2c3e50;
+  --theme-link-hover-color: #9e2a2b;
+
+  /* Success States */
+  --theme-success-bg: rgba(85, 107, 47, 0.15);
+  --theme-success-border: rgba(85, 107, 47, 0.4);
+  --theme-success-text: #2a3818;
+
+  /* Accents */
+  --accent-primary: #9e2a2b;
+  --accent-primary-strong: #751e1f;
+  --accent-secondary: #2c3e50;
+  --accent-signal: #8b6f47;
+  --accent-warning: #d4a017;
+  --accent-danger: #9e2a2b;
+
+  /* Hero Section */
+  --hero-bg: radial-gradient(ellipse at center top, rgba(181, 160, 134, 0.25) 0%, transparent 60%);
+  --hero-border: rgba(107, 88, 64, 0.25);
+  --hero-heading-color: #2a1f15;
+  --hero-heading-shadow: 1px 1px 2px rgba(74, 56, 40, 0.2);
+  --hero-subtitle-color: rgba(42, 31, 21, 0.75);
+  --hero-button-border: rgba(107, 88, 64, 0.3);
+  --hero-button-color: #2a1f15;
+
+  /* Navigation Tabs */
+  --nav-tab-color: rgba(42, 31, 21, 0.6);
+  --nav-tab-hover-color: #9e2a2b;
+  --nav-tab-hover-border: rgba(158, 42, 43, 0.3);
+  --nav-tab-active-color: #9e2a2b;
+  --nav-tab-active-shadow: 0 2px 4px rgba(158, 42, 43, 0.15);
+
+  /* Stat Cards */
+  --stat-card-bg: rgba(212, 195, 168, 0.9);
+  --stat-card-border: rgba(107, 88, 64, 0.35);
+  --stat-card-hover-bg: rgba(212, 195, 168, 1);
+  --stat-card-hover-border: rgba(90, 73, 51, 0.45);
+  --stat-card-hover-shadow: rgba(74, 56, 40, 0.25);
+  --stat-label-color: rgba(74, 56, 40, 0.8);
+  --stat-value-color: #9e2a2b;
+  --stat-value-shadow: none;
+  --stat-description-color: rgba(42, 31, 21, 0.75);
+  --stat-link-color: #2c3e50;
+  --stat-link-hover-color: #9e2a2b;
+
+  /* Section Headers */
+  --section-title-color: #2a1f15;
+  --section-title-shadow: 1px 1px 1px rgba(107, 88, 64, 0.15);
+  --section-subtitle-color: rgba(42, 31, 21, 0.7);
+
+  /* Router Cards */
+  --router-card-bg: rgba(212, 195, 168, 0.85);
+  --router-card-border: rgba(107, 88, 64, 0.35);
+  --router-card-hover-border: rgba(90, 73, 51, 0.5);
+  --router-card-hover-shadow: rgba(74, 56, 40, 0.3);
+  --router-card-address-color: rgba(74, 56, 40, 0.8);
+  --router-card-label-color: rgba(42, 31, 21, 0.8);
+
+  /* Connection Chips */
+  --chip-connected-bg: rgba(107, 88, 64, 0.18);
+  --chip-connected-color: #3d2817;
+  --chip-connected-border: rgba(107, 88, 64, 0.45);
+  --chip-disconnected-bg: rgba(74, 56, 40, 0.12);
+  --chip-disconnected-color: rgba(74, 56, 40, 0.6);
+  --chip-disconnected-border: rgba(74, 56, 40, 0.25);
+
+  /* Router Limit Cards */
+  --router-limit-card-bg: rgba(212, 195, 168, 0.9);
+  --router-limit-card-border: rgba(107, 88, 64, 0.35);
+  --router-limit-card-active-bg: rgba(158, 42, 43, 0.08);
+  --router-limit-card-active-border: rgba(158, 42, 43, 0.3);
+  --router-limit-card-shadow: rgba(158, 42, 43, 0.15);
+  --router-limit-card-connected-border: rgba(107, 88, 64, 0.5);
+  --router-limit-card-divider: rgba(107, 88, 64, 0.18);
+
+  /* Tables */
+  --table-bg: rgba(212, 195, 168, 0.9);
+  --table-border: rgba(107, 88, 64, 0.35);
+  --table-header-bg: rgba(181, 160, 134, 0.6);
+  --table-header-color: #2a1f15;
+  --table-row-border: rgba(107, 88, 64, 0.18);
+  --table-row-hover-bg: rgba(158, 42, 43, 0.05);
+  --table-row-hover-border: rgba(158, 42, 43, 0.2);
+  --table-link-color: #2c3e50;
+  --table-link-hover-color: #9e2a2b;
+
+  /* Forms */
+  --form-section-bg: rgba(181, 160, 134, 0.5);
+  --form-section-border: rgba(107, 88, 64, 0.35);
+  --form-section-hover-bg: rgba(160, 138, 111, 0.7);
+  --form-section-hover-border: rgba(158, 42, 43, 0.3);
+  --form-label-color: rgba(42, 31, 21, 0.85);
+  --form-text-color: rgba(42, 31, 21, 0.8);
+  --form-check-border: rgba(107, 88, 64, 0.4);
+  --form-check-active-bg: #9e2a2b;
+
+  /* Alerts */
+  --alert-info-bg: rgba(44, 62, 80, 0.1);
+  --alert-info-border: rgba(44, 62, 80, 0.3);
+  --alert-info-text: #2c3e50;
+
+  --brand-gradient: linear-gradient(135deg, #9e2a2b 0%, #751e1f 100%);
+  --brand-shadow: rgba(158, 42, 43, 0.2);
+  --brand-shadow-strong: rgba(158, 42, 43, 0.4);
+
+  --fee-button-bg: rgba(158, 42, 43, 0.1);
+  --fee-button-border: #9e2a2b;
+  --fee-button-text: #751e1f;
+  --fee-button-shadow: rgba(158, 42, 43, 0.15);
+  --fee-button-hover-bg: #9e2a2b;
+  --fee-button-hover-border: #751e1f;
+  --fee-button-hover-text: #faf4ed;
+  --fee-button-hover-shadow: rgba(158, 42, 43, 0.3);
+
+  --banner-bg: rgba(181, 160, 134, 0.6);
+  --banner-border: rgba(107, 88, 64, 0.4);
+  --banner-text: #2a1f15;
+  --banner-dismiss: #9e2a2b;
+}
+
+/* Dark mode cards - still paper-like, just darker */
+html.dark[data-style="parchment"] .stat-card,
+html.dark[data-style="parchment"] .modern-card,
+html.dark[data-style="parchment"] .router-card,
+html[data-theme="dark"][data-style="parchment"] .stat-card,
+html[data-theme="dark"][data-style="parchment"] .modern-card,
+html[data-theme="dark"][data-style="parchment"] .router-card {
+  background: rgba(212, 195, 168, 0.9);
+  border-color: rgba(107, 88, 64, 0.35);
+  box-shadow:
+    0 2px 8px rgba(42, 31, 21, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 0 0 1px rgba(181, 160, 134, 0.4);
+}
+
+html.dark[data-style="parchment"] .stat-card::before,
+html.dark[data-style="parchment"] .modern-card::before,
+html.dark[data-style="parchment"] .router-card::before,
+html[data-theme="dark"][data-style="parchment"] .stat-card::before,
+html[data-theme="dark"][data-style="parchment"] .modern-card::before,
+html[data-theme="dark"][data-style="parchment"] .router-card::before {
+  /* Weathered darker edges on cards */
+  background:
+    linear-gradient(to bottom, rgba(181, 160, 134, 0.2) 0%, transparent 8%, transparent 92%, rgba(181, 160, 134, 0.2) 100%),
+    linear-gradient(to right, rgba(160, 138, 111, 0.15) 0%, transparent 6%, transparent 94%, rgba(160, 138, 111, 0.15) 100%);
+}
+
+html.dark[data-style="parchment"] .stat-card:hover,
+html.dark[data-style="parchment"] .modern-card:hover,
+html.dark[data-style="parchment"] .router-card:hover,
+html[data-theme="dark"][data-style="parchment"] .stat-card:hover,
+html[data-theme="dark"][data-style="parchment"] .modern-card:hover,
+html[data-theme="dark"][data-style="parchment"] .router-card:hover {
+  box-shadow:
+    0 4px 16px rgba(42, 31, 21, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 0 0 1px rgba(181, 160, 134, 0.5);
+}
+
+/* Dark mode inputs - darker parchment */
+html.dark[data-style="parchment"] .form-control,
+html.dark[data-style="parchment"] .form-select,
+html[data-theme="dark"][data-style="parchment"] .form-control,
+html[data-theme="dark"][data-style="parchment"] .form-select {
+  background: rgba(201, 181, 154, 0.85) !important;
+  color: #2a1f15 !important;
+  border-color: rgba(107, 88, 64, 0.3) !important;
+}
+
+/* Dark mode button - Wax Seal Red */
+html.dark[data-style="parchment"] .btn-primary,
+html[data-theme="dark"][data-style="parchment"] .btn-primary {
+  background: linear-gradient(180deg, #9e2a2b 0%, #751e1f 100%);
+  color: #faf4ed;
+}
+
+/* Dark mode title */
+html.dark[data-style="parchment"] .navbar-brand-custom span,
+html[data-theme="dark"][data-style="parchment"] .navbar-brand-custom span {
+  color: #2a1f15;
+  text-shadow: 1px 1px 2px rgba(74, 56, 40, 0.2);
+}
+
+/* Dark mode paper texture - same texture, appropriate opacity */
+html.dark[data-style="parchment"] .multisig-page::before,
+html[data-theme="dark"][data-style="parchment"] .multisig-page::before {
+  opacity: 0.6;
+  mix-blend-mode: multiply;
+}
+
+/* Dark mode age spots - deeper stains */
+html.dark[data-style="parchment"] .multisig-page::after,
+html[data-theme="dark"][data-style="parchment"] .multisig-page::after {
+  background:
+    /* Top right deeper stain */
+    radial-gradient(ellipse 250px 200px at 85% 12%, rgba(160, 138, 111, 0.25) 0%, transparent 70%),
+    /* Center left stain */
+    radial-gradient(ellipse 180px 180px at 15% 45%, rgba(181, 160, 134, 0.2) 0%, transparent 65%),
+    /* Bottom center stain */
+    radial-gradient(ellipse 300px 150px at 50% 92%, rgba(154, 134, 112, 0.18) 0%, transparent 60%);
+}
+
+/* Success Section - Parchment */
+html[data-style="parchment"] .alert-custom-success {
+  background: var(--theme-success-bg) !important;
+  border: 1px solid var(--theme-success-border) !important;
+  color: var(--theme-success-text) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 2px 8px rgba(61, 40, 23, 0.1) !important;
+}
+
+html[data-style="parchment"] .success-link-button,
+html[data-style="parchment"] .wallet-add-button {
+  border: 1px solid var(--theme-link-color) !important;
+  color: var(--theme-link-color) !important;
+  background: transparent !important;
+  border-radius: 4px !important;
+  font-family: var(--font-body) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.02em !important;
+}
+
+html[data-style="parchment"] .success-link-button:hover,
+html[data-style="parchment"] .wallet-add-button:hover:not(:disabled) {
+  background: var(--theme-link-color) !important;
+  color: #faf4ed !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 2px 4px rgba(61, 40, 23, 0.15) !important;
+}

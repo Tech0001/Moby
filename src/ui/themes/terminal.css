@@ -1,0 +1,804 @@
+/* Terminal Theme - Brutalist/Industrial Aesthetic */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+html[data-style="terminal"] {
+  /* Typography */
+  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+  --font-display: 'Space Grotesk', -apple-system, system-ui, sans-serif;
+  --theme-font-amount: var(--font-mono);
+
+  /* Core Colors - Terminal Dark */
+  --primary: #00ff9f;
+  --primary-foreground: #0a0e14;
+  --terminal-green: #00ff9f;
+  --terminal-cyan: #00d9ff;
+  --terminal-magenta: #ff0080;
+  --terminal-amber: #ffb000;
+  --terminal-red: #ff2a2a;
+
+  /* Background */
+  --theme-bg: #0a0e14;
+  --theme-card-bg: rgba(13, 17, 23, 0.95);
+  --theme-card-border: rgba(0, 255, 159, 0.3);
+
+  /* Text */
+  --theme-text-primary: #e6e6e6;
+  --theme-text-secondary: #a0a0a0;
+  --theme-text-muted: #606060;
+
+  /* Inputs */
+  --theme-input-bg: rgba(0, 20, 10, 0.6);
+  --theme-input-border: rgba(0, 255, 159, 0.3);
+  --theme-input-focus-border: #00ff9f;
+
+  /* Sections */
+  --theme-section-bg: rgba(10, 14, 20, 0.6);
+  --theme-section-hover-bg: rgba(15, 25, 20, 0.8);
+  --theme-section-border: rgba(0, 255, 159, 0.2);
+
+  /* Buttons */
+  --theme-button-gradient-start: #00ff9f;
+  --theme-button-gradient-mid: #00d9ff;
+  --theme-button-gradient-end: #00b8d4;
+  --theme-button-hover-start: #00ffaa;
+  --theme-button-hover-mid: #00e5ff;
+  --theme-button-hover-end: #00c9e6;
+
+  /* Shadows */
+  --theme-shadow-color: rgba(0, 0, 0, 0.8);
+  --theme-shadow-hover: rgba(0, 255, 159, 0.4);
+
+  /* Transparency Levels */
+  --theme-percent-25-bg: rgba(0, 255, 159, 0.1);
+  --theme-percent-50-bg: rgba(0, 255, 159, 0.2);
+  --theme-percent-75-bg: rgba(0, 255, 159, 0.3);
+  --theme-percent-border: rgba(0, 255, 159, 0.4);
+
+  /* Navigation */
+  --theme-navbar-bg: rgba(10, 14, 20, 0.98);
+  --theme-navbar-border: rgba(0, 255, 159, 0.2);
+
+  /* Modal */
+  --theme-modal-bg: rgba(13, 17, 23, 0.98);
+  --theme-modal-section-bg: rgba(0, 20, 10, 0.5);
+
+  /* Links */
+  --theme-link-color: #00d9ff;
+  --theme-link-hover-color: #00ffff;
+
+  /* Success States */
+  --theme-success-bg: rgba(0, 255, 159, 0.1);
+  --theme-success-border: rgba(0, 255, 159, 0.4);
+  --theme-success-text: #00ff9f;
+
+  /* Accents */
+  --accent-primary: #00ff9f;
+  --accent-primary-strong: #00cc7f;
+  --accent-secondary: #ffb000; /* Changed to Amber */
+  --accent-signal: #00d9ff;
+  --accent-warning: #ffb000;
+  --accent-danger: #ff2a2a;
+
+  /* Hero Section */
+  --hero-bg: radial-gradient(ellipse at top, rgba(0, 255, 159, 0.08) 0%, transparent 60%),
+              radial-gradient(ellipse at bottom left, rgba(255, 176, 0, 0.05) 0%, transparent 50%);
+  --hero-border: rgba(0, 255, 159, 0.25);
+  --hero-heading-color: #00ff9f;
+  --hero-heading-shadow: 0 0 20px rgba(0, 255, 159, 0.5), 0 0 40px rgba(0, 255, 159, 0.3);
+  --hero-subtitle-color: rgba(230, 230, 230, 0.8);
+  --hero-button-border: rgba(0, 255, 159, 0.5);
+  --hero-button-color: #0a0e14;
+
+  /* Navigation Tabs */
+  --nav-tab-color: rgba(230, 230, 230, 0.5);
+  --nav-tab-hover-color: #00ff9f;
+  --nav-tab-hover-border: rgba(0, 255, 159, 0.5);
+  --nav-tab-active-color: #00ff9f;
+  --nav-tab-active-shadow: 0 0 15px rgba(0, 255, 159, 0.6);
+
+  /* Stat Cards */
+  --stat-card-bg: rgba(13, 17, 23, 0.9);
+  --stat-card-border: rgba(0, 255, 159, 0.3);
+  --stat-card-hover-bg: rgba(18, 24, 32, 0.95);
+  --stat-card-hover-border: rgba(0, 255, 159, 0.6);
+  --stat-card-hover-shadow: rgba(0, 255, 159, 0.25);
+  --stat-label-color: rgba(0, 217, 255, 0.85);
+  --stat-value-color: #00ff9f;
+  --stat-value-shadow: 0 0 10px rgba(0, 255, 159, 0.5);
+  --stat-description-color: #a0a0a0;
+  --stat-link-color: #00d9ff;
+  --stat-link-hover-color: #00ffff;
+
+  /* Section Headers */
+  --section-title-color: #00ff9f;
+  --section-title-shadow: 0 0 15px rgba(0, 255, 159, 0.4);
+  --section-subtitle-color: rgba(230, 230, 230, 0.6);
+
+  /* Router Cards */
+  --router-card-bg: rgba(13, 17, 23, 0.85);
+  --router-card-border: rgba(0, 255, 159, 0.3);
+  --router-card-hover-border: rgba(0, 255, 159, 0.7);
+  --router-card-hover-shadow: rgba(0, 255, 159, 0.35);
+  --router-card-address-color: rgba(0, 217, 255, 0.8);
+  --router-card-label-color: rgba(230, 230, 230, 0.7);
+
+  /* Connection Chips */
+  --chip-connected-bg: rgba(0, 255, 159, 0.15);
+  --chip-connected-color: #00ff9f;
+  --chip-connected-border: rgba(0, 255, 159, 0.5);
+  --chip-disconnected-bg: rgba(255, 42, 42, 0.1);
+  --chip-disconnected-color: rgba(255, 80, 80, 0.9);
+  --chip-disconnected-border: rgba(255, 42, 42, 0.3);
+
+  /* Router Limit Cards */
+  --router-limit-card-bg: rgba(13, 17, 23, 0.9);
+  --router-limit-card-border: rgba(0, 255, 159, 0.3);
+  --router-limit-card-active-bg: rgba(0, 255, 159, 0.12);
+  --router-limit-card-active-border: rgba(0, 255, 159, 0.6);
+  --router-limit-card-shadow: rgba(0, 255, 159, 0.4);
+  --router-limit-card-connected-border: rgba(0, 255, 159, 0.5);
+  --router-limit-card-divider: rgba(0, 255, 159, 0.2);
+
+  /* Tables */
+  --table-bg: rgba(13, 17, 23, 0.9);
+  --table-border: rgba(0, 255, 159, 0.3);
+  --table-header-bg: rgba(0, 255, 159, 0.1);
+  --table-header-color: #00ff9f;
+  --table-row-border: rgba(0, 255, 159, 0.15);
+  --table-row-hover-bg: rgba(0, 255, 159, 0.08);
+  --table-link-color: #00d9ff;
+  --table-link-hover-color: #00ffff;
+
+  /* Forms */
+  --form-section-bg: rgba(13, 17, 23, 0.8);
+  --form-section-border: rgba(0, 255, 159, 0.3);
+  --form-section-hover-bg: rgba(18, 24, 32, 0.85);
+  --form-section-hover-border: rgba(0, 255, 159, 0.5);
+  --form-label-color: rgba(0, 217, 255, 0.9);
+  --form-text-color: rgba(230, 230, 230, 0.7);
+  --form-check-border: rgba(0, 255, 159, 0.4);
+  --form-check-active-bg: #00ff9f;
+
+  /* Alerts */
+  --alert-info-bg: rgba(255, 176, 0, 0.1);
+  --alert-info-border: rgba(255, 176, 0, 0.4);
+  --alert-info-text: #ffb000;
+
+  --brand-gradient: linear-gradient(135deg, #00ff9f 0%, #00d9ff 50%, #ffb000 100%);
+  --brand-shadow: rgba(0, 255, 159, 0.3);
+  --brand-shadow-strong: rgba(0, 255, 159, 0.5);
+  --brand-glow-animation: none;
+
+  --fee-button-bg: rgba(0, 255, 159, 0.15);
+  --fee-button-border: #00ff9f;
+  --fee-button-text: #00ff9f;
+  --fee-button-shadow: rgba(0, 255, 159, 0.2);
+  --fee-button-hover-bg: #00ff9f;
+  --fee-button-hover-border: #00ffaa;
+  --fee-button-hover-text: #0a0e14;
+  --fee-button-hover-shadow: rgba(0, 255, 159, 0.4);
+
+  --banner-bg: rgba(255, 176, 0, 0.12);
+  --banner-border: rgba(255, 176, 0, 0.4);
+  --banner-text: #ffb000;
+  --banner-dismiss: #00ff9f;
+}
+
+/* Character Grid Alignment Variables */
+html[data-style="terminal"] {
+  --char-width: 0.6em;
+  --line-height: 1.5;
+}
+
+/* Terminal-specific effects */
+html[data-style="terminal"] body {
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  line-height: var(--line-height);
+}
+
+/* CRT Vignette Effect - simplified */
+html[data-style="terminal"] .bridge-container {
+  box-shadow: inset 0 0 150px rgba(0, 0, 0, 0.6);
+  /* Screen Noise/Grain Overlay */
+  background-image:
+    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch"/></filter><rect width="100" height="100" filter="url(%23noise)" opacity="0.04"/></svg>'),
+    radial-gradient(circle at 50% 50%, rgba(10, 20, 30, 0.2), rgba(0, 0, 0, 0.8));
+  background-blend-mode: overlay;
+}
+
+html[data-style="terminal"] h1,
+html[data-style="terminal"] h2,
+html[data-style="terminal"] h3,
+html[data-style="terminal"] .multisig-hero h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+
+/* Freedom Bridge Title Styling */
+html[data-style="terminal"] .navbar-brand-custom span {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--theme-text-primary);
+  text-shadow:
+    0 0 10px rgba(0, 255, 159, 0.5),
+    -1px 0 0 rgba(255, 0, 80, 0.3),
+    1px 0 0 rgba(0, 100, 255, 0.3);
+}
+
+/* Phosphor Bloom Effect - Sharpened for readability */
+html[data-style="terminal"] h1,
+html[data-style="terminal"] h2,
+html[data-style="terminal"] .brand-bridge,
+html[data-style="terminal"] .tab-button.active {
+  text-shadow:
+    0 0 1px currentColor, /* Sharper core */
+    0 0 5px rgba(0, 255, 159, 0.8),
+    0 0 10px rgba(0, 255, 159, 0.5),
+    0 0 20px rgba(0, 255, 159, 0.3),
+    -1px 0 0 rgba(255, 42, 42, 0.3), /* Aberration */
+    1px 0 0 rgba(0, 100, 255, 0.3);
+}
+
+/* Subtle phosphor glow on all terminal text */
+html[data-style="terminal"] p,
+html[data-style="terminal"] span,
+html[data-style="terminal"] label,
+html[data-style="terminal"] .form-label-custom {
+  text-shadow:
+    0 0 1px rgba(0, 255, 159, 0.15); /* Very subtle bleed */
+}
+
+/* Terminal Cursor in Active Inputs */
+html[data-style="terminal"] .form-control:focus::after,
+html[data-style="terminal"] input[type="text"]:focus::after,
+html[data-style="terminal"] input[type="number"]:focus::after {
+  content: "█";
+  color: #00ff9f;
+  animation: terminalCursorBlink 1s step-end infinite;
+  margin-left: 2px;
+}
+
+/* Authentic terminal cursor blink rate (~530ms intervals) */
+@keyframes terminalCursorBlink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* Update cursor animation to use authentic timing */
+html[data-style="terminal"] .form-control:focus::after,
+html[data-style="terminal"] input[type="text"]:focus::after,
+html[data-style="terminal"] input[type="number"]:focus::after {
+  animation: terminalCursorBlink 1.06s step-end infinite;
+}
+
+/* Phosphor Glow on Hover */
+html[data-style="terminal"] .bridge-button:hover,
+html[data-style="terminal"] .btn-primary:hover,
+html[data-style="terminal"] .tab-button:hover {
+  box-shadow:
+    0 0 15px rgba(0, 255, 159, 0.6),
+    0 0 30px rgba(0, 255, 159, 0.4);
+  text-shadow:
+    0 0 8px rgba(0, 255, 159, 0.8);
+}
+
+/* Bloom Intensification on Click - High Voltage */
+html[data-style="terminal"] .bridge-button:active,
+html[data-style="terminal"] .btn-primary:active {
+  animation: highVoltageFlash 0.15s ease-out;
+}
+
+@keyframes highVoltageFlash {
+  0% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+  50% {
+    filter: brightness(2) contrast(1.2) drop-shadow(0 0 20px #00ff9f);
+    transform: scale(0.98);
+  }
+  100% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+}
+
+/* ASCII Box Borders for Form Sections */
+html[data-style="terminal"] .form-section {
+  border: 2px solid rgba(0, 255, 159, 0.4);
+  border-radius: 0;
+  position: relative;
+  padding: calc(var(--line-height) * 1em) calc(var(--char-width) * 2);
+  padding-top: 1.5rem;
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(0, 255, 159, 0.03) 0px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+html[data-style="terminal"] .form-section::before {
+  content: "┌── SYSTEM_INPUT ─────────────────────┐";
+  position: absolute;
+  top: -1px;
+  left: -2px;
+  right: -2px;
+  background: var(--theme-card-bg);
+  color: #00ff9f;
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+  padding-left: 10px;
+}
+
+html[data-style="terminal"] .form-section::after {
+  content: "└─────────────────────────────────────┘";
+  position: absolute;
+  bottom: -1px;
+  left: -2px;
+  right: -2px;
+  background: var(--theme-card-bg);
+  color: #00ff9f;
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: -1px;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Terminal Prompt Prefixes on Labels */
+html[data-style="terminal"] .form-label-custom::before {
+  content: "> ";
+  color: #ffb000; /* Amber prompt */
+  margin-right: 4px;
+  font-weight: 700;
+}
+
+/* Active Tab - Terminal Green */
+html[data-style="terminal"] .nav-background-slider {
+  background: linear-gradient(90deg,
+    rgba(0, 255, 159, 0.1) 0%,
+    rgba(0, 255, 159, 0.2) 100%) !important;
+  border: 1px solid rgba(0, 255, 159, 0.6);
+  box-shadow:
+    0 0 10px rgba(0, 255, 159, 0.2);
+}
+
+html[data-style="terminal"] .tab-button.active {
+  color: var(--nav-tab-active-color) !important;
+  text-shadow: 0 0 8px rgba(0, 255, 159, 0.6);
+}
+
+/* Connect Wallet Button */
+html[data-style="terminal"] [data-rk] button[class*="ConnectButton"] {
+  background: rgba(0, 255, 159, 0.1) !important;
+  border: 1px solid rgba(0, 255, 159, 0.5) !important;
+  box-shadow: 0 0 5px rgba(0, 255, 159, 0.1) !important;
+  color: #00ff9f !important;
+  font-family: var(--font-mono) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 0 !important;
+}
+
+html[data-style="terminal"] [data-rk] button[class*="ConnectButton"]:hover {
+  background: rgba(0, 255, 159, 0.2) !important;
+  box-shadow: 0 0 15px rgba(0, 255, 159, 0.3) !important;
+  text-shadow: 0 0 5px rgba(0, 255, 159, 0.5);
+}
+
+/* Scanline effect */
+html[data-style="terminal"] .multisig-page::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.2) 0px,
+    transparent 1px,
+    transparent 3px,
+    rgba(0, 0, 0, 0.2) 4px
+  );
+  pointer-events: none;
+  z-index: 1000;
+  opacity: 0.4;
+}
+
+/* CRT glow on cards */
+html[data-style="terminal"] .stat-card,
+html[data-style="terminal"] .modern-card,
+html[data-style="terminal"] .router-card {
+  box-shadow:
+    0 0 5px rgba(0, 255, 159, 0.1),
+    inset 0 0 20px rgba(0, 255, 159, 0.03);
+}
+
+html[data-style="terminal"] .stat-card:hover,
+html[data-style="terminal"] .modern-card:hover,
+html[data-style="terminal"] .router-card:hover {
+  box-shadow:
+    0 0 15px rgba(0, 255, 159, 0.2),
+    inset 0 0 30px rgba(0, 255, 159, 0.05);
+  border-color: #00ff9f;
+}
+
+/* Terminal cursor effect on active tab */
+html[data-style="terminal"] .multisig-nav-tab.active::after {
+  content: "_";
+  margin-left: 0.5rem;
+  animation: terminalCursorBlink 1.06s step-end infinite;
+  color: #00ff9f;
+}
+
+/* Button glow effect */
+html[data-style="terminal"] .btn-primary {
+  background: rgba(0, 255, 159, 0.15);
+  color: #00ff9f;
+  box-shadow: 0 0 10px rgba(0, 255, 159, 0.1);
+  border: 1px solid rgba(0, 255, 159, 0.6) !important;
+  border-radius: 0; /* Hard corners for buttons */
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+}
+
+html[data-style="terminal"] .btn-primary:hover {
+  background: rgba(0, 255, 159, 0.25);
+  box-shadow:
+    0 0 15px rgba(0, 255, 159, 0.3),
+    0 0 30px rgba(0, 255, 159, 0.1);
+}
+
+/* Input focus glow */
+html[data-style="terminal"] .form-control,
+html[data-style="terminal"] .form-select {
+  border-radius: 0;
+  font-family: var(--font-mono);
+}
+
+html[data-style="terminal"] .form-control:focus,
+html[data-style="terminal"] .form-select:focus {
+  box-shadow:
+    0 0 10px rgba(0, 255, 159, 0.3),
+    inset 0 0 10px rgba(0, 255, 159, 0.1) !important;
+}
+
+/* ASCII-style borders */
+html[data-style="terminal"] .modern-table {
+  border: 1px solid rgba(0, 255, 159, 0.4);
+  border-radius: 0;
+}
+
+/* Terminal Light Mode - "Retro Computer" Aesthetic */
+html[data-style="terminal"]:not(.dark):not([data-theme="dark"]),
+html[data-theme="light"][data-style="terminal"] {
+  /* Core Colors - Vintage Beige Case */
+  --primary: #ea580c; /* Burnt Orange */
+  --primary-foreground: #ffffff;
+  --terminal-green: #15803d; /* Darker Green */
+  --terminal-cyan: #0e7490;
+  --terminal-amber: #b45309;
+  --terminal-red: #b91c1c;
+
+  /* Background - Beige/Putty */
+  --theme-bg: #e6e4d5;
+  --theme-card-bg: #f0efe9;
+  --theme-card-border: #a8a29e;
+  --theme-text-primary: #292524; /* Dark warm grey */
+  --theme-text-secondary: #57534e;
+  --theme-text-muted: #78716c;
+
+  /* Inputs */
+  --theme-input-bg: #fafaf9;
+  --theme-input-border: #a8a29e;
+  --theme-input-focus-border: #ea580c;
+
+  /* Sections */
+  --theme-section-bg: #dad8c9;
+  --theme-section-hover-bg: #e1dfd2;
+  --theme-section-border: #a8a29e;
+
+  /* Buttons - Mechanical Keyboard Style */
+  --theme-button-gradient-start: #d6d3c4;
+  --theme-button-gradient-mid: #cdc9b8;
+  --theme-button-gradient-end: #c4c0b0;
+  --theme-button-hover-start: #e6e4d5;
+  --theme-button-hover-mid: #d6d3c4;
+  --theme-button-hover-end: #cdc9b8;
+
+  /* Shadows */
+  --theme-shadow-color: rgba(0, 0, 0, 0.1);
+  --theme-shadow-hover: rgba(234, 88, 12, 0.2);
+
+  /* Navigation */
+  --theme-navbar-bg: #e6e4d5;
+  --theme-navbar-border: #a8a29e;
+  --theme-modal-bg: #f0efe9;
+  --theme-modal-section-bg: #dad8c9;
+
+  /* Links */
+  --theme-link-color: #0369a1;
+  --theme-link-hover-color: #ea580c;
+
+  /* Success States */
+  --theme-success-bg: rgba(21, 128, 61, 0.1);
+  --theme-success-border: #15803d;
+  --theme-success-text: #15803d;
+
+  /* Accents */
+  --accent-primary: #ea580c;
+  --accent-primary-strong: #c2410c;
+  --accent-secondary: #15803d;
+  --accent-signal: #0369a1;
+  --accent-warning: #b45309;
+  --accent-danger: #b91c1c;
+
+  /* Hero Section */
+  --hero-bg: radial-gradient(ellipse at top, rgba(234, 88, 12, 0.05) 0%, transparent 60%);
+  --hero-border: #a8a29e;
+  --hero-heading-color: #292524;
+  --hero-heading-shadow: none;
+  --hero-subtitle-color: #57534e;
+  --hero-button-border: #78716c;
+  --hero-button-color: #292524;
+
+  /* Navigation Tabs */
+  --nav-tab-color: #57534e;
+  --nav-tab-hover-color: #ea580c;
+  --nav-tab-hover-border: #ea580c;
+  --nav-tab-active-color: #ea580c;
+  --nav-tab-active-shadow: none;
+
+  /* Stat Cards - Vintage Paper */
+  --stat-card-bg: #f5f5f4;
+  --stat-card-border: #d6d3c1;
+  --stat-card-hover-bg: #ffffff;
+  --stat-card-hover-border: #ea580c;
+  --stat-card-hover-shadow: rgba(234, 88, 12, 0.15);
+  --stat-label-color: #57534e;
+  --stat-value-color: #292524;
+  --stat-value-shadow: none;
+  --stat-description-color: #78716c;
+  --stat-link-color: #0369a1;
+
+  /* Section Headers */
+  --section-title-color: #292524;
+  --section-title-shadow: none;
+  --section-subtitle-color: #57534e;
+
+  /* Router Cards */
+  --router-card-bg: #f5f5f4;
+  --router-card-border: #d6d3c1;
+  --router-card-hover-border: #ea580c;
+  --router-card-hover-shadow: rgba(234, 88, 12, 0.1);
+  --router-card-address-color: #44403c;
+  --router-card-label-color: #57534e;
+
+  /* Connection Chips */
+  --chip-connected-bg: rgba(21, 128, 61, 0.1);
+  --chip-connected-color: #15803d;
+  --chip-connected-border: #15803d;
+  --chip-disconnected-bg: rgba(120, 113, 108, 0.1);
+  --chip-disconnected-color: #78716c;
+  --chip-disconnected-border: #a8a29e;
+
+  /* Router Limit Cards */
+  --router-limit-card-bg: #f5f5f4;
+  --router-limit-card-border: #d6d3c1;
+  --router-limit-card-active-bg: rgba(234, 88, 12, 0.05);
+  --router-limit-card-active-border: #ea580c;
+  --router-limit-card-shadow: rgba(234, 88, 12, 0.1);
+  --router-limit-card-connected-border: #15803d;
+  --router-limit-card-divider: #d6d3c1;
+
+  /* Tables */
+  --table-bg: #f5f5f4;
+  --table-border: #d6d3c1;
+  --table-header-bg: #e6e4d5;
+  --table-header-color: #292524;
+  --table-row-border: #e6e4d5;
+  --table-row-hover-bg: #fafaf9;
+  --table-link-color: #0369a1;
+
+  /* Forms */
+  --form-section-bg: #f0efe9;
+  --form-section-border: #a8a29e;
+  --form-section-hover-bg: #f5f5f4;
+  --form-section-hover-border: #ea580c;
+  --form-label-color: #44403c;
+  --form-text-color: #57534e;
+  --form-check-border: #78716c;
+  --form-check-active-bg: #ea580c;
+
+  /* Alerts */
+  --alert-info-bg: rgba(234, 88, 12, 0.1);
+  --alert-info-border: #ea580c;
+  --alert-info-text: #c2410c;
+
+  --brand-gradient: linear-gradient(135deg, #ea580c 0%, #b45309 100%);
+  --brand-shadow: rgba(168, 162, 158, 0.3);
+  --brand-shadow-strong: rgba(168, 162, 158, 0.5);
+  --brand-glow-animation: none;
+
+  --fee-button-bg: #e6e4d5;
+  --fee-button-border: #78716c;
+  --fee-button-text: #292524;
+  --fee-button-shadow: 2px 2px 0 #78716c;
+  --fee-button-hover-bg: #f5f5f4;
+  --fee-button-hover-border: #ea580c;
+  --fee-button-hover-text: #ea580c;
+  --fee-button-hover-shadow: 3px 3px 0 #ea580c;
+
+  --banner-bg: #e6e4d5;
+  --banner-border: #a8a29e;
+  --banner-text: #292524;
+  --banner-dismiss: #ea580c;
+}
+
+/* Fee Quote Button */
+html[data-style="terminal"] .fee-quote-button {
+  background: var(--fee-button-bg);
+  border: 1px solid var(--fee-button-border);
+  color: var(--fee-button-text);
+  box-shadow: var(--fee-button-shadow);
+  border-radius: 0;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+html[data-style="terminal"] .fee-quote-button:hover {
+  background: var(--fee-button-hover-bg);
+  border-color: var(--fee-button-hover-border);
+  color: var(--fee-button-hover-text);
+  box-shadow: var(--fee-button-hover-shadow);
+}
+
+/* Fee Quote Alert - Matching the button */
+html[data-style="terminal"] .fee-quote-alert {
+  background: var(--fee-button-bg);
+  border: 1px solid var(--fee-button-border);
+  color: var(--fee-button-text);
+  box-shadow: var(--fee-button-shadow);
+  border-radius: 0;
+}
+
+/* Error Alert */
+html[data-style="terminal"] .error-alert {
+  background: rgba(255, 77, 0, 0.25) !important; /* Neon Orange background */
+  border: 1px solid #ff4d00 !important;
+  color: #ffffff !important; /* White text for contrast */
+  border-radius: 0 !important;
+  box-shadow: 0 0 10px rgba(255, 77, 0, 0.5) !important; /* Neon Orange glow */
+  text-shadow: 0 0 5px #ff4d00, 0 0 10px #ff4d00, 0 0 15px rgba(255, 77, 0, 0.8) !important; /* Neon Orange text glow */
+}
+
+/* Light Mode Error Alert Override */
+html[data-style="terminal"]:not(.dark):not([data-theme="dark"]) .error-alert,
+html[data-theme="light"][data-style="terminal"] .error-alert {
+  background: #fff3e0 !important; /* Soft amber background */
+  border-color: #ffb000 !important; /* Amber border */
+  color: #b45309 !important; /* Darker amber text */
+  box-shadow: 2px 2px 0 #ffb000 !important; /* Offset amber shadow */
+  text-shadow: none !important;
+}
+
+/* Light mode overrides for ASCII borders to look like printed paper */
+html[data-style="terminal"]:not(.dark):not([data-theme="dark"]) .form-section,
+html[data-theme="light"][data-style="terminal"] .form-section {
+  background-image: none;
+  box-shadow: 4px 4px 0 rgba(0,0,0,0.1);
+}
+
+html[data-style="terminal"]:not(.dark):not([data-theme="dark"]) .form-section::before,
+html[data-theme="light"][data-style="terminal"] .form-section::before {
+  background: #f0efe9;
+  color: #78716c;
+  content: "┌── VINTAGE_OS ──────────────────────┐";
+}
+
+html[data-style="terminal"]:not(.dark):not([data-theme="dark"]) .form-section::after,
+html[data-theme="light"][data-style="terminal"] .form-section::after {
+  background: #f0efe9;
+  color: #78716c;
+}
+
+html[data-style="terminal"]:not(.dark):not([data-theme="dark"]) .form-label-custom::before,
+html[data-theme="light"][data-style="terminal"] .form-label-custom::before {
+  color: #ea580c;
+}
+
+/* Light Mode Overrides for Hardcoded Green Elements */
+html[data-style="terminal"]:not(.dark):not([data-theme="dark"]) .nav-background-slider,
+html[data-theme="light"][data-style="terminal"] .nav-background-slider {
+  background: linear-gradient(90deg, rgba(234, 88, 12, 0.1) 0%, rgba(234, 88, 12, 0.2) 100%) !important;
+  border-color: #ea580c;
+}
+
+html[data-style="terminal"]:not(.dark):not([data-theme="dark"]) .tab-button.active,
+html[data-theme="light"][data-style="terminal"] .tab-button.active {
+  text-shadow: none;
+  color: #ea580c !important;
+}
+
+html[data-style="terminal"]:not(.dark):not([data-theme="dark"]) .btn-primary,
+html[data-theme="light"][data-style="terminal"] .btn-primary {
+  border-color: #78716c !important;
+  color: #292524;
+  background: #e6e4d5;
+  box-shadow: 2px 2px 0 #78716c;
+}
+
+html[data-style="terminal"]:not(.dark):not([data-theme="dark"]) .btn-primary:hover,
+html[data-theme="light"][data-style="terminal"] .btn-primary:hover {
+  border-color: #ea580c !important;
+  color: #ea580c;
+  background: #f5f5f4;
+  box-shadow: 3px 3px 0 #ea580c;
+}
+
+/* Light Mode Wallet Button */
+html[data-style="terminal"]:not(.dark):not([data-theme="dark"]) [data-rk] button[class*="ConnectButton"],
+html[data-theme="light"][data-style="terminal"] [data-rk] button[class*="ConnectButton"] {
+  background: #e6e4d5 !important;
+  border: 1px solid #78716c !important;
+  box-shadow: 2px 2px 0 #78716c !important;
+  color: #292524 !important;
+}
+
+html[data-style="terminal"]:not(.dark):not([data-theme="dark"]) [data-rk] button[class*="ConnectButton"]:hover,
+html[data-theme="light"][data-style="terminal"] [data-rk] button[class*="ConnectButton"]:hover {
+  background: #f5f5f4 !important;
+  border-color: #ea580c !important;
+  color: #ea580c !important;
+  box-shadow: 3px 3px 0 #ea580c !important;
+  text-shadow: none;
+}
+
+html[data-style="terminal"]:not(.dark):not([data-theme="dark"]) .multisig-nav-tab.active::after,
+html[data-theme="light"][data-style="terminal"] .multisig-nav-tab.active::after {
+  color: #ea580c;
+}
+
+/* Success Section - Terminal */
+html[data-style="terminal"] .alert-custom-success {
+  background: var(--theme-success-bg) !important;
+  border: 1px solid var(--theme-success-border) !important;
+  color: var(--theme-success-text) !important;
+  border-radius: 0 !important;
+  box-shadow: 0 0 15px rgba(0, 255, 159, 0.2) !important;
+}
+
+html[data-style="terminal"] .success-link-button,
+html[data-style="terminal"] .wallet-add-button {
+  border: 1px solid var(--theme-link-color) !important;
+  color: var(--theme-link-color) !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  font-family: var(--font-mono) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  box-shadow: none !important;
+}
+
+html[data-style="terminal"] .success-link-button:hover,
+html[data-style="terminal"] .wallet-add-button:hover:not(:disabled) {
+  background: var(--theme-link-color) !important;
+  color: var(--theme-bg) !important;
+  box-shadow: 0 0 15px var(--theme-link-color) !important;
+  text-shadow: none !important;
+}
