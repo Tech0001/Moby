@@ -27,11 +27,15 @@ import {
   markApiKeyValid,
   clearApiKeyRateLimit,
   hasAnyApiKeys,
+  getAllAssetConfigs,
+  getAssetConfig,
+  upsertAssetConfig,
+  deleteAssetConfig,
+  setAssetConfigEnabled,
   type ApiKeyTier,
 } from '../db/repositories.js';
 import { getClientPool } from '../exchanges/clientPool.js';
 import { getExchangeRegistry } from '../exchanges/registry.js';
-import { getExchangeAssets, getEnabledExchanges } from '../config/schema.js';
 import type { AppConfig } from '../config/schema.js';
 import type { ExchangeId } from '../domain/types.js';
 
@@ -130,9 +134,14 @@ export function createRoutes(context: RoutesContext): Router {
 
   // ============== Protected Routes ==============
 
-  // Get list of enabled exchanges
+  // Get list of exchanges with API keys configured
   router.get('/api/exchanges', requireAuth, (req: Request, res: Response) => {
-    const enabledExchanges = getEnabledExchanges(context.config);
+    const registry = getExchangeRegistry();
+    const exchangeIds = registry.getAll().map((a) => a.exchangeId);
+
+    // Filter to exchanges that have active API keys
+    const enabledExchanges = exchangeIds.filter((id) => hasAnyApiKeys(id));
+
     res.json({
       exchanges: enabledExchanges,
       default: DEFAULT_EXCHANGE,
@@ -522,90 +531,101 @@ export function createRoutes(context: RoutesContext): Router {
     res.json({
       global: config.global,
       polling: config.polling,
-      exchanges: config.exchanges,
       // Don't include web config with session secret
     });
   });
 
-  // Update asset config for an exchange
+  // Get all asset configs (optionally filtered by exchange)
+  router.get('/api/config/assets', requireAuth, (req: Request, res: Response) => {
+    const exchange = req.query.exchange as ExchangeId | undefined;
+    const configs = getAllAssetConfigs(exchange);
+    res.json({ assets: configs });
+  });
+
+  // Get asset config for a specific exchange and asset
+  router.get('/api/config/exchanges/:exchange/assets/:asset', requireAuth, (req: Request, res: Response) => {
+    const { exchange, asset } = req.params;
+    const config = getAssetConfig(exchange as ExchangeId, asset);
+
+    if (!config) {
+      res.status(404).json({ error: 'Asset config not found' });
+      return;
+    }
+
+    res.json(config);
+  });
+
+  // Create or update asset config for an exchange
   router.put(
     '/api/config/exchanges/:exchange/assets/:asset',
     requireAuth,
-    async (req: Request, res: Response) => {
+    (req: Request, res: Response) => {
       const { exchange, asset } = req.params;
-      const assetConfig = req.body;
+      const { enabled, threshold, reserve, destKeys } = req.body;
 
-      // Validate the config
-      const { AssetConfigSchema } = await import('../config/schema.js');
-      const result = AssetConfigSchema.safeParse(assetConfig);
-
-      if (!result.success) {
-        res.status(400).json({
-          error: 'Invalid asset configuration',
-          details: result.error.format(),
-        });
+      // Basic validation
+      if (typeof threshold !== 'number' || threshold <= 0) {
+        res.status(400).json({ error: 'threshold must be a positive number' });
         return;
       }
 
-      // Update config file
-      const { loadConfig, saveConfig } = await import('../config/loadConfig.js');
-      const config = loadConfig();
-
-      // Ensure exchanges structure exists
-      if (!config.exchanges) {
-        config.exchanges = {};
+      if (!Array.isArray(destKeys) || destKeys.length === 0) {
+        res.status(400).json({ error: 'destKeys must be a non-empty array of wallet key names' });
+        return;
       }
-      if (!config.exchanges[exchange as ExchangeId]) {
-        config.exchanges[exchange as ExchangeId] = { enabled: true, assets: {} };
-      }
-      config.exchanges[exchange as ExchangeId]!.assets[asset] = result.data;
 
-      saveConfig(config);
+      // Save to database
+      upsertAssetConfig(exchange as ExchangeId, asset, {
+        enabled: enabled !== false,
+        threshold,
+        reserve: reserve ?? 0,
+        destKeys,
+      });
 
-      // Reload config
-      await context.reloadConfig();
-
+      logger.info({ exchange, asset, threshold, destKeys }, 'Asset config saved');
       res.json({ success: true });
     }
   );
 
-  // Legacy route for backward compatibility
-  router.put('/api/config/assets/:asset', requireAuth, async (req: Request, res: Response) => {
-    const { asset } = req.params;
-    const assetConfig = req.body;
+  // Delete asset config
+  router.delete(
+    '/api/config/exchanges/:exchange/assets/:asset',
+    requireAuth,
+    (req: Request, res: Response) => {
+      const { exchange, asset } = req.params;
 
-    // Validate the config
-    const { AssetConfigSchema } = await import('../config/schema.js');
-    const result = AssetConfigSchema.safeParse(assetConfig);
+      const deleted = deleteAssetConfig(exchange as ExchangeId, asset);
 
-    if (!result.success) {
-      res.status(400).json({
-        error: 'Invalid asset configuration',
-        details: result.error.format(),
-      });
-      return;
+      if (!deleted) {
+        res.status(404).json({ error: 'Asset config not found' });
+        return;
+      }
+
+      logger.info({ exchange, asset }, 'Asset config deleted');
+      res.json({ success: true });
     }
+  );
 
-    // Update config file - use default exchange (kraken)
-    const { loadConfig, saveConfig } = await import('../config/loadConfig.js');
-    const config = loadConfig();
+  // Toggle asset config enabled/disabled
+  router.post(
+    '/api/config/exchanges/:exchange/assets/:asset/toggle',
+    requireAuth,
+    (req: Request, res: Response) => {
+      const { exchange, asset } = req.params;
+      const { enabled } = req.body;
 
-    // Ensure exchanges structure exists
-    if (!config.exchanges) {
-      config.exchanges = {};
+      const config = getAssetConfig(exchange as ExchangeId, asset);
+      if (!config) {
+        res.status(404).json({ error: 'Asset config not found' });
+        return;
+      }
+
+      setAssetConfigEnabled(exchange as ExchangeId, asset, enabled);
+
+      logger.info({ exchange, asset, enabled }, 'Asset config toggled');
+      res.json({ success: true });
     }
-    if (!config.exchanges.kraken) {
-      config.exchanges.kraken = { enabled: true, assets: {} };
-    }
-    config.exchanges.kraken.assets[asset] = result.data;
-
-    saveConfig(config);
-
-    // Reload config
-    await context.reloadConfig();
-
-    res.json({ success: true });
-  });
+  );
 
   // Get withdrawal addresses from local database (optionally filtered by exchange)
   router.get('/api/addresses', requireAuth, (req: Request, res: Response) => {

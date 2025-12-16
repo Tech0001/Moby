@@ -1,5 +1,6 @@
 import { v4 as uuid } from 'uuid';
 import { getDb } from './sqlite.js';
+import { encrypt, safeDecrypt, isEncrypted } from '../utils/encryption.js';
 import type {
   AssetState,
   WithdrawalJob,
@@ -413,12 +414,16 @@ export function getTierConfig(tier: ApiKeyTier) {
 }
 
 function mapApiKeyRow(row: Record<string, unknown>): ApiKeyRecord {
+  // Decrypt API credentials (safeDecrypt handles both encrypted and plaintext)
+  const apiKey = safeDecrypt(row.api_key as string);
+  const apiSecret = safeDecrypt(row.api_secret as string);
+
   return {
     id: row.id as string,
     exchange: (row.exchange || 'kraken') as ExchangeId,
     name: row.name as string,
-    apiKey: row.api_key as string,
-    apiSecret: row.api_secret as string,
+    apiKey,
+    apiSecret,
     tier: row.tier as ApiKeyTier,
     isActive: row.is_active === 1,
     isValid: row.is_valid === 1,
@@ -472,10 +477,15 @@ export function createApiKey(
 ): ApiKeyRecord {
   const db = getDb();
   const now = Date.now();
+
+  // Encrypt API credentials before storing
+  const encryptedApiKey = encrypt(apiKey);
+  const encryptedApiSecret = encrypt(apiSecret);
+
   db.prepare(
     `INSERT INTO api_keys (id, exchange, name, api_key, api_secret, tier, is_active, is_valid, estimated_counter, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, 1, 1, 0, ?, ?)`
-  ).run(id, exchange, name, apiKey, apiSecret, tier, now, now);
+  ).run(id, exchange, name, encryptedApiKey, encryptedApiSecret, tier, now, now);
   return getApiKeyById(id)!;
 }
 
@@ -567,6 +577,46 @@ export function hasAnyApiKeys(exchange?: ExchangeId): boolean {
   }
   const row = db.prepare('SELECT 1 FROM api_keys WHERE is_active = 1 AND is_valid = 1 LIMIT 1').get();
   return !!row;
+}
+
+/**
+ * Migrate existing plaintext API keys to encrypted format
+ * This is idempotent - already encrypted keys are skipped
+ */
+export function migrateApiKeysToEncrypted(): { migrated: number; skipped: number } {
+  const db = getDb();
+  const rows = db.prepare('SELECT id, api_key, api_secret FROM api_keys').all() as Array<{
+    id: string;
+    api_key: string;
+    api_secret: string;
+  }>;
+
+  let migrated = 0;
+  let skipped = 0;
+
+  for (const row of rows) {
+    const keyEncrypted = isEncrypted(row.api_key);
+    const secretEncrypted = isEncrypted(row.api_secret);
+
+    if (keyEncrypted && secretEncrypted) {
+      skipped++;
+      continue;
+    }
+
+    // Encrypt if not already encrypted
+    const newApiKey = keyEncrypted ? row.api_key : encrypt(row.api_key);
+    const newApiSecret = secretEncrypted ? row.api_secret : encrypt(row.api_secret);
+
+    db.prepare('UPDATE api_keys SET api_key = ?, api_secret = ?, updated_at = ? WHERE id = ?').run(
+      newApiKey,
+      newApiSecret,
+      Date.now(),
+      row.id
+    );
+    migrated++;
+  }
+
+  return { migrated, skipped };
 }
 
 // Legacy compatibility - get first active key for an exchange (for simple cases)
@@ -763,3 +813,124 @@ export const upsertKrakenAddress = (asset: string, method: string, key: string, 
   upsertExchangeAddress('kraken', asset, method, key, address);
 export const hasAnyKrakenAddresses = () => hasAnyExchangeAddresses('kraken');
 export type KrakenAddressRecord = ExchangeAddressRecord;
+
+// ============== Asset Configs Repository ==============
+
+export interface AssetConfigRecord {
+  exchange: ExchangeId;
+  asset: string;
+  enabled: boolean;
+  threshold: number;
+  reserve: number;
+  destKeys: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+function mapAssetConfigRow(row: Record<string, unknown>): AssetConfigRecord {
+  return {
+    exchange: row.exchange as ExchangeId,
+    asset: row.asset as string,
+    enabled: row.enabled === 1,
+    threshold: row.threshold as number,
+    reserve: row.reserve as number,
+    destKeys: JSON.parse(row.dest_keys as string),
+    createdAt: row.created_at as number,
+    updatedAt: row.updated_at as number,
+  };
+}
+
+export function getAssetConfig(exchange: ExchangeId, asset: string): AssetConfigRecord | null {
+  const db = getDb();
+  const row = db
+    .prepare('SELECT * FROM asset_configs WHERE exchange = ? AND asset = ?')
+    .get(exchange, asset) as Record<string, unknown> | undefined;
+  return row ? mapAssetConfigRow(row) : null;
+}
+
+export function getAllAssetConfigs(exchange?: ExchangeId): AssetConfigRecord[] {
+  const db = getDb();
+  let sql = 'SELECT * FROM asset_configs';
+  const params: unknown[] = [];
+
+  if (exchange) {
+    sql += ' WHERE exchange = ?';
+    params.push(exchange);
+  }
+  sql += ' ORDER BY exchange, asset';
+
+  const rows = db.prepare(sql).all(...params) as Array<Record<string, unknown>>;
+  return rows.map(mapAssetConfigRow);
+}
+
+export function getEnabledAssetConfigs(exchange?: ExchangeId): AssetConfigRecord[] {
+  const db = getDb();
+  let sql = 'SELECT * FROM asset_configs WHERE enabled = 1';
+  const params: unknown[] = [];
+
+  if (exchange) {
+    sql += ' AND exchange = ?';
+    params.push(exchange);
+  }
+  sql += ' ORDER BY exchange, asset';
+
+  const rows = db.prepare(sql).all(...params) as Array<Record<string, unknown>>;
+  return rows.map(mapAssetConfigRow);
+}
+
+export function upsertAssetConfig(
+  exchange: ExchangeId,
+  asset: string,
+  config: { enabled?: boolean; threshold: number; reserve?: number; destKeys: string[] }
+): void {
+  const db = getDb();
+  const now = Date.now();
+  const enabled = config.enabled !== undefined ? config.enabled : true;
+  const reserve = config.reserve ?? 0;
+
+  db.prepare(
+    `INSERT INTO asset_configs (exchange, asset, enabled, threshold, reserve, dest_keys, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(exchange, asset) DO UPDATE SET
+       enabled = excluded.enabled,
+       threshold = excluded.threshold,
+       reserve = excluded.reserve,
+       dest_keys = excluded.dest_keys,
+       updated_at = excluded.updated_at`
+  ).run(
+    exchange,
+    asset,
+    enabled ? 1 : 0,
+    config.threshold,
+    reserve,
+    JSON.stringify(config.destKeys),
+    now,
+    now
+  );
+}
+
+export function deleteAssetConfig(exchange: ExchangeId, asset: string): boolean {
+  const db = getDb();
+  const result = db.prepare('DELETE FROM asset_configs WHERE exchange = ? AND asset = ?').run(exchange, asset);
+  return result.changes > 0;
+}
+
+export function setAssetConfigEnabled(exchange: ExchangeId, asset: string, enabled: boolean): void {
+  const db = getDb();
+  db.prepare('UPDATE asset_configs SET enabled = ?, updated_at = ? WHERE exchange = ? AND asset = ?').run(
+    enabled ? 1 : 0,
+    Date.now(),
+    exchange,
+    asset
+  );
+}
+
+export function hasAnyAssetConfigs(exchange?: ExchangeId): boolean {
+  const db = getDb();
+  if (exchange) {
+    const row = db.prepare('SELECT 1 FROM asset_configs WHERE exchange = ? LIMIT 1').get(exchange);
+    return !!row;
+  }
+  const row = db.prepare('SELECT 1 FROM asset_configs LIMIT 1').get();
+  return !!row;
+}

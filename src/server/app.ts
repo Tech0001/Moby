@@ -2,12 +2,12 @@ import { mkdirSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { logger, createChildLogger } from './utils/logger.js';
+import { initEncryption } from './utils/encryption.js';
 import { loadConfig, reloadConfig } from './config/loadConfig.js';
-import { getEnabledExchanges } from './config/schema.js';
 import { initDb, closeDb } from './db/sqlite.js';
-import { getAllApiKeys, setEnabled, isEnabled } from './db/repositories.js';
+import { getAllApiKeys, setEnabled, hasAnyApiKeys, migrateApiKeysToEncrypted, getAppStateValue, setAppStateValue } from './db/repositories.js';
 import { FillProcessor } from './domain/fillProcessor.js';
-import { Scheduler, createPriceProvider } from './domain/scheduler.js';
+import { Scheduler } from './domain/scheduler.js';
 import { StatusPoller } from './domain/statusPoller.js';
 import { createWebServer, startServer } from './web/server.js';
 import { createRoutes } from './web/routes.js';
@@ -19,6 +19,15 @@ import { KuCoinAdapterFactory } from './exchanges/kucoin/factory.js';
 import { GateAdapterFactory } from './exchanges/gateio/factory.js';
 import type { AppConfig } from './config/schema.js';
 import type { FillEvent, ExchangeId } from './domain/types.js';
+
+/**
+ * Get list of exchanges that have API keys configured
+ */
+function getEnabledExchanges(): ExchangeId[] {
+  const registry = getExchangeRegistry();
+  const allExchanges = registry.getAll().map((a) => a.exchangeId);
+  return allExchanges.filter((id) => hasAnyApiKeys(id));
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appLogger = createChildLogger('app');
@@ -51,8 +60,28 @@ async function main() {
   // Load configuration
   config = loadConfig();
 
+  // Initialize encryption (get or generate key)
+  const encryptionResult = initEncryption();
+  appLogger.info(
+    { keyGenerated: encryptionResult.keyGenerated, keySource: encryptionResult.keySource },
+    'Encryption initialized'
+  );
+
   // Initialize database
   initDb();
+
+  // Migrate existing API keys to encrypted format (idempotent)
+  const encryptionMigrated = getAppStateValue('encryption_migrated');
+  if (encryptionMigrated !== 'true') {
+    const migrationResult = migrateApiKeysToEncrypted();
+    if (migrationResult.migrated > 0) {
+      appLogger.info(
+        { migrated: migrationResult.migrated, skipped: migrationResult.skipped },
+        'Migrated API keys to encrypted format'
+      );
+    }
+    setAppStateValue('encryption_migrated', 'true');
+  }
 
   // Set initial enabled state from config
   if (config.global.enabledOnBoot) {
@@ -60,8 +89,8 @@ async function main() {
     appLogger.info('Sweeper enabled on boot');
   }
 
-  // Get enabled exchanges
-  const enabledExchanges = getEnabledExchanges(config);
+  // Get enabled exchanges (those with API keys)
+  const enabledExchanges = getEnabledExchanges();
 
   // Initialize fill processor
   fillProcessor = new FillProcessor({
@@ -75,7 +104,6 @@ async function main() {
   // Initialize scheduler
   scheduler = new Scheduler({
     config,
-    priceProvider: createPriceProvider(),
   });
 
   scheduler.on('withdrawalStarted', (job) => {
@@ -131,7 +159,7 @@ async function main() {
       scheduler.updateConfig(config);
 
       // Update enabled exchanges
-      const newEnabledExchanges = getEnabledExchanges(config);
+      const newEnabledExchanges = getEnabledExchanges();
       statusPoller.updateEnabledExchanges(newEnabledExchanges);
     },
   });

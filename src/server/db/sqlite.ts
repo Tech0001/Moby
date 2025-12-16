@@ -3,7 +3,7 @@ import { createChildLogger } from '../utils/logger.js';
 
 const logger = createChildLogger('sqlite');
 
-const DB_PATH = process.env.DB_PATH || './data/sweeper.db';
+const DB_PATH = process.env.DB_PATH || './data/moby.db';
 
 let db: Database.Database | null = null;
 
@@ -239,6 +239,27 @@ const MIGRATIONS = [
       DROP TABLE kraken_addresses;
       CREATE INDEX IF NOT EXISTS idx_exchange_addresses_exchange ON exchange_addresses(exchange);
       CREATE INDEX IF NOT EXISTS idx_exchange_addresses_asset ON exchange_addresses(asset);
+    `,
+  },
+  {
+    version: 5,
+    name: 'asset_configs_table',
+    sql: `
+      -- Asset sweep configurations (moved from YAML to database)
+      CREATE TABLE IF NOT EXISTS asset_configs (
+        exchange TEXT NOT NULL,
+        asset TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        threshold REAL NOT NULL,
+        reserve REAL NOT NULL DEFAULT 0,
+        dest_keys TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (exchange, asset)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_asset_configs_exchange ON asset_configs(exchange);
+      CREATE INDEX IF NOT EXISTS idx_asset_configs_enabled ON asset_configs(enabled);
     `,
   },
 ];

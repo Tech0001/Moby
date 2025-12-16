@@ -5,13 +5,13 @@ import {
   recordWithdrawalAttempt,
   createWithdrawalJob,
   updateWithdrawalJob,
+  getExchangeAddressesByAsset,
+  type AssetConfigRecord,
 } from '../db/repositories.js';
 import { advanceWalletIndex, getCurrentWalletKey } from './rrSelector.js';
-import { computeChunkAmount, clampWithWithdrawInfo } from './chunking.js';
 import type { ExchangeRestClient } from '../exchanges/types.js';
-import type { AssetConfig, GlobalConfig } from '../config/schema.js';
+import type { GlobalConfig } from '../config/schema.js';
 import type { WithdrawalJob, ExchangeId } from './types.js';
-import type { PriceProvider } from './chunking.js';
 
 const logger = createChildLogger('withdraw-worker');
 
@@ -19,7 +19,6 @@ export interface WithdrawWorkerOptions {
   exchangeClient: ExchangeRestClient;
   exchange: ExchangeId;
   globalConfig: GlobalConfig;
-  priceProvider?: PriceProvider;
 }
 
 export interface WithdrawResult {
@@ -35,10 +34,11 @@ export interface WithdrawResult {
  */
 export async function startWithdrawal(
   asset: string,
-  assetConfig: AssetConfig,
+  assetConfig: AssetConfigRecord,
   options: WithdrawWorkerOptions
 ): Promise<WithdrawResult> {
-  const { exchangeClient, exchange, globalConfig, priceProvider } = options;
+  const { exchangeClient, exchange, globalConfig } = options;
+  const { destKeys, reserve } = assetConfig;
 
   try {
     // Get current state
@@ -47,24 +47,19 @@ export async function startWithdrawal(
       return { success: false, skipped: true, skipReason: 'No asset state' };
     }
 
-    // Compute chunk amount
-    const chunkAmount = await computeChunkAmount(
-      asset,
-      state.pendingAmount,
-      assetConfig,
-      priceProvider
-    );
+    // Calculate withdrawal amount (pendingAmount - reserve)
+    const withdrawAmount = Math.max(0, state.pendingAmount - reserve);
 
-    if (chunkAmount <= 0) {
+    if (withdrawAmount <= 0) {
       return {
         success: false,
         skipped: true,
-        skipReason: 'Computed chunk amount is 0',
+        skipReason: 'Amount after reserve is 0 or negative',
       };
     }
 
-    // Get destination wallet key
-    const destKey = getCurrentWalletKey(exchange, asset, assetConfig.walletKeys);
+    // Get destination wallet key using round-robin
+    const destKey = getCurrentWalletKey(exchange, asset, destKeys);
 
     // Check prefix filter if configured
     if (globalConfig.keyNamePrefix) {
@@ -81,21 +76,35 @@ export async function startWithdrawal(
       }
     }
 
+    // Look up the withdrawal method from exchange addresses
+    const addresses = getExchangeAddressesByAsset(exchange, asset);
+    const addressRecord = addresses.find((a) => a.key === destKey);
+
+    if (!addressRecord) {
+      logger.warn({ exchange, asset, destKey }, 'Destination key not found in exchange addresses');
+      return {
+        success: false,
+        skipped: true,
+        skipReason: `Wallet key ${destKey} not found in synced addresses`,
+      };
+    }
+
+    const method = addressRecord.method;
+
     // Get withdrawal info from exchange (validates amount, gets fees)
     const withdrawInfo = await exchangeClient.getWithdrawInfo(
       asset,
       destKey,
-      chunkAmount
+      withdrawAmount
     );
 
-    // Clamp amount based on exchange constraints
-    const chunkResult = clampWithWithdrawInfo(chunkAmount, withdrawInfo);
-
-    if (chunkResult.amount <= 0) {
+    // Check if amount after fees is positive
+    const netAmount = withdrawInfo.amount;
+    if (netAmount <= 0) {
       return {
         success: false,
         skipped: true,
-        skipReason: chunkResult.reason || 'Amount too small after clamping',
+        skipReason: 'Amount too small after fees',
       };
     }
 
@@ -104,28 +113,29 @@ export async function startWithdrawal(
       {
         exchange,
         asset,
-        amount: chunkResult.amount,
+        amount: withdrawAmount,
         destKey,
-        fee: chunkResult.fee,
-        netAmount: chunkResult.netAmount,
+        fee: withdrawInfo.fee,
+        netAmount,
+        method,
       },
       'Submitting withdrawal'
     );
 
-    const result = await exchangeClient.withdraw(asset, destKey, chunkResult.amount);
+    const result = await exchangeClient.withdraw(asset, destKey, withdrawAmount);
 
     // Success - update state
-    subtractPendingAmount(exchange, asset, chunkResult.amount);
-    advanceWalletIndex(exchange, asset, assetConfig.walletKeys.length);
+    subtractPendingAmount(exchange, asset, withdrawAmount);
+    advanceWalletIndex(exchange, asset, destKeys.length);
     recordWithdrawalAttempt(exchange, asset, true);
 
     // Create job record
     const job = createWithdrawalJob(
       exchange,
       asset,
-      assetConfig.method,
+      method,
       destKey,
-      chunkResult.amount
+      withdrawAmount
     );
 
     // Update with exchange reference
@@ -141,7 +151,7 @@ export async function startWithdrawal(
       {
         exchange,
         asset,
-        amount: chunkResult.amount,
+        amount: withdrawAmount,
         destKey,
         refId: result.refId,
         jobId: job.id,
@@ -167,13 +177,16 @@ export async function startWithdrawal(
   }
 }
 
+// Default cooldown between withdrawals (30 seconds)
+const DEFAULT_COOLDOWN_MS = 30000;
+
 /**
  * Check if an asset is eligible for withdrawal attempt
  */
 export function isEligibleForWithdrawal(
   exchange: ExchangeId,
   asset: string,
-  assetConfig: AssetConfig,
+  _assetConfig: AssetConfigRecord,
   globalConfig: GlobalConfig,
   inflightCount: number,
   globalInflightCount: number
@@ -194,12 +207,11 @@ export function isEligibleForWithdrawal(
     };
   }
 
-  // Check cooldown
+  // Check cooldown (use default)
   if (state.lastWithdrawAt) {
     const elapsed = now - state.lastWithdrawAt;
-    const cooldownMs = assetConfig.cooldownSeconds * 1000;
-    if (elapsed < cooldownMs) {
-      const remainingMs = cooldownMs - elapsed;
+    if (elapsed < DEFAULT_COOLDOWN_MS) {
+      const remainingMs = DEFAULT_COOLDOWN_MS - elapsed;
       return {
         eligible: false,
         reason: `In cooldown for ${Math.ceil(remainingMs / 1000)}s`,

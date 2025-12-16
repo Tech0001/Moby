@@ -4,43 +4,6 @@ import type { ExchangeId } from '../domain/types.js';
 // Supported exchange identifiers
 export const ExchangeIdSchema = z.enum(['kraken', 'gemini', 'kucoin', 'gateio']);
 
-// Chunk configuration - either fixed coin amount or USD-based
-export const ChunkConfigSchema = z.discriminatedUnion('mode', [
-  z.object({
-    mode: z.literal('fixedCoin'),
-    amount: z.number().positive(),
-    max: z.number().positive().optional(),
-  }),
-  z.object({
-    mode: z.literal('usd'),
-    targetUsd: z.number().positive(),
-    maxUsd: z.number().positive().optional(),
-  }),
-]);
-
-// Per-asset configuration
-export const AssetConfigSchema = z.object({
-  priority: z.number().int().positive(),
-  method: z.string().min(1), // Kraken withdrawal method name (e.g., "Bitcoin", "Ethereum")
-  walletKeys: z.array(z.string().min(1)).min(1), // Pre-saved Kraken withdrawal address keys
-
-  // Threshold - at least one required
-  sweepThresholdCoin: z.number().positive().optional(),
-  sweepThresholdUsd: z.number().positive().optional(),
-
-  reserveCoin: z.number().nonnegative().default(0), // Leave this much behind
-  cooldownSeconds: z.number().int().nonnegative().default(30),
-
-  chunk: ChunkConfigSchema,
-
-  // Optional caps
-  perWalletCapUsd: z.number().positive().optional(),
-  perWalletCapCoin: z.number().positive().optional(),
-}).refine(
-  (data) => data.sweepThresholdCoin !== undefined || data.sweepThresholdUsd !== undefined,
-  { message: 'Either sweepThresholdCoin or sweepThresholdUsd must be specified' }
-);
-
 // Polling configuration for withdrawal status
 export const PollingConfigSchema = z.object({
   withdrawStatus: z.object({
@@ -56,12 +19,12 @@ export const PollingConfigSchema = z.object({
 // Global configuration
 export const GlobalConfigSchema = z.object({
   enabledOnBoot: z.boolean().default(false),
+  dryRun: z.boolean().default(false),
   maxInflightWithdrawals: z.number().int().positive().default(2),
   perAssetMaxInflight: z.number().int().positive().default(1),
   schedulerTickMs: z.number().int().positive().default(1000),
   backoffSeconds: z.array(z.number().positive()).default([15, 30, 60, 120, 300, 600]),
   allowedOrderTypes: z.array(z.string()).default(['limit', 'take_profit', 'take_profit_limit']),
-  keyNamePrefix: z.string().optional(), // Optional safety filter for wallet key names
 });
 
 // Web UI / Auth configuration
@@ -72,74 +35,42 @@ export const WebConfigSchema = z.object({
   trustProxy: z.boolean().default(false), // Set true behind reverse proxy
 });
 
-// Per-exchange configuration
-export const ExchangeConfigSchema = z.object({
-  enabled: z.boolean().default(true),
-  assets: z.record(z.string(), AssetConfigSchema).default({}),
-});
-
 // Full application configuration
-// Supports both new format (exchanges map) and legacy format (assets at root)
+// Asset configs are now stored in the database, not YAML
 export const AppConfigSchema = z.object({
   global: GlobalConfigSchema.default({}),
   polling: PollingConfigSchema.default({}),
   web: WebConfigSchema.default({}),
-  // New format: per-exchange configuration
-  exchanges: z.record(ExchangeIdSchema, ExchangeConfigSchema).optional(),
-  // Legacy format: assets at root (will be migrated to exchanges.kraken.assets)
-  assets: z.record(z.string(), AssetConfigSchema).optional(),
-}).transform((config) => {
-  // Migrate legacy format to new format
-  if (config.assets && Object.keys(config.assets).length > 0 && !config.exchanges) {
-    return {
-      ...config,
-      exchanges: {
-        kraken: {
-          enabled: true,
-          assets: config.assets,
-        },
-      },
-      assets: undefined, // Remove legacy field
-    };
-  }
-  // Ensure exchanges exists (default to empty kraken)
-  if (!config.exchanges) {
-    return {
-      ...config,
-      exchanges: {
-        kraken: {
-          enabled: true,
-          assets: {},
-        },
-      },
-    };
-  }
-  return config;
 });
 
 // Type exports
-export type ChunkConfig = z.infer<typeof ChunkConfigSchema>;
-export type AssetConfig = z.infer<typeof AssetConfigSchema>;
 export type PollingConfig = z.infer<typeof PollingConfigSchema>;
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
 export type WebConfig = z.infer<typeof WebConfigSchema>;
-export type ExchangeConfig = z.infer<typeof ExchangeConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 
-// Helper to get assets for a specific exchange
-export function getExchangeAssets(config: AppConfig, exchange: ExchangeId): Record<string, AssetConfig> {
-  return config.exchanges?.[exchange]?.assets ?? {};
+// Legacy AssetConfig type for API compatibility - actual configs stored in DB
+export interface AssetConfig {
+  enabled: boolean;
+  threshold: number;
+  reserve: number;
+  destKeys: string[];
 }
 
-// Helper to check if an exchange is enabled
-export function isExchangeEnabled(config: AppConfig, exchange: ExchangeId): boolean {
-  return config.exchanges?.[exchange]?.enabled ?? false;
+// Helper functions (operate on database now, but kept for API compatibility)
+export function getExchangeAssets(_config: AppConfig, _exchange: ExchangeId): Record<string, AssetConfig> {
+  // Asset configs are now in database - this is a no-op placeholder
+  // Use repository functions instead
+  return {};
 }
 
-// Get all enabled exchanges
-export function getEnabledExchanges(config: AppConfig): ExchangeId[] {
-  if (!config.exchanges) return [];
-  return (Object.entries(config.exchanges) as [ExchangeId, ExchangeConfig][])
-    .filter(([_, cfg]) => cfg.enabled)
-    .map(([id]) => id);
+export function isExchangeEnabled(_config: AppConfig, _exchange: ExchangeId): boolean {
+  // All exchanges with API keys are considered enabled
+  // Use hasAnyApiKeys(exchange) from repositories instead
+  return true;
+}
+
+export function getEnabledExchanges(_config: AppConfig): ExchangeId[] {
+  // Use getActiveApiKeys() from repositories to determine enabled exchanges
+  return [];
 }

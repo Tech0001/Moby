@@ -4,32 +4,23 @@ import { Button } from "@/ui/components/ui/button";
 import { Input } from "@/ui/components/ui/input";
 import { Label } from "@/ui/components/ui/label";
 import { Badge } from "@/ui/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/ui/components/ui/dialog";
 import { Alert, AlertDescription } from "@/ui/components/ui/alert";
-import { Activity } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 
+// New simplified asset config (stored in database)
 interface AssetConfig {
-  priority: number;
-  method: string;
-  walletKeys: string[];
-  sweepThresholdCoin?: number;
-  sweepThresholdUsd?: number;
-  reserveCoin: number;
-  cooldownSeconds: number;
-  chunk: {
-    mode: 'fixedCoin' | 'usd';
-    amount?: number;
-    max?: number;
-    targetUsd?: number;
-    maxUsd?: number;
-  };
-  perWalletCapUsd?: number;
-  perWalletCapCoin?: number;
+  exchange: string;
+  asset: string;
+  enabled: boolean;
+  threshold: number;
+  reserve: number;
+  destKeys: string[];
 }
 
 interface GlobalConfig {
   enabledOnBoot: boolean;
+  dryRun: boolean;
   maxInflightWithdrawals: number;
   perAssetMaxInflight: number;
   schedulerTickMs: number;
@@ -38,26 +29,8 @@ interface GlobalConfig {
   keyNamePrefix?: string;
 }
 
-interface ExchangeConfig {
-  enabled: boolean;
-  assets: Record<string, AssetConfig>;
-}
-
 interface Config {
   global: GlobalConfig;
-  exchanges?: Record<string, ExchangeConfig>;
-  // Legacy format support
-  assets?: Record<string, AssetConfig>;
-}
-
-// Helper to get assets from config (handles both old and new format)
-function getAssets(config: Config): Record<string, AssetConfig> {
-  // New format: exchanges.kraken.assets
-  if (config.exchanges?.kraken?.assets) {
-    return config.exchanges.kraken.assets;
-  }
-  // Legacy format: assets at root
-  return config.assets || {};
 }
 
 interface ExchangeAddress {
@@ -84,26 +57,25 @@ interface SweeperStatus {
 
 export function ConfigPanel() {
   const [config, setConfig] = useState<Config | null>(null);
+  const [assetConfigs, setAssetConfigs] = useState<AssetConfig[]>([]);
   const [addresses, setAddresses] = useState<ExchangeAddress[]>([]);
   const [exchanges, setExchanges] = useState<AvailableExchange[]>([]);
-  const [addressesFetched, setAddressesFetched] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingAddresses, setLoadingAddresses] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [editingAsset, setEditingAsset] = useState<string | null>(null);
-  const [addAssetFor, setAddAssetFor] = useState<string | null>(null);
+  const [addAssetFor, setAddAssetFor] = useState<{ exchange: string; asset: string } | null>(null);
   const [sweeperStatus, setSweeperStatus] = useState<SweeperStatus | null>(null);
   const [toggling, setToggling] = useState(false);
   const [syncingExchange, setSyncingExchange] = useState<string | null>(null);
-  const [syncStats, setSyncStats] = useState<{ exchange: string; new: number; restored: number; deleted: number; fromExchange: number } | null>(null);
 
   useEffect(() => {
     fetchConfig();
+    fetchAssetConfigs();
     fetchSweeperStatus();
     fetchExchanges();
-    fetchAddresses(); // Load from local DB on mount (fast)
+    fetchAddresses();
   }, []);
 
   async function fetchConfig() {
@@ -117,6 +89,18 @@ export function ConfigPanel() {
       setError('Failed to load config');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchAssetConfigs() {
+    try {
+      const res = await fetch('/api/config/assets');
+      if (res.ok) {
+        const data = await res.json();
+        setAssetConfigs(data.assets || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch asset configs:', err);
     }
   }
 
@@ -143,10 +127,8 @@ export function ConfigPanel() {
         const exchangesData = await exchangesRes.json();
         const keysData = await keysRes.json();
 
-        // Create set of exchanges that have keys
         const exchangesWithKeys = new Set(keysData.keys.map((k: { exchange: string }) => k.exchange));
 
-        // Map exchanges with hasKeys flag
         const mapped = exchangesData.exchanges.map((ex: { id: string; name: string }) => ({
           id: ex.id,
           name: ex.name,
@@ -184,7 +166,6 @@ export function ConfigPanel() {
       if (res.ok) {
         const data = await res.json();
         setAddresses(data);
-        setAddressesFetched(true);
       }
     } catch (err) {
       // Ignore
@@ -195,14 +176,11 @@ export function ConfigPanel() {
 
   async function syncAddresses(exchangeId: string, exchangeName: string) {
     setSyncingExchange(exchangeId);
-    setSyncStats(null);
     try {
       const res = await fetch(`/api/exchanges/${exchangeId}/addresses/sync`, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        // Refresh all addresses
         await fetchAddresses();
-        setSyncStats({ ...data.stats, exchange: exchangeName, fromExchange: data.stats.fromExchange || data.stats.fromKraken || 0 });
         const parts: string[] = [];
         parts.push(`${data.stats.fromExchange || data.stats.fromKraken || 0} from ${exchangeName}`);
         if (data.stats.new > 0) parts.push(`${data.stats.new} new`);
@@ -220,16 +198,16 @@ export function ConfigPanel() {
     }
   }
 
-  async function saveAssetConfig(asset: string, assetConfig: AssetConfig) {
+  async function saveAssetConfig(exchange: string, asset: string, configData: { threshold: number; reserve: number; destKeys: string[]; enabled?: boolean }) {
     setSaving(true);
     setError('');
     setSuccess('');
 
     try {
-      const res = await fetch(`/api/config/assets/${asset}`, {
+      const res = await fetch(`/api/config/exchanges/${exchange}/assets/${asset}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(assetConfig),
+        body: JSON.stringify(configData),
       });
 
       const data = await res.json();
@@ -239,15 +217,34 @@ export function ConfigPanel() {
         return false;
       }
 
-      setSuccess(`Saved ${asset} configuration`);
-      await fetchConfig();
-      setEditingAsset(null);
+      setSuccess(`Saved ${asset} configuration for ${exchange}`);
+      await fetchAssetConfigs();
       return true;
     } catch (err) {
       setError('Network error');
       return false;
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function deleteAssetConfig(exchange: string, asset: string) {
+    if (!confirm(`Delete ${asset} configuration for ${exchange}?`)) return;
+
+    try {
+      const res = await fetch(`/api/config/exchanges/${exchange}/assets/${asset}`, {
+        method: 'DELETE',
+      });
+
+      if (res.ok) {
+        setSuccess(`Deleted ${asset} configuration`);
+        await fetchAssetConfigs();
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Failed to delete');
+      }
+    } catch (err) {
+      setError('Network error');
     }
   }
 
@@ -264,24 +261,14 @@ export function ConfigPanel() {
     return acc;
   }, {} as Record<string, Record<string, { method: string; keys: string[] }>>);
 
-  // Flatten to addressesByAsset for backwards compatibility with asset config
-  const addressesByAsset = addresses.reduce((acc, addr) => {
-    if (!acc[addr.asset]) {
-      acc[addr.asset] = { method: addr.method, keys: [] };
+  // Group asset configs by exchange
+  const configsByExchange = assetConfigs.reduce((acc, cfg) => {
+    if (!acc[cfg.exchange]) {
+      acc[cfg.exchange] = {};
     }
-    if (!acc[addr.asset].keys.includes(addr.key)) {
-      acc[addr.asset].keys.push(addr.key);
-    }
+    acc[cfg.exchange][cfg.asset] = cfg;
     return acc;
-  }, {} as Record<string, { method: string; keys: string[] }>);
-
-  // Get assets from config (handles both old and new format)
-  const configuredAssets = config ? getAssets(config) : {};
-
-  // Assets available from exchanges but not yet configured
-  const unconfiguredAssets = Object.keys(addressesByAsset).filter(
-    (asset) => !configuredAssets[asset]
-  );
+  }, {} as Record<string, Record<string, AssetConfig>>);
 
   // Exchanges that have API keys configured
   const exchangesWithKeys = exchanges.filter(ex => ex.hasKeys);
@@ -311,6 +298,11 @@ export function ConfigPanel() {
             <span className="font-medium">
               {sweeperStatus?.enabled ? 'Running' : 'Stopped'}
             </span>
+            {config.global.dryRun && (
+              <Badge variant="outline" className="text-yellow-500 border-yellow-500">
+                DRY RUN
+              </Badge>
+            )}
             {!sweeperStatus?.hasApiKeys && (
               <span className="text-yellow-500 text-sm">
                 Configure API keys to enable
@@ -327,6 +319,9 @@ export function ConfigPanel() {
         </CardContent>
       </Card>
 
+      {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+      {success && <Alert className="text-green-500 border-green-500"><AlertDescription>{success}</AlertDescription></Alert>}
+
       {/* Withdrawal Addresses Per Exchange */}
       {exchangesWithKeys.length === 0 ? (
         <Card>
@@ -338,91 +333,21 @@ export function ConfigPanel() {
           </CardContent>
         </Card>
       ) : (
-        exchangesWithKeys.map((exchange) => {
-          const exchangeAddresses = addressesByExchange[exchange.id] || {};
-          const assetCount = Object.keys(exchangeAddresses).length;
-
-          return (
-            <Card key={exchange.id}>
-              <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CardTitle>{exchange.name} Withdrawal Addresses</CardTitle>
-                  {assetCount > 0 && (
-                    <Badge variant="secondary">{assetCount} assets</Badge>
-                  )}
-                </div>
-                <Button
-                  onClick={() => syncAddresses(exchange.id, exchange.name)}
-                  disabled={syncingExchange !== null}
-                  variant="outline"
-                  size="sm"
-                >
-                  {syncingExchange === exchange.id ? 'Syncing...' : `Sync from ${exchange.name}`}
-                </Button>
-              </CardHeader>
-
-              <CardContent className="p-0">
-                {loadingAddresses ? (
-                  <div className="p-4 text-muted-foreground text-center">
-                    Loading addresses...
-                  </div>
-                ) : assetCount === 0 ? (
-                  <div className="p-4 text-muted-foreground text-center">
-                    No withdrawal addresses found. Click "Sync from {exchange.name}" to fetch addresses, or add them in {exchange.name} first.
-                  </div>
-                ) : (
-                  <div className="p-4 grid gap-3">
-                    {Object.entries(exchangeAddresses).map(([asset, { method, keys }]) => {
-                      const isConfigured = !!configuredAssets[asset];
-                      return (
-                        <Card
-                          key={asset}
-                          className={`border ${
-                            isConfigured
-                              ? 'bg-green-500/10 border-green-500/50'
-                              : 'bg-card'
-                          }`}
-                        >
-                          <CardContent className="p-3">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium">{asset}</span>
-                                <Badge variant="outline" className="text-xs">via {method}</Badge>
-                                {isConfigured && (
-                                  <Badge variant="outline" className="text-green-500 border-green-500">Configured</Badge>
-                                )}
-                              </div>
-                              {!isConfigured && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setAddAssetFor(asset)}
-                                  className="text-primary hover:text-primary/80 h-auto p-0"
-                                >
-                                  + Add to sweep
-                                </Button>
-                              )}
-                            </div>
-                            <div className="flex flex-wrap gap-1">
-                              {keys.map((key) => (
-                                <span
-                                  key={key}
-                                  className="text-xs px-2 py-1 rounded font-mono bg-muted text-muted-foreground"
-                                >
-                                  {key}
-                                </span>
-                              ))}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {exchangesWithKeys.map((exchange) => (
+            <ExchangeWalletManager
+              key={exchange.id}
+              exchange={exchange}
+              addresses={addressesByExchange[exchange.id] || {}}
+              configuredAssets={configsByExchange[exchange.id] || {}}
+              onSync={() => syncAddresses(exchange.id, exchange.name)}
+              isSyncing={syncingExchange === exchange.id}
+              loadingAddresses={loadingAddresses}
+              onAddAsset={(asset) => setAddAssetFor({ exchange: exchange.id, asset })}
+              onDeleteConfig={(asset) => deleteAssetConfig(exchange.id, asset)}
+            />
+          ))}
+        </div>
       )}
 
       {/* Global Settings */}
@@ -452,59 +377,17 @@ export function ConfigPanel() {
         </CardContent>
       </Card>
 
-      {/* Configured Assets */}
-      <Card>
-        <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
-          <CardTitle>Sweep Configuration</CardTitle>
-          {unconfiguredAssets.length > 0 && (
-            <Button onClick={() => setAddAssetFor('')} size="sm">
-              Add Asset ({unconfiguredAssets.length} available)
-            </Button>
-          )}
-        </CardHeader>
-
-        <CardContent className="p-0">
-          {error && <Alert variant="destructive" className="m-4"><AlertDescription>{error}</AlertDescription></Alert>}
-          {success && <Alert className="m-4 text-green-500 border-green-500"><AlertDescription>{success}</AlertDescription></Alert>}
-
-          {Object.keys(configuredAssets).length === 0 ? (
-            <div className="p-4 text-muted-foreground text-center">
-              No assets configured for sweeping.
-              {unconfiguredAssets.length > 0
-                ? ` You have ${unconfiguredAssets.length} asset(s) with withdrawal addresses ready to configure.`
-                : ' Add withdrawal addresses in Kraken first.'}
-            </div>
-          ) : (
-            <div className="divide-y">
-              {Object.entries(configuredAssets)
-                .sort(([, a], [, b]) => a.priority - b.priority)
-                .map(([asset, assetConfig]) => (
-                  <AssetConfigRow
-                    key={asset}
-                    asset={asset}
-                    config={assetConfig}
-                    availableKeys={addressesByAsset[asset]?.keys || []}
-                    isEditing={editingAsset === asset}
-                    onEdit={() => setEditingAsset(asset)}
-                    onCancel={() => setEditingAsset(null)}
-                    onSave={(newConfig) => saveAssetConfig(asset, newConfig)}
-                    saving={saving}
-                  />
-                ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       {/* Add Asset Modal */}
       <AddAssetDialog
         open={addAssetFor !== null}
         onOpenChange={(open) => !open && setAddAssetFor(null)}
-        initialAsset={addAssetFor || undefined}
-        existingAssets={Object.keys(configuredAssets)}
-        addressesByAsset={addressesByAsset}
-        onAdd={async (asset, assetConfig) => {
-          const success = await saveAssetConfig(asset, assetConfig);
+        exchange={addAssetFor?.exchange}
+        initialAsset={addAssetFor?.asset}
+        existingAssets={Object.keys(configsByExchange[addAssetFor?.exchange || ''] || {})}
+        addressesByAsset={addAssetFor ? (addressesByExchange[addAssetFor.exchange] || {}) : {}}
+        onAdd={async (asset, configData) => {
+          if (!addAssetFor) return;
+          const success = await saveAssetConfig(addAssetFor.exchange, asset, configData);
           if (success) setAddAssetFor(null);
         }}
         saving={saving}
@@ -513,310 +396,33 @@ export function ConfigPanel() {
   );
 }
 
-interface AssetConfigRowProps {
-  asset: string;
-  config: AssetConfig;
-  availableKeys: string[];
-  isEditing: boolean;
-  onEdit: () => void;
-  onCancel: () => void;
-  onSave: (config: AssetConfig) => void;
-  saving: boolean;
-}
-
-function AssetConfigRow({
-  asset,
-  config,
-  availableKeys,
-  isEditing,
-  onEdit,
-  onCancel,
-  onSave,
-  saving,
-}: AssetConfigRowProps) {
-  const [editConfig, setEditConfig] = useState(config);
-
-  useEffect(() => {
-    setEditConfig(config);
-  }, [config, isEditing]);
-
-  function toggleWalletKey(key: string) {
-    const keys = editConfig.walletKeys.includes(key)
-      ? editConfig.walletKeys.filter((k) => k !== key)
-      : [...editConfig.walletKeys, key];
-    setEditConfig({ ...editConfig, walletKeys: keys });
-  }
-
-  if (!isEditing) {
-    return (
-      <div className="p-4">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-3">
-            <span className="font-medium text-lg">{asset}</span>
-            <Badge variant="secondary">Priority {config.priority}</Badge>
-          </div>
-          <Button variant="ghost" size="sm" onClick={onEdit}>Edit</Button>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm mb-2">
-          <div>
-            <span className="text-muted-foreground">Method:</span>
-            <span className="ml-1">{config.method}</span>
-          </div>
-          <div>
-            <span className="text-muted-foreground">Threshold:</span>
-            <span className="ml-1">
-              {config.sweepThresholdCoin
-                ? `${config.sweepThresholdCoin} ${asset}`
-                : `$${config.sweepThresholdUsd}`}
-            </span>
-          </div>
-          <div>
-            <span className="text-muted-foreground">Chunk:</span>
-            <span className="ml-1">
-              {config.chunk.mode === 'fixedCoin'
-                ? `${config.chunk.amount} ${asset}`
-                : `$${config.chunk.targetUsd}`}
-            </span>
-          </div>
-          <div>
-            <span className="text-muted-foreground">Cooldown:</span>
-            <span className="ml-1">{config.cooldownSeconds}s</span>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-1">
-          {config.walletKeys.map((key) => (
-            <span
-              key={key}
-              className="text-xs px-2 py-1 rounded font-mono bg-primary/20 text-primary"
-            >
-              {key}
-            </span>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-4 bg-muted/30">
-      <div className="flex items-center justify-between mb-4">
-        <span className="font-medium text-lg">{asset}</span>
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={onCancel} disabled={saving}>Cancel</Button>
-          <Button
-            size="sm"
-            onClick={() => onSave(editConfig)}
-            disabled={saving || editConfig.walletKeys.length === 0}
-          >
-            {saving ? 'Saving...' : 'Save'}
-          </Button>
-        </div>
-      </div>
-
-      {/* Wallet Keys Selection */}
-      <div className="mb-4">
-        <Label className="block mb-2">
-          Wallet Keys (select which to use for round-robin)
-        </Label>
-        {availableKeys.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
-            {availableKeys.map((key) => {
-              const isSelected = editConfig.walletKeys.includes(key);
-              return (
-                <Button
-                  key={key}
-                  variant={isSelected ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => toggleWalletKey(key)}
-                  className="font-mono"
-                >
-                  {key}
-                </Button>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-sm text-yellow-500">
-            No withdrawal addresses found in Kraken for {asset}. Add them in Kraken first.
-          </div>
-        )}
-        {editConfig.walletKeys.length === 0 && availableKeys.length > 0 && (
-          <div className="text-sm text-destructive mt-1">Select at least one wallet key</div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1">
-          <Label className="text-xs">Priority (lower = higher)</Label>
-          <Input
-            type="number"
-            value={editConfig.priority}
-            onChange={(e) => setEditConfig({ ...editConfig, priority: parseInt(e.target.value) || 1 })}
-          />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">Method</Label>
-          <Input
-            value={editConfig.method}
-            readOnly
-            className="bg-muted text-muted-foreground"
-          />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">Sweep Threshold ({asset})</Label>
-          <Input
-            type="number"
-            step="any"
-            value={editConfig.sweepThresholdCoin || ''}
-            onChange={(e) =>
-              setEditConfig({
-                ...editConfig,
-                sweepThresholdCoin: e.target.value ? parseFloat(e.target.value) : undefined,
-                sweepThresholdUsd: undefined,
-              })
-            }
-            placeholder="e.g., 0.001"
-          />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">Reserve ({asset})</Label>
-          <Input
-            type="number"
-            step="any"
-            value={editConfig.reserveCoin}
-            onChange={(e) => setEditConfig({ ...editConfig, reserveCoin: parseFloat(e.target.value) || 0 })}
-          />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">Cooldown (seconds)</Label>
-          <Input
-            type="number"
-            value={editConfig.cooldownSeconds}
-            onChange={(e) => setEditConfig({ ...editConfig, cooldownSeconds: parseInt(e.target.value) || 30 })}
-          />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">Chunk Mode</Label>
-          <Select
-            value={editConfig.chunk.mode}
-            onValueChange={(value) =>
-              setEditConfig({
-                ...editConfig,
-                chunk: { ...editConfig.chunk, mode: value as 'fixedCoin' | 'usd' },
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="fixedCoin">Fixed Coin</SelectItem>
-              <SelectItem value="usd">USD Based</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        {editConfig.chunk.mode === 'fixedCoin' ? (
-          <>
-            <div className="space-y-1">
-              <Label className="text-xs">Chunk Amount ({asset})</Label>
-              <Input
-                type="number"
-                step="any"
-                value={editConfig.chunk.amount || ''}
-                onChange={(e) =>
-                  setEditConfig({
-                    ...editConfig,
-                    chunk: { ...editConfig.chunk, amount: parseFloat(e.target.value) || 0 },
-                  })
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Max Chunk ({asset})</Label>
-              <Input
-                type="number"
-                step="any"
-                value={editConfig.chunk.max || ''}
-                onChange={(e) =>
-                  setEditConfig({
-                    ...editConfig,
-                    chunk: { ...editConfig.chunk, max: e.target.value ? parseFloat(e.target.value) : undefined },
-                  })
-                }
-                placeholder="Optional"
-              />
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="space-y-1">
-              <Label className="text-xs">Target USD</Label>
-              <Input
-                type="number"
-                value={editConfig.chunk.targetUsd || ''}
-                onChange={(e) =>
-                  setEditConfig({
-                    ...editConfig,
-                    chunk: { ...editConfig.chunk, targetUsd: parseFloat(e.target.value) || 0 },
-                  })
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Max USD</Label>
-              <Input
-                type="number"
-                value={editConfig.chunk.maxUsd || ''}
-                onChange={(e) =>
-                  setEditConfig({
-                    ...editConfig,
-                    chunk: { ...editConfig.chunk, maxUsd: e.target.value ? parseFloat(e.target.value) : undefined },
-                  })
-                }
-                placeholder="Optional"
-              />
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 interface AddAssetDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  exchange?: string;
   initialAsset?: string;
   existingAssets: string[];
   addressesByAsset: Record<string, { method: string; keys: string[] }>;
-  onAdd: (asset: string, config: AssetConfig) => void;
+  onAdd: (asset: string, config: { threshold: number; reserve: number; destKeys: string[] }) => void;
   saving: boolean;
 }
 
-function AddAssetDialog({ open, onOpenChange, initialAsset, existingAssets, addressesByAsset, onAdd, saving }: AddAssetDialogProps) {
+function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAssets, addressesByAsset, onAdd, saving }: AddAssetDialogProps) {
   const availableAssets = Object.keys(addressesByAsset).filter(
     (a) => !existingAssets.includes(a) && addressesByAsset[a].keys.length > 0
   );
-  // Use initialAsset if provided and available, otherwise first available
   const defaultAsset = initialAsset && availableAssets.includes(initialAsset) ? initialAsset : availableAssets[0] || '';
   const [selectedAsset, setSelectedAsset] = useState(defaultAsset);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
-  const [config, setConfig] = useState<Omit<AssetConfig, 'method' | 'walletKeys'>>({
-    priority: existingAssets.length + 1,
-    sweepThresholdCoin: 0.001,
-    reserveCoin: 0,
-    cooldownSeconds: 45,
-    chunk: {
-      mode: 'fixedCoin',
-      amount: 0.01,
-    },
-  });
+  const [threshold, setThreshold] = useState(0.001);
+  const [reserve, setReserve] = useState(0);
 
-  // Reset selected asset when dialog opens with a specific asset
   useEffect(() => {
     if (open) {
       const newDefault = initialAsset && availableAssets.includes(initialAsset) ? initialAsset : availableAssets[0] || '';
       setSelectedAsset(newDefault);
+      setThreshold(0.001);
+      setReserve(0);
     }
   }, [open, initialAsset]);
 
@@ -835,11 +441,11 @@ function AddAssetDialog({ open, onOpenChange, initialAsset, existingAssets, addr
   }
 
   function handleAdd() {
-    if (!selectedAsset || !assetInfo || selectedKeys.length === 0) return;
+    if (!selectedAsset || selectedKeys.length === 0) return;
     onAdd(selectedAsset, {
-      ...config,
-      method: assetInfo.method,
-      walletKeys: selectedKeys,
+      threshold,
+      reserve,
+      destKeys: selectedKeys,
     });
   }
 
@@ -847,15 +453,15 @@ function AddAssetDialog({ open, onOpenChange, initialAsset, existingAssets, addr
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Asset to Sweep</DialogTitle>
-          <DialogDescription>Configure a new asset for automatic withdrawals.</DialogDescription>
+          <DialogTitle>Add Asset to Sweep{exchange ? ` - ${exchange.charAt(0).toUpperCase() + exchange.slice(1)}` : ''}</DialogTitle>
+          <DialogDescription>Configure a new asset for automatic withdrawals{exchange ? ` on ${exchange}` : ''}.</DialogDescription>
         </DialogHeader>
 
         {availableAssets.length === 0 ? (
           <div className="py-4">
             <p className="text-muted-foreground">
-              All assets with withdrawal addresses are already configured, or you need to add
-              withdrawal addresses in Kraken first.
+              All assets with withdrawal addresses are already configured, or you need to sync
+              withdrawal addresses first.
             </p>
           </div>
         ) : (
@@ -900,6 +506,9 @@ function AddAssetDialog({ open, onOpenChange, initialAsset, existingAssets, addr
                       </Button>
                     ))}
                   </div>
+                  {selectedKeys.length === 0 && (
+                    <p className="text-sm text-destructive">Select at least one wallet key</p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -908,36 +517,22 @@ function AddAssetDialog({ open, onOpenChange, initialAsset, existingAssets, addr
                     <Input
                       type="number"
                       step="any"
-                      value={config.sweepThresholdCoin}
-                      onChange={(e) => setConfig({ ...config, sweepThresholdCoin: parseFloat(e.target.value) || 0 })}
+                      value={threshold}
+                      onChange={(e) => setThreshold(parseFloat(e.target.value) || 0)}
+                      placeholder="Min amount to trigger sweep"
                     />
+                    <p className="text-xs text-muted-foreground">Minimum balance to trigger withdrawal</p>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Chunk Amount ({selectedAsset})</Label>
+                    <Label className="text-xs">Reserve ({selectedAsset})</Label>
                     <Input
                       type="number"
                       step="any"
-                      value={config.chunk.amount}
-                      onChange={(e) =>
-                        setConfig({ ...config, chunk: { ...config.chunk, amount: parseFloat(e.target.value) || 0 } })
-                      }
+                      value={reserve}
+                      onChange={(e) => setReserve(parseFloat(e.target.value) || 0)}
+                      placeholder="Amount to keep on exchange"
                     />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Priority</Label>
-                    <Input
-                      type="number"
-                      value={config.priority}
-                      onChange={(e) => setConfig({ ...config, priority: parseInt(e.target.value) || 1 })}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Cooldown (s)</Label>
-                    <Input
-                      type="number"
-                      value={config.cooldownSeconds}
-                      onChange={(e) => setConfig({ ...config, cooldownSeconds: parseInt(e.target.value) || 30 })}
-                    />
+                    <p className="text-xs text-muted-foreground">Amount to leave on exchange</p>
                   </div>
                 </div>
               </>
@@ -957,5 +552,172 @@ function AddAssetDialog({ open, onOpenChange, initialAsset, existingAssets, addr
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface ExchangeWalletManagerProps {
+  exchange: AvailableExchange;
+  addresses: Record<string, { method: string; keys: string[] }>;
+  configuredAssets: Record<string, AssetConfig>;
+  onSync: () => void;
+  isSyncing: boolean;
+  loadingAddresses: boolean;
+  onAddAsset: (asset: string) => void;
+  onDeleteConfig: (asset: string) => void;
+}
+
+function ExchangeWalletManager({
+  exchange,
+  addresses,
+  configuredAssets,
+  onSync,
+  isSyncing,
+  loadingAddresses,
+  onAddAsset,
+  onDeleteConfig,
+}: ExchangeWalletManagerProps) {
+  const [open, setOpen] = useState(false);
+  const assetCount = Object.keys(addresses).length;
+  const configuredCount = Object.keys(configuredAssets).length;
+
+  return (
+    <>
+      <Card>
+        <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
+          <div className="space-y-1">
+            <CardTitle>{exchange.name}</CardTitle>
+            <div className="flex gap-2">
+              <Badge variant="secondary">{assetCount} assets</Badge>
+              {configuredCount > 0 && (
+                <Badge variant="outline" className="text-green-500 border-green-500">
+                  {configuredCount} configured
+                </Badge>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-4 pt-6 flex flex-col gap-2">
+          <Button onClick={() => setOpen(true)} variant="default" className="w-full">
+            Manage Wallets
+          </Button>
+          <Button
+            onClick={onSync}
+            disabled={isSyncing}
+            variant="outline"
+            size="sm"
+            className="w-full"
+          >
+            {isSyncing ? 'Syncing...' : 'Sync Addresses'}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{exchange.name} Wallets</DialogTitle>
+            <DialogDescription>
+              View and configure withdrawal addresses for {exchange.name}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto pr-2">
+            {loadingAddresses ? (
+              <div className="p-8 text-center text-muted-foreground">
+                Loading addresses...
+              </div>
+            ) : assetCount === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">
+                No withdrawal addresses found. Sync from exchange to fetch them.
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {Object.entries(addresses).map(([asset, { method, keys }]) => {
+                  const config = configuredAssets[asset];
+                  const isConfigured = !!config;
+                  return (
+                    <div
+                      key={asset}
+                      className={`relative rounded-lg border p-3 transition-colors ${
+                        isConfigured
+                          ? 'bg-green-500/5 border-green-500/30'
+                          : 'bg-card hover:bg-accent/50'
+                      }`}
+                    >
+                      {isConfigured && (
+                        <div className="absolute top-3 right-3 w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                      )}
+
+                      <div className="flex items-center justify-between mb-2 pr-4">
+                        <span className="font-semibold text-lg">{asset}</span>
+                        <Badge variant="outline" className="text-[10px] uppercase">{method}</Badge>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1 mb-3">
+                        {keys.slice(0, 3).map((key) => (
+                          <span
+                            key={key}
+                            className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-muted text-muted-foreground truncate max-w-[100px]"
+                          >
+                            {key}
+                          </span>
+                        ))}
+                        {keys.length > 3 && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-muted text-muted-foreground">
+                            +{keys.length - 3}
+                          </span>
+                        )}
+                      </div>
+
+                      {isConfigured && config && (
+                        <div className="text-xs text-muted-foreground mb-2 space-y-1">
+                          <div>Threshold: <span className="text-foreground">{config.threshold} {asset}</span></div>
+                          {config.reserve > 0 && <div>Reserve: <span className="text-foreground">{config.reserve} {asset}</span></div>}
+                          <div>Wallets: <span className="text-foreground">{config.destKeys.length}</span></div>
+                        </div>
+                      )}
+
+                      <div className="flex justify-end gap-2">
+                         {isConfigured ? (
+                           <>
+                             <Button
+                               variant="ghost"
+                               size="sm"
+                               className="h-7 text-xs text-destructive hover:text-destructive"
+                               onClick={() => onDeleteConfig(asset)}
+                             >
+                               <Trash2 size={14} />
+                             </Button>
+                             <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                               Configured
+                             </span>
+                           </>
+                         ) : (
+                           <Button
+                             variant="secondary"
+                             size="sm"
+                             className="h-7 text-xs"
+                             onClick={() => {
+                               setOpen(false);
+                               onAddAsset(asset);
+                             }}
+                           >
+                             Configure
+                           </Button>
+                         )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="mt-4">
+             <Button variant="outline" onClick={() => setOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

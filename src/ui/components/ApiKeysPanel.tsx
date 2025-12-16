@@ -53,11 +53,10 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [expandedExchanges, setExpandedExchanges] = useState<Set<string>>(new Set(['kraken']));
-  const initialLoadDone = useRef(false);
+  const [expandedExchanges, setExpandedExchanges] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    fetchKeys(true); // Initial load - auto-expand
+    fetchKeys(); // Initial load - no auto-expand
     fetchExchanges();
     // Refresh every 5 seconds to update counter estimates
     const interval = setInterval(() => fetchKeys(false), 5000);
@@ -70,16 +69,6 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
       if (res.ok) {
         const data = await res.json();
         setKeys(data.keys);
-        // Only auto-expand on initial load
-        if (autoExpand && !initialLoadDone.current) {
-          initialLoadDone.current = true;
-          const exchangesWithKeys = data.keys.map((k: ApiKeyInfo) => k.exchange) as string[];
-          setExpandedExchanges((prev) => {
-            const newSet = new Set(prev);
-            exchangesWithKeys.forEach((ex: string) => newSet.add(ex));
-            return newSet;
-          });
-        }
       }
     } catch (err) {
       console.error('Failed to fetch keys:', err);

@@ -4,20 +4,20 @@ import {
   getAllAssetStates,
   getInflightCount,
   isEnabled,
+  getEnabledAssetConfigs,
+  hasAnyApiKeys,
+  type AssetConfigRecord,
 } from '../db/repositories.js';
-import { meetsSweepThreshold } from './chunking.js';
 import { startWithdrawal, isEligibleForWithdrawal } from './withdrawWorker.js';
 import { getClientPool } from '../exchanges/clientPool.js';
-import type { AppConfig, AssetConfig } from '../config/schema.js';
-import { getExchangeAssets, getEnabledExchanges } from '../config/schema.js';
-import type { PriceProvider } from './chunking.js';
+import { getExchangeRegistry } from '../exchanges/registry.js';
+import type { AppConfig } from '../config/schema.js';
 import type { WithdrawalJob, ExchangeId } from './types.js';
 
 const logger = createChildLogger('scheduler');
 
 export interface SchedulerOptions {
   config: AppConfig;
-  priceProvider?: PriceProvider;
 }
 
 export interface SchedulerEvents {
@@ -28,7 +28,6 @@ export interface SchedulerEvents {
 
 export class Scheduler extends EventEmitter {
   private config: AppConfig;
-  private priceProvider?: PriceProvider;
 
   private tickTimer: NodeJS.Timeout | null = null;
   private running = false;
@@ -37,7 +36,6 @@ export class Scheduler extends EventEmitter {
   constructor(options: SchedulerOptions) {
     super();
     this.config = options.config;
-    this.priceProvider = options.priceProvider;
   }
 
   /**
@@ -119,8 +117,11 @@ export class Scheduler extends EventEmitter {
         return;
       }
 
-      // Process all enabled exchanges
-      const enabledExchanges = getEnabledExchanges(this.config);
+      // Process all exchanges that have API keys
+      const registry = getExchangeRegistry();
+      const allExchanges = registry.getAll().map((a) => a.exchangeId);
+      const enabledExchanges = allExchanges.filter((id) => hasAnyApiKeys(id));
+
       for (const exchange of enabledExchanges) {
         await this.processExchange(exchange);
       }
@@ -155,13 +156,10 @@ export class Scheduler extends EventEmitter {
       return;
     }
 
-    // Get all configured assets for this exchange sorted by priority
-    const exchangeAssets = getExchangeAssets(this.config, exchange);
-    const configuredAssets = Object.entries(exchangeAssets)
-      .map(([asset, config]) => ({ asset, config }))
-      .sort((a, b) => a.config.priority - b.config.priority);
+    // Get enabled asset configs for this exchange from database
+    const assetConfigs = getEnabledAssetConfigs(exchange);
 
-    if (configuredAssets.length === 0) {
+    if (assetConfigs.length === 0) {
       return;
     }
 
@@ -170,19 +168,18 @@ export class Scheduler extends EventEmitter {
       getAllAssetStates(exchange).map((s) => [s.asset, s])
     );
 
-    // Process assets in priority order
+    // Process assets (they're already enabled, ordered by asset name)
     let withdrawalsStarted = 0;
     const availableSlots = maxInflightWithdrawals - globalInflight;
 
-    for (const { asset, config } of configuredAssets) {
+    for (const assetConfig of assetConfigs) {
       if (withdrawalsStarted >= availableSlots) {
         break;
       }
 
       const result = await this.tryWithdrawAsset(
         exchange,
-        asset,
-        config,
+        assetConfig,
         states,
         globalInflight + withdrawalsStarted
       );
@@ -202,27 +199,20 @@ export class Scheduler extends EventEmitter {
    */
   private async tryWithdrawAsset(
     exchange: ExchangeId,
-    asset: string,
-    assetConfig: AssetConfig,
+    assetConfig: AssetConfigRecord,
     states: Map<string, { pendingAmount: number }>,
     currentGlobalInflight: number
   ): Promise<'started' | 'skipped' | 'failed'> {
+    const { asset, threshold, reserve, destKeys } = assetConfig;
     const state = states.get(asset);
     const pendingAmount = state?.pendingAmount ?? 0;
 
-    // Check threshold
-    const meetsThreshold = await meetsSweepThreshold(
-      asset,
-      pendingAmount,
-      assetConfig,
-      this.priceProvider
-    );
-
-    if (!meetsThreshold) {
+    // Check threshold - simple coin amount check
+    if (pendingAmount < threshold) {
       return 'skipped';
     }
 
-    // Check eligibility
+    // Check eligibility (backoff, inflight limits, etc.)
     const assetInflight = getInflightCount(exchange, asset);
     const eligibility = isEligibleForWithdrawal(
       exchange,
@@ -252,7 +242,6 @@ export class Scheduler extends EventEmitter {
       exchangeClient: selection.client,
       exchange,
       globalConfig: this.config.global,
-      priceProvider: this.priceProvider,
     });
 
     // Record usage regardless of outcome
@@ -276,56 +265,4 @@ export class Scheduler extends EventEmitter {
 
     return 'skipped';
   }
-}
-
-/**
- * Create a simple price provider using the exchange client pool
- */
-export function createPriceProvider(): PriceProvider {
-  const cache = new Map<string, { price: number; timestamp: number }>();
-  const CACHE_TTL_MS = 60000; // 1 minute
-
-  return {
-    async getUsdPrice(asset: string): Promise<number | null> {
-      // Check cache
-      const cached = cache.get(asset);
-      if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-        return cached.price;
-      }
-
-      try {
-        // Try Kraken first (most common)
-        const pool = getClientPool('kraken');
-        if (!pool.hasAvailableClients()) {
-          return null;
-        }
-
-        const selection = pool.selectRoundRobin();
-        if (!selection) {
-          return null;
-        }
-
-        // Build pair name (e.g., XBTUSD, ETHUSD)
-        const pair = `${asset}USD`;
-        const ticker = await selection.client.getTicker([pair]);
-        pool.recordUsage(selection.keyId, 1);
-
-        // Try to find the price
-        const key = Object.keys(ticker).find(
-          (k) => k.includes(asset) && k.includes('USD')
-        );
-
-        if (key && ticker[key]?.c?.[0]) {
-          const price = parseFloat(ticker[key].c[0]);
-          cache.set(asset, { price, timestamp: Date.now() });
-          return price;
-        }
-
-        return null;
-      } catch (error) {
-        logger.warn({ asset, error }, 'Failed to get USD price');
-        return null;
-      }
-    },
-  };
 }

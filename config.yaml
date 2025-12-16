@@ -1,13 +1,20 @@
-# Moby Configuration
 global:
   enabledOnBoot: false
+  dryRun: false
   maxInflightWithdrawals: 2
   perAssetMaxInflight: 1
   schedulerTickMs: 1000
-  backoffSeconds: [15, 30, 60, 120, 300, 600]
-  allowedOrderTypes: ["limit", "take_profit", "take_profit_limit"]
-  # keyNamePrefix: "COLD_"  # Optional: only use wallet keys starting with this prefix
-
+  backoffSeconds:
+    - 15
+    - 30
+    - 60
+    - 120
+    - 300
+    - 600
+  allowedOrderTypes:
+    - limit
+    - take_profit
+    - take_profit_limit
 polling:
   withdrawStatus:
     fastSeconds: 10
@@ -16,23 +23,10 @@ polling:
     mediumCount: 10
     slowSeconds: 120
     stuckMinutes: 30
-
 web:
   port: 3000
-  host: "0.0.0.0"
+  host: 0.0.0.0
   trustProxy: false
-
-# Configure assets to sweep below
-# assets:
-#   BTC:
-#     priority: 1
-#     method: "Bitcoin"
-#     walletKeys: ["BTC_COLD_01", "BTC_COLD_02"]
-#     sweepThresholdCoin: 0.001
-#     reserveCoin: 0.0002
-#     cooldownSeconds: 45
-#     chunk:
-#       mode: fixedCoin
-#       amount: 0.005
-#       max: 0.05
-#     perWalletCapUsd: 5000
+  sessionSecret: ad26763b9481986f03728ce7af05342c8f29d7e44182744210877884a5fa996c
+# Note: Asset sweep configurations are now stored in the database.
+# Use the web UI to configure which assets to sweep.

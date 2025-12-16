@@ -10,6 +10,7 @@ const CONFIG_PATH = process.env.CONFIG_PATH || './config.yaml';
 const DEFAULT_CONFIG = `# Moby Configuration
 global:
   enabledOnBoot: false
+  dryRun: false
   maxInflightWithdrawals: 2
   perAssetMaxInflight: 1
   schedulerTickMs: 1000
@@ -31,20 +32,8 @@ web:
   host: "0.0.0.0"
   trustProxy: false
 
-# Configure assets to sweep below
-# assets:
-#   BTC:
-#     priority: 1
-#     method: "Bitcoin"
-#     walletKeys: ["BTC_COLD_01", "BTC_COLD_02"]
-#     sweepThresholdCoin: 0.001
-#     reserveCoin: 0.0002
-#     cooldownSeconds: 45
-#     chunk:
-#       mode: fixedCoin
-#       amount: 0.005
-#       max: 0.05
-#     perWalletCapUsd: 5000
+# Note: Asset sweep configurations are stored in the database.
+# Use the web UI to configure which assets to sweep for each exchange.
 `;
 
 export function loadConfig(): AppConfig {
@@ -71,17 +60,8 @@ export function loadConfig(): AppConfig {
     logger.info('Generated session secret (not persisted - provide in config for persistence)');
   }
 
-  // Log enabled exchanges and their assets
-  const enabledExchanges = config.exchanges ? Object.keys(config.exchanges).filter(
-    (id) => config.exchanges?.[id as keyof typeof config.exchanges]?.enabled
-  ) : [];
-  const totalAssets = enabledExchanges.reduce((sum, id) => {
-    const exchangeConfig = config.exchanges?.[id as keyof typeof config.exchanges];
-    return sum + (exchangeConfig?.assets ? Object.keys(exchangeConfig.assets).length : 0);
-  }, 0);
-
   logger.info(
-    { enabledExchanges, totalAssets, enabledOnBoot: config.global.enabledOnBoot },
+    { enabledOnBoot: config.global.enabledOnBoot, dryRun: config.global.dryRun },
     'Configuration loaded'
   );
 
