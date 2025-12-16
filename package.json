@@ -2,6 +2,10 @@
   "name": "Moby",
   "version": "1.0.0",
   "description": "Self-hosted daemon that monitors Kraken trades and auto-withdraws to pre-saved addresses",
+  "author": {
+    "name": "Moby",
+    "email": "support@moby.app"
+  },
   "private": true,
   "type": "module",
   "main": "electron/main.js",

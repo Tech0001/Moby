@@ -65,6 +65,7 @@ linux:
     - deb
   icon: assets/icon.png
   category: Finance
+  maintainer: "Moby <support@moby.app>"
 
 # Rebuild native modules for Electron
 electronDownload:
