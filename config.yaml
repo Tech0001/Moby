@@ -1,0 +1,33 @@
+global:
+  enabledOnBoot: false
+  dryRun: false
+  maxInflightWithdrawals: 2
+  perAssetMaxInflight: 1
+  schedulerTickMs: 1000
+  backoffSeconds:
+    - 15
+    - 30
+    - 60
+    - 120
+    - 300
+    - 600
+  allowedOrderTypes:
+    - limit
+    - take_profit
+    - take_profit_limit
+  disabledExchanges:
+    - kucoin
+    - gemini
+polling:
+  withdrawStatus:
+    fastSeconds: 10
+    fastCount: 6
+    mediumSeconds: 30
+    mediumCount: 10
+    slowSeconds: 120
+    stuckMinutes: 30
+web:
+  port: 3000
+  host: 0.0.0.0
+  sessionSecret: ad26763b9481986f03728ce7af05342c8f29d7e44182744210877884a5fa996c
+  trustProxy: false

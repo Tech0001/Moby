@@ -1,0 +1,74 @@
+appId: com.moby.app
+productName: Moby
+copyright: Copyright © 2024
+
+directories:
+  output: release
+  buildResources: assets
+
+files:
+  - dist/**/*
+  - electron/**/*
+  - node_modules/**/*
+  - package.json
+
+# Unpack native modules from ASAR (they need real filesystem access)
+asarUnpack:
+  - "**/*.node"
+  - node_modules/better-sqlite3/**/*
+  - node_modules/bcrypt/**/*
+  - node_modules/tiny-secp256k1/**/*
+  - node_modules/secp256k1/**/*
+  - node_modules/bufferutil/**/*
+  - node_modules/utf-8-validate/**/*
+
+extraResources:
+  - from: assets/
+    to: assets/
+    filter:
+      - "**/*"
+
+mac:
+  category: public.app-category.finance
+  target:
+    - dmg
+    - zip
+  icon: assets/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+win:
+  target:
+    - nsis
+    - portable
+  icon: assets/icon.ico
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Moby
+
+linux:
+  target:
+    - AppImage
+    - deb
+  icon: assets/icon.png
+  category: Finance
+
+# Rebuild native modules for Electron
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/
+
+# Don't publish anywhere
+publish: null
