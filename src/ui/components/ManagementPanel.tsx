@@ -13,7 +13,22 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/ui/components/ui/dialog";
-import { Wallet, Plus, Eye, EyeOff, Copy, Trash2, Key, RefreshCw } from 'lucide-react';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/ui/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/ui/components/ui/select";
+import { Wallet, Plus, Eye, EyeOff, Copy, Trash2, Key, RefreshCw, Search, ArrowUpDown } from 'lucide-react';
 
 interface WalletInfo {
   id: string;
@@ -23,11 +38,38 @@ interface WalletInfo {
   createdAt: number;
 }
 
+const supportedChains = [
+  { id: 'ethereum', name: 'Ethereum', supported: true },
+  { id: 'bitcoin', name: 'Bitcoin', supported: true },
+  { id: 'solana', name: 'Solana', supported: true },
+  { id: 'xrp', name: 'XRP', supported: true },
+  { id: 'xlm', name: 'Stellar', supported: true },
+  { id: 'algorand', name: 'Algorand', supported: true },
+  { id: 'cardano', name: 'Cardano', supported: true },
+  { id: 'lunc', name: 'LUNC', supported: true },
+];
+
+const chainColors: Record<string, string> = {
+  ethereum: 'bg-blue-500/10 text-blue-500 hover:bg-blue-500/20',
+  bitcoin: 'bg-orange-500/10 text-orange-500 hover:bg-orange-500/20',
+  solana: 'bg-purple-500/10 text-purple-500 hover:bg-purple-500/20',
+  xrp: 'bg-gray-500/10 text-gray-500 hover:bg-gray-500/20',
+  xlm: 'bg-cyan-500/10 text-cyan-500 hover:bg-cyan-500/20',
+  lunc: 'bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20',
+  algorand: 'bg-teal-500/10 text-teal-500 hover:bg-teal-500/20',
+  cardano: 'bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500/20',
+};
+
 export function ManagementPanel() {
   const [wallets, setWallets] = useState<WalletInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Filtering and Sorting
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterChain, setFilterChain] = useState('all');
+  const [sortBy, setSortBy] = useState('created_desc');
 
   // Password state
   const [hasPassword, setHasPassword] = useState(false);
@@ -41,18 +83,8 @@ export function ManagementPanel() {
   const [walletName, setWalletName] = useState('');
   const [walletChain, setWalletChain] = useState('ethereum');
   const [walletPassword, setWalletPassword] = useState('');
+  const [showCreatePassword, setShowCreatePassword] = useState(false);
   const [creating, setCreating] = useState(false);
-
-  const supportedChains = [
-    { id: 'ethereum', name: 'Ethereum', supported: true },
-    { id: 'bitcoin', name: 'Bitcoin', supported: true },
-    { id: 'solana', name: 'Solana', supported: true },
-    { id: 'xrp', name: 'XRP', supported: true },
-    { id: 'xlm', name: 'Stellar', supported: true },
-    { id: 'algorand', name: 'Algorand', supported: true },
-    { id: 'cardano', name: 'Cardano', supported: true },
-    { id: 'lunc', name: 'LUNC', supported: true },
-  ];
 
   // View private key state
   const [showUnlockDialog, setShowUnlockDialog] = useState(false);
@@ -265,16 +297,30 @@ export function ManagementPanel() {
     setShowDeleteDialog(true);
   }
 
-  const chainColors: Record<string, string> = {
-    ethereum: 'bg-blue-500/10 text-blue-500',
-    bitcoin: 'bg-orange-500/10 text-orange-500',
-    solana: 'bg-purple-500/10 text-purple-500',
-    xrp: 'bg-gray-500/10 text-gray-500',
-    xlm: 'bg-cyan-500/10 text-cyan-500',
-    lunc: 'bg-yellow-500/10 text-yellow-500',
-    algorand: 'bg-teal-500/10 text-teal-500',
-    cardano: 'bg-indigo-500/10 text-indigo-500',
-  };
+  const filteredWallets = wallets
+    .filter((wallet) => {
+      const matchesSearch =
+        wallet.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        wallet.address.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesChain = filterChain === 'all' || wallet.chain === filterChain;
+      return matchesSearch && matchesChain;
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case 'name_asc':
+          return a.name.localeCompare(b.name);
+        case 'name_desc':
+          return b.name.localeCompare(a.name);
+        case 'chain_asc':
+          return a.chain.localeCompare(b.chain);
+        case 'created_asc':
+          return a.createdAt - b.createdAt;
+        case 'created_desc':
+          return b.createdAt - a.createdAt;
+        default:
+          return 0;
+      }
+    });
 
   if (loading) {
     return (
@@ -287,7 +333,7 @@ export function ManagementPanel() {
   // Show password setup if not set
   if (!hasPassword) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 max-w-2xl mx-auto">
         <Card>
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2">
@@ -297,17 +343,24 @@ export function ManagementPanel() {
           </CardHeader>
           <CardContent className="p-6">
             <div className="text-center space-y-4">
-              <p className="text-muted-foreground">
+              <div className="bg-muted rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                <Key className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold">Secure Your Wallets</h3>
+              <p className="text-muted-foreground max-w-sm mx-auto">
                 To securely store wallet private keys, you need to set a wallet password first.
                 This password will be used to encrypt all private keys.
               </p>
-              <p className="text-sm text-destructive">
-                Warning: If you forget this password, you will lose access to all stored private keys.
-              </p>
-              <Button onClick={() => setShowSetPasswordDialog(true)}>
-                <Key className="mr-2 h-4 w-4" />
-                Set Wallet Password
-              </Button>
+              <Alert variant="destructive" className="max-w-sm mx-auto text-left">
+                <AlertDescription>
+                   Warning: If you forget this password, you will lose access to all stored private keys.
+                </AlertDescription>
+              </Alert>
+              <div className="pt-4">
+                <Button onClick={() => setShowSetPasswordDialog(true)}>
+                  Set Wallet Password
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -368,75 +421,146 @@ export function ManagementPanel() {
         </Alert>
       )}
       {success && (
-        <Alert className="border-green-500 text-green-500">
+        <Alert className="border-green-500 text-green-500 bg-green-500/10">
           <AlertDescription>{success}</AlertDescription>
         </Alert>
       )}
 
       <Card>
-        <CardHeader className="border-b flex flex-row items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Wallet size={20} />
-            Wallets
-          </CardTitle>
-          <Button size="sm" onClick={() => setShowCreateDialog(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Generate Wallet
-          </Button>
+        <CardHeader className="border-b">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <CardTitle className="flex items-center gap-2">
+              <Wallet size={20} />
+              Wallets
+            </CardTitle>
+            <Button onClick={() => setShowCreateDialog(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Generate Wallet
+            </Button>
+          </div>
         </CardHeader>
-        <CardContent className="p-4">
+        <CardContent className="p-0">
+          {/* Toolbar */}
+          <div className="p-4 border-b bg-muted/30 flex flex-col sm:flex-row gap-4 items-center justify-between">
+            <div className="relative w-full sm:w-72">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search wallets..."
+                className="pl-9"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2 w-full sm:w-auto">
+              <Select value={filterChain} onValueChange={setFilterChain}>
+                <SelectTrigger className="w-full sm:w-[180px]">
+                  <SelectValue placeholder="Filter by Chain" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Chains</SelectItem>
+                  {supportedChains.map((chain) => (
+                    <SelectItem key={chain.id} value={chain.id}>
+                      {chain.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="w-full sm:w-[180px]">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="created_desc">Newest First</SelectItem>
+                  <SelectItem value="created_asc">Oldest First</SelectItem>
+                  <SelectItem value="name_asc">Name (A-Z)</SelectItem>
+                  <SelectItem value="name_desc">Name (Z-A)</SelectItem>
+                  <SelectItem value="chain_asc">Chain (A-Z)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Table */}
           {wallets.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">
-              No wallets yet. Click "Generate Wallet" to create one.
-            </p>
+            <div className="text-center py-12">
+              <div className="bg-muted rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-3">
+                <Wallet className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <p className="text-muted-foreground mb-4">
+                No wallets found. Generate a new one to get started.
+              </p>
+              <Button variant="outline" onClick={() => setShowCreateDialog(true)}>
+                Generate Wallet
+              </Button>
+            </div>
+          ) : filteredWallets.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              No wallets match your filters.
+            </div>
           ) : (
-            <div className="space-y-3">
-              {wallets.map((wallet) => (
-                <div
-                  key={wallet.id}
-                  className="flex items-center justify-between p-3 border rounded-lg"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium">{wallet.name}</span>
-                      <Badge className={chainColors[wallet.chain] || 'bg-gray-500/10'}>
-                        {wallet.chain}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <code className="text-xs text-muted-foreground font-mono truncate max-w-[300px]">
-                        {wallet.address}
-                      </code>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => copyToClipboard(wallet.address)}
-                      >
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 ml-4">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openUnlockDialog(wallet.id)}
-                    >
-                      <Eye className="mr-1 h-3 w-3" />
-                      View Key
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => openDeleteDialog(wallet.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Chain</TableHead>
+                    <TableHead>Address</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredWallets.map((wallet) => (
+                    <TableRow key={wallet.id}>
+                      <TableCell className="font-medium">{wallet.name}</TableCell>
+                      <TableCell>
+                        <Badge className={`${chainColors[wallet.chain]} hover:bg-opacity-80 transition-colors`}>
+                          {wallet.chain}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2 max-w-[200px] sm:max-w-xs">
+                          <code className="text-xs text-muted-foreground font-mono truncate">
+                            {wallet.address}
+                          </code>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 shrink-0"
+                            onClick={() => copyToClipboard(wallet.address)}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {new Date(wallet.createdAt).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="View Private Key"
+                            onClick={() => openUnlockDialog(wallet.id)}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            title="Delete Wallet"
+                            onClick={() => openDeleteDialog(wallet.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>
@@ -444,62 +568,87 @@ export function ManagementPanel() {
 
       {/* Create Wallet Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Generate New Wallet</DialogTitle>
             <DialogDescription>
-              Create a new wallet. The private key will be encrypted with your wallet password.
+              Choose a blockchain network and set up your new wallet.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="grid gap-6 py-4">
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            <div className="space-y-2">
-              <Label>Blockchain</Label>
-              <div className="flex flex-wrap gap-2">
+            
+            <div className="space-y-3">
+              <Label>Select Network</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {supportedChains.map((chain) => (
-                  <Button
+                  <div
                     key={chain.id}
-                    type="button"
-                    variant={walletChain === chain.id ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setWalletChain(chain.id)}
-                    disabled={!chain.supported}
-                    className={!chain.supported ? 'opacity-50' : ''}
+                    onClick={() => chain.supported && setWalletChain(chain.id)}
+                    className={`
+                      cursor-pointer rounded-lg border-2 p-2 text-center transition-all hover:bg-muted/50
+                      ${walletChain === chain.id 
+                        ? `border-primary bg-${chainColors[chain.id]?.split(' ')[0].replace('bg-', '') || 'primary/10'} ring-1 ring-primary/20` 
+                        : 'border-muted bg-card hover:border-primary/20'}
+                      ${!chain.supported ? 'opacity-50 cursor-not-allowed grayscale' : ''}
+                    `}
                   >
-                    {chain.name}
-                    {!chain.supported && <span className="ml-1 text-xs">(soon)</span>}
-                  </Button>
+                    <div className="font-medium">{chain.name}</div>
+                    {!chain.supported && <div className="text-[9px] text-muted-foreground mt-1">Coming Soon</div>}
+                  </div>
                 ))}
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Wallet Name</Label>
-              <Input
-                value={walletName}
-                onChange={(e) => setWalletName(e.target.value)}
-                placeholder="e.g., Main Wallet, Cold Storage"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Wallet Password</Label>
-              <Input
-                type="password"
-                value={walletPassword}
-                onChange={(e) => setWalletPassword(e.target.value)}
-                placeholder="Enter your wallet password"
-              />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Wallet Name</Label>
+                <Input
+                  value={walletName}
+                  onChange={(e) => setWalletName(e.target.value)}
+                  placeholder="e.g., Main Wallet"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Wallet Password</Label>
+                <div className="relative">
+                  <Input
+                    type={showCreatePassword ? 'text' : 'password'}
+                    value={walletPassword}
+                    onChange={(e) => setWalletPassword(e.target.value)}
+                    placeholder="Enter password"
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                    onClick={() => setShowCreatePassword(!showCreatePassword)}
+                  >
+                    {showCreatePassword ? (
+                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setShowCreateDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreateWallet} disabled={creating}>
-              {creating ? 'Creating...' : 'Generate'}
+            <Button 
+              onClick={handleCreateWallet} 
+              disabled={creating || !walletName.trim() || !walletPassword}
+            >
+              {creating ? 'Creating...' : 'Generate Wallet'}
             </Button>
           </DialogFooter>
         </DialogContent>
