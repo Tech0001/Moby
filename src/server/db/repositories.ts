@@ -885,8 +885,6 @@ export function getEnabledExchanges(): ExchangeId[] {
 
 // ============== Asset Configs Repository ==============
 
-export type ChunkMode = 'all' | 'fixedCoin' | 'fixedUsd';
-
 export interface AssetConfigRecord {
   exchange: ExchangeId;
   asset: string;
@@ -897,9 +895,7 @@ export interface AssetConfigRecord {
   priority: number;
   cooldownSeconds: number;
   method: string | null;
-  chunkMode: ChunkMode;
   chunkAmount: number | null;
-  chunkMax: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -915,9 +911,7 @@ function mapAssetConfigRow(row: Record<string, unknown>): AssetConfigRecord {
     priority: (row.priority as number) ?? 10,
     cooldownSeconds: (row.cooldown_seconds as number) ?? 60,
     method: row.method as string | null,
-    chunkMode: (row.chunk_mode as ChunkMode) ?? 'all',
     chunkAmount: row.chunk_amount as number | null,
-    chunkMax: row.chunk_max as number | null,
     createdAt: row.created_at as number,
     updatedAt: row.updated_at as number,
   };
@@ -969,9 +963,7 @@ export interface AssetConfigInput {
   priority?: number;
   cooldownSeconds?: number;
   method?: string | null;
-  chunkMode?: ChunkMode;
   chunkAmount?: number | null;
-  chunkMax?: number | null;
 }
 
 export function upsertAssetConfig(
@@ -986,13 +978,11 @@ export function upsertAssetConfig(
   const priority = config.priority ?? 10;
   const cooldownSeconds = config.cooldownSeconds ?? 60;
   const method = config.method ?? null;
-  const chunkMode = config.chunkMode ?? 'all';
   const chunkAmount = config.chunkAmount ?? null;
-  const chunkMax = config.chunkMax ?? null;
 
   db.prepare(
-    `INSERT INTO asset_configs (exchange, asset, enabled, threshold, reserve, dest_keys, priority, cooldown_seconds, method, chunk_mode, chunk_amount, chunk_max, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO asset_configs (exchange, asset, enabled, threshold, reserve, dest_keys, priority, cooldown_seconds, method, chunk_amount, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(exchange, asset) DO UPDATE SET
        enabled = excluded.enabled,
        threshold = excluded.threshold,
@@ -1001,9 +991,7 @@ export function upsertAssetConfig(
        priority = excluded.priority,
        cooldown_seconds = excluded.cooldown_seconds,
        method = excluded.method,
-       chunk_mode = excluded.chunk_mode,
        chunk_amount = excluded.chunk_amount,
-       chunk_max = excluded.chunk_max,
        updated_at = excluded.updated_at`
   ).run(
     exchange,
@@ -1015,9 +1003,7 @@ export function upsertAssetConfig(
     priority,
     cooldownSeconds,
     method,
-    chunkMode,
     chunkAmount,
-    chunkMax,
     now,
     now
   );
@@ -1047,4 +1033,152 @@ export function hasAnyAssetConfigs(exchange?: ExchangeId): boolean {
   }
   const row = db.prepare('SELECT 1 FROM asset_configs LIMIT 1').get();
   return !!row;
+}
+
+// ============== Wallet Storage Repository ==============
+
+export type WalletChain = 'ethereum' | 'bitcoin' | 'solana' | 'xrp' | 'xlm' | 'lunc' | 'algorand' | 'cardano';
+
+export interface WalletRecord {
+  id: string;
+  name: string;
+  chain: WalletChain;
+  address: string;
+  encryptedPrivateKey: string;
+  salt: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface WalletPublicRecord {
+  id: string;
+  name: string;
+  chain: WalletChain;
+  address: string;
+  createdAt: number;
+}
+
+function mapWalletRow(row: Record<string, unknown>): WalletRecord {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    chain: (row.chain as WalletChain) || 'ethereum',
+    address: row.address as string,
+    encryptedPrivateKey: row.encrypted_private_key as string,
+    salt: row.salt as string,
+    createdAt: row.created_at as number,
+    updatedAt: row.updated_at as number,
+  };
+}
+
+function mapWalletPublicRow(row: Record<string, unknown>): WalletPublicRecord {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    chain: (row.chain as WalletChain) || 'ethereum',
+    address: row.address as string,
+    createdAt: row.created_at as number,
+  };
+}
+
+export function getAllWallets(chain?: WalletChain): WalletPublicRecord[] {
+  const db = getDb();
+  if (chain) {
+    const rows = db.prepare('SELECT id, name, chain, address, created_at FROM wallets WHERE chain = ? ORDER BY created_at DESC').all(chain) as Array<Record<string, unknown>>;
+    return rows.map(mapWalletPublicRow);
+  }
+  const rows = db.prepare('SELECT id, name, chain, address, created_at FROM wallets ORDER BY created_at DESC').all() as Array<Record<string, unknown>>;
+  return rows.map(mapWalletPublicRow);
+}
+
+export function getWalletById(id: string): WalletRecord | null {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM wallets WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+  return row ? mapWalletRow(row) : null;
+}
+
+export function getWalletByAddress(address: string): WalletRecord | null {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM wallets WHERE address = ?').get(address) as Record<string, unknown> | undefined;
+  return row ? mapWalletRow(row) : null;
+}
+
+export function createWallet(
+  id: string,
+  name: string,
+  chain: WalletChain,
+  address: string,
+  encryptedPrivateKey: string,
+  salt: string
+): WalletRecord {
+  const db = getDb();
+  const now = Date.now();
+
+  db.prepare(
+    `INSERT INTO wallets (id, name, chain, address, encrypted_private_key, salt, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, name, chain, address, encryptedPrivateKey, salt, now, now);
+
+  return {
+    id,
+    name,
+    chain,
+    address,
+    encryptedPrivateKey,
+    salt,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export function updateWallet(id: string, updates: { name?: string; encryptedPrivateKey?: string; salt?: string }): void {
+  const db = getDb();
+  const now = Date.now();
+
+  const fields: string[] = ['updated_at = ?'];
+  const values: unknown[] = [now];
+
+  if (updates.name !== undefined) {
+    fields.push('name = ?');
+    values.push(updates.name);
+  }
+  if (updates.encryptedPrivateKey !== undefined) {
+    fields.push('encrypted_private_key = ?');
+    values.push(updates.encryptedPrivateKey);
+  }
+  if (updates.salt !== undefined) {
+    fields.push('salt = ?');
+    values.push(updates.salt);
+  }
+
+  values.push(id);
+  db.prepare(`UPDATE wallets SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+}
+
+export function deleteWallet(id: string): boolean {
+  const db = getDb();
+  const result = db.prepare('DELETE FROM wallets WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
+// ============== Wallet Settings Repository ==============
+
+export function getWalletSetting(key: string): string | null {
+  const db = getDb();
+  const row = db.prepare('SELECT value FROM wallet_settings WHERE key = ?').get(key) as { value: string } | undefined;
+  return row ? row.value : null;
+}
+
+export function setWalletSetting(key: string, value: string): void {
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO wallet_settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run(key, value);
+}
+
+export function deleteWalletSetting(key: string): boolean {
+  const db = getDb();
+  const result = db.prepare('DELETE FROM wallet_settings WHERE key = ?').run(key);
+  return result.changes > 0;
 }

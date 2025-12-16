@@ -17,6 +17,7 @@ global:
     - take_profit_limit
   disabledExchanges:
     - kucoin
+    - gemini
 polling:
   withdrawStatus:
     fastSeconds: 10

@@ -37,9 +37,21 @@ import {
   getAllExchangeSettings,
   setExchangeEnabled,
   isExchangeEnabled,
+  getAllWallets,
+  getWalletById,
+  createWallet,
+  deleteWallet,
   type ApiKeyTier,
-  type ChunkMode,
+  type WalletChain,
 } from '../db/repositories.js';
+import {
+  hasWalletPassword,
+  setWalletPassword,
+  verifyWalletPassword,
+  encryptPrivateKey,
+  decryptPrivateKey,
+} from '../utils/walletEncryption.js';
+import { generateWallet, isChainSupported } from '../utils/walletGenerator.js';
 import { getClientPool } from '../exchanges/clientPool.js';
 import { getExchangeRegistry } from '../exchanges/registry.js';
 import type { AppConfig } from '../config/schema.js';
@@ -616,9 +628,7 @@ export function createRoutes(context: RoutesContext): Router {
         priority,
         cooldownSeconds,
         method,
-        chunkMode,
         chunkAmount,
-        chunkMax,
       } = req.body;
 
       // Basic validation
@@ -644,13 +654,6 @@ export function createRoutes(context: RoutesContext): Router {
         return;
       }
 
-      // Validate chunkMode if provided
-      const validChunkModes: ChunkMode[] = ['all', 'fixedCoin', 'fixedUsd'];
-      if (chunkMode !== undefined && !validChunkModes.includes(chunkMode)) {
-        res.status(400).json({ error: 'chunkMode must be one of: all, fixedCoin, fixedUsd' });
-        return;
-      }
-
       // Save to database
       upsertAssetConfig(exchange as ExchangeId, asset, {
         enabled: enabled !== false,
@@ -660,12 +663,10 @@ export function createRoutes(context: RoutesContext): Router {
         priority: priority ?? 10,
         cooldownSeconds: cooldownSeconds ?? 60,
         method: method ?? null,
-        chunkMode: chunkMode ?? 'all',
         chunkAmount: chunkAmount ?? null,
-        chunkMax: chunkMax ?? null,
       });
 
-      logger.info({ exchange, asset, threshold, priority, cooldownSeconds, chunkMode }, 'Asset config saved');
+      logger.info({ exchange, asset, threshold, priority, cooldownSeconds, chunkAmount }, 'Asset config saved');
       res.json({ success: true });
     }
   );
@@ -1252,6 +1253,172 @@ export function createRoutes(context: RoutesContext): Router {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
+  });
+
+  // ============== Wallet Management Routes ==============
+
+  // Check if wallet password is set
+  router.get('/api/wallets/password/exists', requireAuth, (req: Request, res: Response) => {
+    res.json({ exists: hasWalletPassword() });
+  });
+
+  // Set wallet password (first time only)
+  router.post('/api/wallets/password', requireAuth, (req: Request, res: Response) => {
+    try {
+      const { password } = req.body;
+
+      if (!password || typeof password !== 'string') {
+        res.status(400).json({ error: 'Password is required' });
+        return;
+      }
+
+      if (password.length < 8) {
+        res.status(400).json({ error: 'Password must be at least 8 characters' });
+        return;
+      }
+
+      setWalletPassword(password);
+      logger.info('Wallet password set');
+      res.json({ success: true });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      res.status(400).json({ error: msg });
+    }
+  });
+
+  // Verify wallet password
+  router.post('/api/wallets/password/verify', requireAuth, (req: Request, res: Response) => {
+    const { password } = req.body;
+
+    if (!password || typeof password !== 'string') {
+      res.status(400).json({ error: 'Password is required' });
+      return;
+    }
+
+    const valid = verifyWalletPassword(password);
+    res.json({ valid });
+  });
+
+  // List all wallets (public info only - no private keys)
+  router.get('/api/wallets', requireAuth, (req: Request, res: Response) => {
+    const wallets = getAllWallets();
+    res.json({ wallets });
+  });
+
+  // Generate and create a new wallet
+  router.post('/api/wallets', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { name, password, chain = 'ethereum' } = req.body;
+
+      if (!name || typeof name !== 'string') {
+        res.status(400).json({ error: 'Wallet name is required' });
+        return;
+      }
+
+      if (!password || typeof password !== 'string') {
+        res.status(400).json({ error: 'Password is required' });
+        return;
+      }
+
+      // Validate chain
+      const validChains: WalletChain[] = ['ethereum', 'bitcoin', 'solana', 'xrp', 'xlm', 'lunc', 'algorand', 'cardano'];
+      if (!validChains.includes(chain)) {
+        res.status(400).json({ error: `Invalid chain. Must be one of: ${validChains.join(', ')}` });
+        return;
+      }
+
+      // Verify password first
+      if (!verifyWalletPassword(password)) {
+        res.status(401).json({ error: 'Invalid password' });
+        return;
+      }
+
+      // Check if chain is supported
+      if (!isChainSupported(chain)) {
+        res.status(400).json({ error: `Chain '${chain}' wallet generation not yet implemented.` });
+        return;
+      }
+
+      // Generate wallet for the specified chain
+      const wallet = await generateWallet(chain);
+      const address = wallet.address;
+      const privateKey = wallet.privateKey;
+
+      // Encrypt the private key
+      const { encrypted, salt } = encryptPrivateKey(privateKey, password);
+
+      // Store in database
+      const id = uuid();
+      const record = createWallet(id, name, chain as WalletChain, address, encrypted, salt);
+
+      logger.info({ id, name, chain, address }, 'New wallet created');
+
+      res.json({
+        wallet: {
+          id: record.id,
+          name: record.name,
+          chain: record.chain,
+          address: record.address,
+          createdAt: record.createdAt,
+        },
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      logger.error({ error: msg }, 'Failed to create wallet');
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // Unlock/decrypt a wallet's private key
+  router.post('/api/wallets/:id/unlock', requireAuth, (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { password } = req.body;
+
+      if (!password || typeof password !== 'string') {
+        res.status(400).json({ error: 'Password is required' });
+        return;
+      }
+
+      // Verify password first
+      if (!verifyWalletPassword(password)) {
+        res.status(401).json({ error: 'Invalid password' });
+        return;
+      }
+
+      const wallet = getWalletById(id);
+      if (!wallet) {
+        res.status(404).json({ error: 'Wallet not found' });
+        return;
+      }
+
+      // Decrypt the private key
+      const privateKey = decryptPrivateKey(wallet.encryptedPrivateKey, wallet.salt, password);
+
+      logger.info({ id, address: wallet.address }, 'Wallet unlocked');
+
+      res.json({ privateKey });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      logger.error({ error: msg }, 'Failed to unlock wallet');
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // Delete a wallet
+  router.delete('/api/wallets/:id', requireAuth, (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    const wallet = getWalletById(id);
+    if (!wallet) {
+      res.status(404).json({ error: 'Wallet not found' });
+      return;
+    }
+
+    deleteWallet(id);
+    logger.info({ id, address: wallet.address }, 'Wallet deleted');
+
+    res.json({ success: true });
   });
 
   return router;

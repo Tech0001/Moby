@@ -291,9 +291,7 @@ export function ConfigPanel() {
     enabled?: boolean;
     priority?: number;
     cooldownSeconds?: number;
-    chunkMode?: 'all' | 'fixedCoin' | 'fixedUsd';
     chunkAmount?: number;
-    chunkMax?: number;
   }) {
     setSaving(true);
     setError('');
@@ -548,9 +546,7 @@ interface AddAssetDialogProps {
     destKeys: string[];
     priority?: number;
     cooldownSeconds?: number;
-    chunkMode?: 'all' | 'fixedCoin' | 'fixedUsd';
     chunkAmount?: number;
-    chunkMax?: number;
   }) => void;
   saving: boolean;
 }
@@ -566,9 +562,7 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
   const [reserve, setReserve] = useState(0);
   const [priority, setPriority] = useState(10);
   const [cooldownSeconds, setCooldownSeconds] = useState(60);
-  const [chunkMode, setChunkMode] = useState<'all' | 'fixedCoin' | 'fixedUsd'>('all');
-  const [chunkAmount, setChunkAmount] = useState<number | ''>('');
-  const [chunkMax, setChunkMax] = useState<number | ''>('');
+  const [chunkAmount, setChunkAmount] = useState(0.01);
 
   useEffect(() => {
     if (open) {
@@ -578,9 +572,7 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
       setReserve(0);
       setPriority(10);
       setCooldownSeconds(60);
-      setChunkMode('all');
-      setChunkAmount('');
-      setChunkMax('');
+      setChunkAmount(0.01);
     }
   }, [open, initialAsset]);
 
@@ -606,15 +598,13 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
       destKeys: selectedKeys,
       priority,
       cooldownSeconds,
-      chunkMode,
-      chunkAmount: chunkAmount === '' ? undefined : chunkAmount,
-      chunkMax: chunkMax === '' ? undefined : chunkMax,
+      chunkAmount,
     });
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Add Asset to Sweep{exchange ? ` - ${exchange.charAt(0).toUpperCase() + exchange.slice(1)}` : ''}</DialogTitle>
           <DialogDescription>Configure a new asset for automatic withdrawals{exchange ? ` on ${exchange}` : ''}.</DialogDescription>
@@ -628,158 +618,126 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
             </p>
           </div>
         ) : (
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Select Asset</Label>
-              <div className="flex flex-wrap gap-2">
-                {availableAssets.map((asset) => (
-                  <Button
-                    key={asset}
-                    variant={selectedAsset === asset ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSelectedAsset(asset)}
-                  >
-                    {asset}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            {assetInfo && (
-              <>
-                <div className="space-y-1">
-                  <Label>Withdrawal Method</Label>
-                  <div className="px-3 py-2 bg-muted rounded text-sm text-muted-foreground">
-                    {assetInfo.method}
-                  </div>
-                </div>
-
+          <div className="flex-1 overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Select Wallet Keys ({selectedKeys.length} selected)</Label>
+                  <Label>Select Asset</Label>
                   <div className="flex flex-wrap gap-2">
-                    {assetInfo.keys.map((key) => (
+                    {availableAssets.map((asset) => (
                       <Button
-                        key={key}
-                        variant={selectedKeys.includes(key) ? "default" : "outline"}
+                        key={asset}
+                        variant={selectedAsset === asset ? "default" : "outline"}
                         size="sm"
-                        onClick={() => toggleKey(key)}
-                        className="font-mono"
+                        onClick={() => setSelectedAsset(asset)}
                       >
-                        {key}
+                        {asset}
                       </Button>
                     ))}
                   </div>
-                  {selectedKeys.length === 0 && (
-                    <p className="text-sm text-destructive">Select at least one wallet key</p>
-                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Sweep Threshold ({selectedAsset})</Label>
-                    <Input
-                      type="number"
-                      step="any"
-                      value={threshold}
-                      onChange={(e) => setThreshold(parseFloat(e.target.value) || 0)}
-                      placeholder="Min amount to trigger sweep"
-                    />
-                    <p className="text-xs text-muted-foreground">Minimum balance to trigger withdrawal</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Reserve ({selectedAsset})</Label>
-                    <Input
-                      type="number"
-                      step="any"
-                      value={reserve}
-                      onChange={(e) => setReserve(parseFloat(e.target.value) || 0)}
-                      placeholder="Amount to keep on exchange"
-                    />
-                    <p className="text-xs text-muted-foreground">Amount to leave on exchange</p>
-                  </div>
-                </div>
+                {assetInfo && (
+                  <>
+                    <div className="space-y-1">
+                      <Label>Withdrawal Method</Label>
+                      <div className="px-3 py-2 bg-muted rounded text-sm text-muted-foreground">
+                        {assetInfo.method}
+                      </div>
+                    </div>
 
-                {/* Scheduling Settings */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Priority</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={priority}
-                      onChange={(e) => setPriority(parseInt(e.target.value) || 10)}
-                    />
-                    <p className="text-xs text-muted-foreground">Lower = higher priority (1=highest)</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Cooldown (seconds)</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={cooldownSeconds}
-                      onChange={(e) => setCooldownSeconds(parseInt(e.target.value) || 60)}
-                    />
-                    <p className="text-xs text-muted-foreground">Wait time between withdrawals</p>
-                  </div>
-                </div>
+                    <div className="space-y-2">
+                      <Label>Select Wallet Keys ({selectedKeys.length} selected)</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {assetInfo.keys.map((key) => (
+                          <Button
+                            key={key}
+                            variant={selectedKeys.includes(key) ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => toggleKey(key)}
+                            className="font-mono"
+                          >
+                            {key}
+                          </Button>
+                        ))}
+                      </div>
+                      {selectedKeys.length === 0 && (
+                        <p className="text-sm text-destructive">Select at least one wallet key</p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
 
-                {/* Chunking Settings */}
-                <div className="space-y-2">
-                  <Label className="text-xs">Chunk Mode</Label>
-                  <div className="flex gap-2">
-                    {(['all', 'fixedCoin', 'fixedUsd'] as const).map((mode) => (
-                      <Button
-                        key={mode}
-                        type="button"
-                        variant={chunkMode === mode ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setChunkMode(mode)}
-                      >
-                        {mode === 'all' ? 'All at once' : mode === 'fixedCoin' ? 'Fixed coin' : 'Fixed USD'}
-                      </Button>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {chunkMode === 'all' && 'Withdraw entire balance at once'}
-                    {chunkMode === 'fixedCoin' && 'Withdraw fixed coin amount per transaction'}
-                    {chunkMode === 'fixedUsd' && 'Withdraw fixed USD value per transaction'}
-                  </p>
-                </div>
-
-                {chunkMode !== 'all' && (
+              {assetInfo && (
+                <div className="space-y-4 md:border-l md:pl-6">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <Label className="text-xs">
-                        Chunk Amount ({chunkMode === 'fixedCoin' ? selectedAsset : 'USD'})
-                      </Label>
+                      <Label className="text-xs">Sweep Threshold ({selectedAsset})</Label>
                       <Input
                         type="number"
                         step="any"
-                        value={chunkAmount}
-                        onChange={(e) => setChunkAmount(e.target.value ? parseFloat(e.target.value) : '')}
-                        placeholder={chunkMode === 'fixedCoin' ? '0.01' : '500'}
+                        value={threshold}
+                        onChange={(e) => setThreshold(parseFloat(e.target.value) || 0)}
+                        placeholder="Min amount to trigger sweep"
                       />
+                      <p className="text-xs text-muted-foreground">Minimum balance to trigger withdrawal</p>
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">
-                        Max per withdrawal ({chunkMode === 'fixedCoin' ? selectedAsset : 'USD'})
-                      </Label>
+                      <Label className="text-xs">Reserve ({selectedAsset})</Label>
                       <Input
                         type="number"
                         step="any"
-                        value={chunkMax}
-                        onChange={(e) => setChunkMax(e.target.value ? parseFloat(e.target.value) : '')}
-                        placeholder="Optional max"
+                        value={reserve}
+                        onChange={(e) => setReserve(parseFloat(e.target.value) || 0)}
+                        placeholder="Amount to keep on exchange"
                       />
+                      <p className="text-xs text-muted-foreground">Amount to leave on exchange</p>
                     </div>
                   </div>
-                )}
-              </>
-            )}
+
+                  {/* Scheduling Settings */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Priority</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={priority}
+                        onChange={(e) => setPriority(parseInt(e.target.value) || 10)}
+                      />
+                      <p className="text-xs text-muted-foreground">Lower = higher priority (1=highest)</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Cooldown (seconds)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={cooldownSeconds}
+                        onChange={(e) => setCooldownSeconds(parseInt(e.target.value) || 60)}
+                      />
+                      <p className="text-xs text-muted-foreground">Wait time between withdrawals</p>
+                    </div>
+                  </div>
+
+                  {/* Chunk Size */}
+                  <div className="space-y-1">
+                    <Label className="text-xs">Chunk Size ({selectedAsset})</Label>
+                    <Input
+                      type="number"
+                      step="any"
+                      value={chunkAmount}
+                      onChange={(e) => setChunkAmount(parseFloat(e.target.value) || 0.01)}
+                    />
+                    <p className="text-xs text-muted-foreground">Amount per withdrawal</p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="mt-4">
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>

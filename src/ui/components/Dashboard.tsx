@@ -11,13 +11,15 @@ import {
   Play,
   Square,
   Waves,
-  AlertCircle
+  AlertCircle,
+  Wallet
 } from 'lucide-react';
 import { WhaleIcon } from '@/ui/components/ui/WhaleIcon';
 import { ApiKeysPanel } from './ApiKeysPanel';
 import { StatusPanel } from './StatusPanel';
 import { ConfigPanel } from './ConfigPanel';
 import { OrdersPanel } from './OrdersPanel';
+import { ManagementPanel } from './ManagementPanel';
 
 import { ModeToggle } from './ModeToggle';
 import { ThemeSelector } from './ThemeSelector';
@@ -59,7 +61,7 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
   const [toggling, setToggling] = useState(false);
   const [activeTab, setActiveTab] = useState(() => {
     const saved = localStorage.getItem('activeTab');
-    return ['status', 'orders', 'api-keys', 'config'].includes(saved || '') ? saved! : 'status';
+    return ['status', 'orders', 'api-keys', 'config', 'management'].includes(saved || '') ? saved! : 'status';
   });
 
   useEffect(() => {
@@ -237,6 +239,10 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
               <Settings size={16} />
               Configuration
             </TabsTrigger>
+            <TabsTrigger value="management" className="gap-2">
+              <Wallet size={16} />
+              Management
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="status">
@@ -253,6 +259,10 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
 
           <TabsContent value="config">
             <ConfigPanel />
+          </TabsContent>
+
+          <TabsContent value="management">
+            <ManagementPanel />
           </TabsContent>
         </Tabs>
       </main>

@@ -180,7 +180,7 @@ async function main() {
   if (existsSync(uiDistPath)) {
     const express = await import('express');
     app.use(express.default.static(uiDistPath));
-    app.get('*', (req, res) => {
+    app.get('/{*splat}', (req, res) => {
       res.sendFile(join(uiDistPath, 'index.html'));
     });
   }

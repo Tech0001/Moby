@@ -283,6 +283,49 @@ const MIGRATIONS = [
       ALTER TABLE asset_configs ADD COLUMN chunk_max REAL;
     `,
   },
+  {
+    version: 7,
+    name: 'remove_all_chunk_mode',
+    sql: `
+      -- Update any existing 'all' chunk modes to 'fixedCoin'
+      UPDATE asset_configs SET chunk_mode = 'fixedCoin' WHERE chunk_mode = 'all';
+    `,
+  },
+  {
+    version: 8,
+    name: 'wallet_management',
+    sql: `
+      -- Wallet storage for generated wallets (multi-chain)
+      CREATE TABLE IF NOT EXISTS wallets (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        chain TEXT NOT NULL DEFAULT 'ethereum',
+        address TEXT NOT NULL,
+        encrypted_private_key TEXT NOT NULL,
+        salt TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE(chain, address)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_wallets_address ON wallets(address);
+      CREATE INDEX IF NOT EXISTS idx_wallets_chain ON wallets(chain);
+
+      -- Wallet settings (password hash, etc.)
+      CREATE TABLE IF NOT EXISTS wallet_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `,
+  },
+  {
+    version: 9,
+    name: 'add_wallet_chain_column',
+    sql: `
+      -- Add chain column if it doesn't exist (for databases that ran v8 before chain was added)
+      ALTER TABLE wallets ADD COLUMN chain TEXT NOT NULL DEFAULT 'ethereum';
+    `,
+  },
 ];
 
 function runMigrations(database: Database.Database): void {
