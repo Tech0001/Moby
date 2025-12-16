@@ -114,8 +114,8 @@ export class KuCoinRestClient {
 
     if (data.code !== '200000') {
       const errorMsg = data.msg || `Error code: ${data.code}`;
-      logger.error({ endpoint, code: data.code, msg: data.msg }, 'KuCoin API error');
-      throw new Error(errorMsg);
+      logger.error({ endpoint, code: data.code, msg: data.msg, httpStatus: response.status }, 'KuCoin API error');
+      throw new Error(`KuCoin error (${data.code}): ${errorMsg}`);
     }
 
     return data.data;

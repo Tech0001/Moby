@@ -75,7 +75,8 @@ export const KrakenAdapterFactory: ExchangeAdapterFactory = {
         return client.getWithdrawInfo(asset, key, amount);
       },
 
-      async withdraw(asset, key, amount) {
+      async withdraw(asset, key, _address, amount) {
+        // Kraken uses key (saved address name), not the actual address
         const result = await client.withdraw(asset, key, amount);
         return { refId: result.refid };
       },

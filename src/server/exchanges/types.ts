@@ -116,7 +116,7 @@ export interface ExchangeRestClient {
 
   // Withdrawals
   getWithdrawInfo(asset: string, key: string, amount: number): Promise<WithdrawInfo>;
-  withdraw(asset: string, key: string, amount: number): Promise<WithdrawResult>;
+  withdraw(asset: string, key: string, address: string, amount: number): Promise<WithdrawResult>;
   getWithdrawStatus(asset?: string): Promise<WithdrawStatusRecord[]>;
   getWithdrawAddresses(asset?: string, method?: string): Promise<SavedAddress[]>;
 

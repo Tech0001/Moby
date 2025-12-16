@@ -24,6 +24,7 @@ import {
   createApiKey,
   updateApiKey,
   deleteApiKey,
+  markApiKeyUsed,
   markApiKeyValid,
   clearApiKeyRateLimit,
   hasAnyApiKeys,
@@ -419,11 +420,16 @@ export function createRoutes(context: RoutesContext): Router {
 
       const result = await restClient.testConnection();
 
-      if (result.success && !key.isValid) {
-        // Key is now valid, clear error state
-        markApiKeyValid(id);
-        const pool = getClientPool(key.exchange);
-        pool.refreshClients();
+      if (result.success) {
+        // Record usage for the test call
+        markApiKeyUsed(id);
+        
+        if (!key.isValid) {
+          // Key is now valid, clear error state
+          markApiKeyValid(id);
+          const pool = getClientPool(key.exchange);
+          pool.refreshClients();
+        }
       }
 
       res.json(result);
@@ -831,6 +837,172 @@ export function createRoutes(context: RoutesContext): Router {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
+  });
+
+  // Get tradeable coins (coins with open limit orders) for an exchange
+  router.get('/api/exchanges/:exchange/tradeable-coins', requireAuth, async (req: Request, res: Response) => {
+    const exchange = req.params.exchange as ExchangeId;
+    const pool = getClientPool(exchange);
+
+    if (!pool.hasAvailableClients()) {
+      res.status(400).json({ error: 'No API keys configured for this exchange' });
+      return;
+    }
+
+    try {
+      const result = await pool.execute((client) => client.getOpenOrders());
+      const orders = result.open || {};
+
+      // Extract unique coins from order pairs
+      const coins = new Set<string>();
+      const registry = getExchangeRegistry();
+      const adapter = registry.get(exchange);
+
+      for (const order of Object.values(orders)) {
+        if (order.pair) {
+          // Parse pair to get base and quote currencies
+          const { base, quote } = adapter?.parsePair(order.pair) || { base: '', quote: '' };
+          if (base) coins.add(base);
+          if (quote) coins.add(quote);
+        }
+      }
+
+      res.json({
+        exchange,
+        coins: Array.from(coins).sort(),
+        orderCount: Object.keys(orders).length,
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // Add manual withdrawal address (for exchanges that don't support address sync)
+  router.post('/api/exchanges/:exchange/addresses/manual', requireAuth, async (req: Request, res: Response) => {
+    const exchange = req.params.exchange as ExchangeId;
+    const { asset, address, addressConfirm, method, key, memo } = req.body;
+
+    // Validate required fields
+    if (!asset || !address || !addressConfirm || !method || !key) {
+      res.status(400).json({ error: 'Missing required fields: asset, address, addressConfirm, method, key' });
+      return;
+    }
+
+    // Verify addresses match (double-entry verification)
+    if (address !== addressConfirm) {
+      res.status(400).json({ error: 'Addresses do not match' });
+      return;
+    }
+
+    // Validate address format (basic checks)
+    if (address.length < 10) {
+      res.status(400).json({ error: 'Address appears to be too short' });
+      return;
+    }
+
+    // Check if user has open orders for this coin (security check)
+    const pool = getClientPool(exchange);
+    if (pool.hasAvailableClients()) {
+      try {
+        const result = await pool.execute((client) => client.getOpenOrders());
+        const orders = result.open || {};
+
+        const registry = getExchangeRegistry();
+        const adapter = registry.get(exchange);
+
+        const tradeableCoins = new Set<string>();
+        for (const order of Object.values(orders)) {
+          if (order.pair) {
+            const { base, quote } = adapter?.parsePair(order.pair) || { base: '', quote: '' };
+            if (base) tradeableCoins.add(base.toUpperCase());
+            if (quote) tradeableCoins.add(quote.toUpperCase());
+          }
+        }
+
+        if (!tradeableCoins.has(asset.toUpperCase())) {
+          res.status(400).json({
+            error: `No open orders found for ${asset}. You can only add addresses for coins you are actively trading.`,
+          });
+          return;
+        }
+      } catch (error) {
+        logger.warn({ exchange, error }, 'Could not verify tradeable coins, proceeding anyway');
+      }
+    }
+
+    try {
+      // Store the address
+      const result = upsertExchangeAddress(exchange, asset.toUpperCase(), method, key, address);
+
+      logger.info(
+        { exchange, asset, key, method, isNew: result.isNew },
+        'Manual address added'
+      );
+
+      res.json({
+        success: true,
+        isNew: result.isNew,
+        address: {
+          exchange,
+          asset: asset.toUpperCase(),
+          method,
+          key,
+          address,
+          memo: memo || undefined,
+        },
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // Delete a manual address
+  router.delete('/api/exchanges/:exchange/addresses/:asset/:key', requireAuth, (req: Request, res: Response) => {
+    const exchange = req.params.exchange as ExchangeId;
+    const asset = req.params.asset;
+    const key = decodeURIComponent(req.params.key);
+
+    try {
+      const addresses = getAllExchangeAddresses(exchange);
+      const addressToDelete = addresses.find(a => a.asset === asset && a.key === key);
+
+      if (!addressToDelete) {
+        res.status(404).json({ error: 'Address not found' });
+        return;
+      }
+
+      // Use deleteRemovedAddresses with an empty currentKeys list that excludes this address
+      const currentKeys = addresses
+        .filter(a => !(a.asset === asset && a.key === key))
+        .map(a => ({ asset: a.asset, key: a.key }));
+
+      deleteRemovedAddresses(exchange, currentKeys);
+
+      logger.info({ exchange, asset, key }, 'Manual address deleted');
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // Check if exchange supports address sync
+  router.get('/api/exchanges/:exchange/supports-sync', requireAuth, (req: Request, res: Response) => {
+    const exchange = req.params.exchange as ExchangeId;
+
+    // Exchanges that support syncing addresses from their API
+    const syncSupportedExchanges: ExchangeId[] = ['kraken', 'gemini', 'gateio'];
+
+    res.json({
+      exchange,
+      supportsSync: syncSupportedExchanges.includes(exchange),
+      requiresManualEntry: !syncSupportedExchanges.includes(exchange),
+    });
   });
 
   // Get account balance (optionally filtered by exchange)

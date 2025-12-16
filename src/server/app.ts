@@ -232,10 +232,20 @@ async function initializeExchangeWs(exchangeId: ExchangeId) {
     existingWs.disconnect();
   }
 
+  // Extract passphrase if stored with secret (format: secret:passphrase)
+  let apiSecret = activeKey.apiSecret;
+  let passphrase: string | undefined;
+  if (adapter.requiresPassphrase() && activeKey.apiSecret.includes(':')) {
+    const parts = activeKey.apiSecret.split(':');
+    apiSecret = parts[0];
+    passphrase = parts.slice(1).join(':');
+  }
+
   try {
     const wsClient = adapter.createWsClient({
       apiKey: activeKey.apiKey,
-      apiSecret: activeKey.apiSecret,
+      apiSecret,
+      passphrase,
       onFill: (fill: FillEvent) => {
         appLogger.info(
           { exchange: exchangeId, tradeId: fill.tradeId, pair: fill.pair },
@@ -257,7 +267,8 @@ async function initializeExchangeWs(exchangeId: ExchangeId) {
     await wsClient.connect();
     wsClients.set(exchangeId, wsClient);
   } catch (error) {
-    appLogger.error({ exchange: exchangeId, error }, 'Failed to connect WebSocket');
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    appLogger.error({ exchange: exchangeId, error: errorMsg }, 'Failed to connect WebSocket');
   }
 }
 

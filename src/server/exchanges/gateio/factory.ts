@@ -79,7 +79,8 @@ export const GateAdapterFactory: ExchangeAdapterFactory = {
         return client.getWithdrawInfo(asset, address, amount);
       },
 
-      async withdraw(asset, address, amount) {
+      async withdraw(asset, _key, address, amount) {
+        // Gate.io uses actual address, not key name
         const result = await client.withdraw(asset, address, amount);
         return { refId: result.refid };
       },

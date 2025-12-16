@@ -276,8 +276,8 @@ export class GateRestClient {
   }
 
   /**
-   * Get withdrawal addresses
-   * Note: Gate.io requires addresses to be added via UI
+   * Get saved withdrawal addresses from Gate.io
+   * Uses the /wallet/saved_address endpoint
    */
   async getWithdrawAddresses(
     asset?: string,
@@ -291,12 +291,95 @@ export class GateRestClient {
       memo?: string;
     }>
   > {
-    // Gate.io doesn't have a public API for saved withdrawal addresses
-    // Users must configure them manually
-    logger.debug({ asset }, 'Gate.io does not expose withdrawal address list API');
-    logger.debug('You must configure withdrawal addresses manually in your config');
+    interface GateSavedAddress {
+      currency: string;
+      chain: string;
+      address: string;
+      name: string;
+      tag?: string;
+      verified: string;
+    }
 
-    return [];
+    const results: Array<{
+      address: string;
+      asset: string;
+      method: string;
+      key: string;
+      memo?: string;
+    }> = [];
+
+    // If specific asset requested, fetch just that one
+    if (asset) {
+      try {
+        const addresses = await this.request<GateSavedAddress[]>(
+          'GET',
+          '/wallet/saved_address',
+          { currency: asset.toUpperCase() }
+        );
+
+        for (const addr of addresses) {
+          // Skip unverified addresses if desired
+          if (addr.verified !== '1') {
+            logger.debug({ asset: addr.currency, name: addr.name }, 'Skipping unverified address');
+            continue;
+          }
+
+          // Filter by method/chain if specified
+          if (method && addr.chain.toLowerCase() !== method.toLowerCase()) {
+            continue;
+          }
+
+          results.push({
+            address: addr.address,
+            asset: normalizeGateAsset(addr.currency),
+            method: addr.chain,
+            key: addr.name,
+            memo: addr.tag || undefined,
+          });
+        }
+      } catch (error) {
+        logger.debug({ asset, error }, 'Failed to fetch addresses for asset');
+      }
+    } else {
+      // Fetch addresses for all currencies we have balances for
+      // First get list of currencies with balance
+      const balances = await this.getBalance();
+      const currencies = Object.keys(balances);
+
+      for (const currency of currencies) {
+        try {
+          const addresses = await this.request<GateSavedAddress[]>(
+            'GET',
+            '/wallet/saved_address',
+            { currency: currency.toUpperCase() }
+          );
+
+          for (const addr of addresses) {
+            if (addr.verified !== '1') {
+              continue;
+            }
+
+            if (method && addr.chain.toLowerCase() !== method.toLowerCase()) {
+              continue;
+            }
+
+            results.push({
+              address: addr.address,
+              asset: normalizeGateAsset(addr.currency),
+              method: addr.chain,
+              key: addr.name,
+              memo: addr.tag || undefined,
+            });
+          }
+        } catch (error) {
+          // Currency may not have saved addresses
+          logger.debug({ currency, error }, 'No saved addresses for currency');
+        }
+      }
+    }
+
+    logger.info({ count: results.length }, 'Fetched Gate.io saved addresses');
+    return results;
   }
 
   /**

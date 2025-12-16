@@ -74,9 +74,19 @@ export class ExchangeClientPool {
     // Add clients for new keys
     for (const key of keys) {
       if (!this.clients.has(key.id)) {
+        // Extract passphrase if stored with secret (format: secret:passphrase)
+        let apiSecret = key.apiSecret;
+        let passphrase: string | undefined;
+        if (this.factory.requiresPassphrase() && key.apiSecret.includes(':')) {
+          const parts = key.apiSecret.split(':');
+          apiSecret = parts[0];
+          passphrase = parts.slice(1).join(':');
+        }
+
         const client = this.factory.createRestClient({
           apiKey: key.apiKey,
-          apiSecret: key.apiSecret,
+          apiSecret,
+          passphrase,
         });
         this.clients.set(key.id, client);
         logger.info({ exchangeId: this.exchangeId, keyId: key.id, name: key.name }, 'Added client to pool');

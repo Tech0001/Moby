@@ -115,6 +115,7 @@ export async function startWithdrawal(
         asset,
         amount: withdrawAmount,
         destKey,
+        address: addressRecord.address,
         fee: withdrawInfo.fee,
         netAmount,
         method,
@@ -122,7 +123,7 @@ export async function startWithdrawal(
       'Submitting withdrawal'
     );
 
-    const result = await exchangeClient.withdraw(asset, destKey, withdrawAmount);
+    const result = await exchangeClient.withdraw(asset, destKey, addressRecord.address, withdrawAmount);
 
     // Success - update state
     subtractPendingAmount(exchange, asset, withdrawAmount);

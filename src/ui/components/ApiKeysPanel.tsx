@@ -221,27 +221,69 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
                 const isExpanded = expandedExchanges.has(exchange.id);
                 const hasKeys = exchangeKeys.length > 0;
 
+                // Calculate aggregate counter stats for this exchange
+                const totalCounter = exchangeKeys.reduce((sum, k) => sum + k.estimatedCounter, 0);
+                const totalMaxCounter = exchangeKeys.reduce((sum, k) => {
+                  const tierInfo = exchange.tiers.find((t) => t.value === k.tier);
+                  return sum + (tierInfo?.maxCounter || 20);
+                }, 0);
+                const aggregatePercent = totalMaxCounter > 0 ? Math.min(100, (totalCounter / totalMaxCounter) * 100) : 0;
+                const aggregateColor =
+                  aggregatePercent < 50 ? 'bg-green-500' : aggregatePercent < 80 ? 'bg-yellow-500' : 'bg-red-500';
+
                 return (
                   <div key={exchange.id}>
                     <div
-                      className="flex items-center justify-between p-4 hover:bg-muted/50 cursor-pointer"
+                      className="flex flex-col p-4 hover:bg-muted/50 cursor-pointer"
                       onClick={() => toggleExchange(exchange.id)}
                     >
-                      <div className="flex items-center gap-2">
-                        {isExpanded ? (
-                          <ChevronDown className="h-4 w-4" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4" />
-                        )}
-                        <span className="font-medium">{exchange.name}</span>
-                        {hasKeys && (
-                          <Badge variant="secondary" className="ml-2">
-                            {exchangeKeys.length} key{exchangeKeys.length !== 1 ? 's' : ''}
-                          </Badge>
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-2">
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                          <span className="font-medium">{exchange.name}</span>
+                          {hasKeys && (
+                            <Badge variant="secondary" className="ml-2">
+                              {exchangeKeys.length} key{exchangeKeys.length !== 1 ? 's' : ''}
+                            </Badge>
+                          )}
+                        </div>
+                        {!hasKeys && (
+                          <span className="text-xs text-muted-foreground">No keys configured</span>
                         )}
                       </div>
-                      {!hasKeys && (
-                        <span className="text-xs text-muted-foreground">No keys configured</span>
+
+                      {/* Summary Bars (visible when closed) */}
+                      {!isExpanded && hasKeys && (
+                        <div className="mt-3 space-y-2 pl-6">
+                          {exchangeKeys.map((key) => {
+                            const tierFromExchange = exchange.tiers.find((t) => t.value === key.tier);
+                            const tierInfo = tierFromExchange
+                              ? { maxCounter: tierFromExchange.maxCounter }
+                              : DEFAULT_TIER_INFO[key.tier] || { maxCounter: 20 };
+                            
+                            const percent = Math.min(100, (key.estimatedCounter / tierInfo.maxCounter) * 100);
+                            const color = percent < 50 ? 'bg-green-500' : percent < 80 ? 'bg-yellow-500' : 'bg-red-500';
+
+                            return (
+                              <div key={key.id} className="space-y-1">
+                                <div className="flex items-center justify-between text-xs">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-muted-foreground">{key.name}</span>
+                                    {!key.isValid && <span className="text-red-500 font-bold">!</span>}
+                                  </div>
+                                  <span className="text-muted-foreground font-mono">
+                                    {key.estimatedCounter.toFixed(1)}/{tierInfo.maxCounter}
+                                  </span>
+                                </div>
+                                <Progress value={percent} className="h-1.5" indicatorClassName={color} />
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
                     {isExpanded && (

@@ -80,8 +80,8 @@ export const GeminiAdapterFactory: ExchangeAdapterFactory = {
         return client.getWithdrawInfo(asset, key, amount);
       },
 
-      async withdraw(asset, key, amount) {
-        // For Gemini, 'key' is the destination address
+      async withdraw(asset, key, address, amount) {
+        // Gemini uses the saved address key/label
         const result = await client.withdraw(asset, key, amount);
         return { refId: result.refid };
       },

@@ -88,7 +88,8 @@ export const KuCoinAdapterFactory: ExchangeAdapterFactory = {
         return client.getWithdrawInfo(asset, address, amount);
       },
 
-      async withdraw(asset, address, amount) {
+      async withdraw(asset, _key, address, amount) {
+        // KuCoin uses actual address, not key name
         const result = await client.withdraw(asset, address, amount);
         return { refId: result.refid };
       },

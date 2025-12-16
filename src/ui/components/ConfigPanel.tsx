@@ -6,7 +6,8 @@ import { Label } from "@/ui/components/ui/label";
 import { Badge } from "@/ui/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/ui/components/ui/dialog";
 import { Alert, AlertDescription } from "@/ui/components/ui/alert";
-import { Trash2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/components/ui/select";
+import { Trash2, Plus } from 'lucide-react';
 
 // New simplified asset config (stored in database)
 interface AssetConfig {
@@ -55,17 +56,25 @@ interface SweeperStatus {
   hasApiKeys: boolean;
 }
 
+interface ExchangeSyncSupport {
+  exchange: string;
+  supportsSync: boolean;
+  requiresManualEntry: boolean;
+}
+
 export function ConfigPanel() {
   const [config, setConfig] = useState<Config | null>(null);
   const [assetConfigs, setAssetConfigs] = useState<AssetConfig[]>([]);
   const [addresses, setAddresses] = useState<ExchangeAddress[]>([]);
   const [exchanges, setExchanges] = useState<AvailableExchange[]>([]);
+  const [exchangeSyncSupport, setExchangeSyncSupport] = useState<Record<string, ExchangeSyncSupport>>({});
   const [loading, setLoading] = useState(true);
   const [loadingAddresses, setLoadingAddresses] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [addAssetFor, setAddAssetFor] = useState<{ exchange: string; asset: string } | null>(null);
+  const [addManualAddressFor, setAddManualAddressFor] = useState<string | null>(null);
   const [sweeperStatus, setSweeperStatus] = useState<SweeperStatus | null>(null);
   const [toggling, setToggling] = useState(false);
   const [syncingExchange, setSyncingExchange] = useState<string | null>(null);
@@ -74,9 +83,28 @@ export function ConfigPanel() {
     fetchConfig();
     fetchAssetConfigs();
     fetchSweeperStatus();
-    fetchExchanges();
+    fetchExchanges().then(() => fetchExchangeSyncSupport());
     fetchAddresses();
   }, []);
+
+  async function fetchExchangeSyncSupport() {
+    const supportMap: Record<string, ExchangeSyncSupport> = {};
+    const exchangeIds = ['kraken', 'gemini', 'kucoin', 'gateio'];
+
+    for (const exchangeId of exchangeIds) {
+      try {
+        const res = await fetch(`/api/exchanges/${exchangeId}/supports-sync`);
+        if (res.ok) {
+          const data = await res.json();
+          supportMap[exchangeId] = data;
+        }
+      } catch (err) {
+        // Default to requiring sync
+        supportMap[exchangeId] = { exchange: exchangeId, supportsSync: true, requiresManualEntry: false };
+      }
+    }
+    setExchangeSyncSupport(supportMap);
+  }
 
   async function fetchConfig() {
     try {
@@ -195,6 +223,62 @@ export function ConfigPanel() {
       setError(`Failed to sync addresses from ${exchangeName}`);
     } finally {
       setSyncingExchange(null);
+    }
+  }
+
+  async function addManualAddress(exchangeId: string, data: {
+    asset: string;
+    address: string;
+    addressConfirm: string;
+    method: string;
+    key: string;
+    memo?: string;
+  }) {
+    setSaving(true);
+    setError('');
+
+    try {
+      const res = await fetch(`/api/exchanges/${exchangeId}/addresses/manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        setError(result.error || 'Failed to add address');
+        return false;
+      }
+
+      setSuccess(`Added withdrawal address for ${data.asset}`);
+      await fetchAddresses();
+      return true;
+    } catch (err) {
+      setError('Network error');
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteManualAddress(exchangeId: string, asset: string, key: string) {
+    if (!confirm(`Delete withdrawal address "${key}" for ${asset}?`)) return;
+
+    try {
+      const res = await fetch(`/api/exchanges/${exchangeId}/addresses/${asset}/${encodeURIComponent(key)}`, {
+        method: 'DELETE',
+      });
+
+      if (res.ok) {
+        setSuccess(`Deleted address "${key}"`);
+        await fetchAddresses();
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Failed to delete address');
+      }
+    } catch (err) {
+      setError('Network error');
     }
   }
 
@@ -345,6 +429,9 @@ export function ConfigPanel() {
               loadingAddresses={loadingAddresses}
               onAddAsset={(asset) => setAddAssetFor({ exchange: exchange.id, asset })}
               onDeleteConfig={(asset) => deleteAssetConfig(exchange.id, asset)}
+              supportsSync={exchangeSyncSupport[exchange.id]?.supportsSync ?? true}
+              onAddManualAddress={() => setAddManualAddressFor(exchange.id)}
+              onDeleteAddress={(asset, key) => deleteManualAddress(exchange.id, asset, key)}
             />
           ))}
         </div>
@@ -389,6 +476,20 @@ export function ConfigPanel() {
           if (!addAssetFor) return;
           const success = await saveAssetConfig(addAssetFor.exchange, asset, configData);
           if (success) setAddAssetFor(null);
+        }}
+        saving={saving}
+      />
+
+      {/* Manual Address Modal */}
+      <ManualAddressDialog
+        open={addManualAddressFor !== null}
+        onOpenChange={(open) => !open && setAddManualAddressFor(null)}
+        exchange={addManualAddressFor || ''}
+        exchangeName={exchanges.find(e => e.id === addManualAddressFor)?.name || ''}
+        onAdd={async (data) => {
+          if (!addManualAddressFor) return;
+          const success = await addManualAddress(addManualAddressFor, data);
+          if (success) setAddManualAddressFor(null);
         }}
         saving={saving}
       />
@@ -555,6 +656,222 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
   );
 }
 
+interface ManualAddressDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  exchange: string;
+  exchangeName: string;
+  onAdd: (data: {
+    asset: string;
+    address: string;
+    addressConfirm: string;
+    method: string;
+    key: string;
+    memo?: string;
+  }) => void;
+  saving: boolean;
+}
+
+function ManualAddressDialog({ open, onOpenChange, exchange, exchangeName, onAdd, saving }: ManualAddressDialogProps) {
+  const [tradeableCoins, setTradeableCoins] = useState<string[]>([]);
+  const [loadingCoins, setLoadingCoins] = useState(false);
+  const [asset, setAsset] = useState('');
+  const [address, setAddress] = useState('');
+  const [addressConfirm, setAddressConfirm] = useState('');
+  const [method, setMethod] = useState('');
+  const [key, setKey] = useState('');
+  const [memo, setMemo] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (open && exchange) {
+      fetchTradeableCoins();
+      // Reset form
+      setAsset('');
+      setAddress('');
+      setAddressConfirm('');
+      setMethod('');
+      setKey('');
+      setMemo('');
+      setError('');
+    }
+  }, [open, exchange]);
+
+  async function fetchTradeableCoins() {
+    setLoadingCoins(true);
+    try {
+      const res = await fetch(`/api/exchanges/${exchange}/tradeable-coins`);
+      if (res.ok) {
+        const data = await res.json();
+        setTradeableCoins(data.coins || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch tradeable coins:', err);
+    } finally {
+      setLoadingCoins(false);
+    }
+  }
+
+  function handleSubmit() {
+    setError('');
+
+    if (!asset) {
+      setError('Please select a coin');
+      return;
+    }
+    if (!address) {
+      setError('Please enter the withdrawal address');
+      return;
+    }
+    if (!addressConfirm) {
+      setError('Please confirm the withdrawal address');
+      return;
+    }
+    if (address !== addressConfirm) {
+      setError('Addresses do not match. Please verify and re-enter.');
+      return;
+    }
+    if (!method) {
+      setError('Please enter the network/chain');
+      return;
+    }
+    if (!key) {
+      setError('Please enter a name for this address');
+      return;
+    }
+
+    onAdd({
+      asset,
+      address,
+      addressConfirm,
+      method,
+      key,
+      memo: memo || undefined,
+    });
+  }
+
+  const addressesMatch = address && addressConfirm && address === addressConfirm;
+  const addressesDontMatch = address && addressConfirm && address !== addressConfirm;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Add Manual Address - {exchangeName}</DialogTitle>
+          <DialogDescription>
+            Add a withdrawal address manually. You can only add addresses for coins you are actively trading on {exchangeName}.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          <div className="space-y-2">
+            <Label>Coin *</Label>
+            {loadingCoins ? (
+              <div className="text-sm text-muted-foreground">Loading tradeable coins...</div>
+            ) : tradeableCoins.length === 0 ? (
+              <Alert>
+                <AlertDescription>
+                  No open orders found. You must have active limit orders on {exchangeName} to add withdrawal addresses.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Select value={asset} onValueChange={setAsset}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select coin" />
+                </SelectTrigger>
+                <SelectContent>
+                  {tradeableCoins.map((coin) => (
+                    <SelectItem key={coin} value={coin}>
+                      {coin}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Network / Chain *</Label>
+            <Input
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
+              placeholder="e.g., ERC20, TRC20, Native"
+            />
+            <p className="text-xs text-muted-foreground">
+              The blockchain network for this address (must match your wallet)
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Address Name / Label *</Label>
+            <Input
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              placeholder="e.g., My Cold Wallet"
+            />
+            <p className="text-xs text-muted-foreground">
+              A friendly name to identify this address
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Withdrawal Address *</Label>
+            <Input
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="Enter the full withdrawal address"
+              className="font-mono text-sm"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Confirm Address *</Label>
+            <Input
+              value={addressConfirm}
+              onChange={(e) => setAddressConfirm(e.target.value)}
+              placeholder="Re-enter the withdrawal address"
+              className={`font-mono text-sm ${addressesDontMatch ? 'border-destructive' : ''} ${addressesMatch ? 'border-green-500' : ''}`}
+            />
+            {addressesDontMatch && (
+              <p className="text-xs text-destructive">Addresses do not match</p>
+            )}
+            {addressesMatch && (
+              <p className="text-xs text-green-500">Addresses match ✓</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Memo / Tag (optional)</Label>
+            <Input
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              placeholder="Required for some coins like XRP, XLM"
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={saving || !asset || !address || !addressConfirm || !method || !key || tradeableCoins.length === 0}
+          >
+            {saving ? 'Adding...' : 'Add Address'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 interface ExchangeWalletManagerProps {
   exchange: AvailableExchange;
   addresses: Record<string, { method: string; keys: string[] }>;
@@ -564,6 +881,9 @@ interface ExchangeWalletManagerProps {
   loadingAddresses: boolean;
   onAddAsset: (asset: string) => void;
   onDeleteConfig: (asset: string) => void;
+  supportsSync: boolean;
+  onAddManualAddress: () => void;
+  onDeleteAddress: (asset: string, key: string) => void;
 }
 
 function ExchangeWalletManager({
@@ -575,6 +895,9 @@ function ExchangeWalletManager({
   loadingAddresses,
   onAddAsset,
   onDeleteConfig,
+  supportsSync,
+  onAddManualAddress,
+  onDeleteAddress,
 }: ExchangeWalletManagerProps) {
   const [open, setOpen] = useState(false);
   const assetCount = Object.keys(addresses).length;
@@ -593,6 +916,11 @@ function ExchangeWalletManager({
                   {configuredCount} configured
                 </Badge>
               )}
+              {!supportsSync && (
+                <Badge variant="outline" className="text-yellow-500 border-yellow-500">
+                  Manual
+                </Badge>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -600,15 +928,27 @@ function ExchangeWalletManager({
           <Button onClick={() => setOpen(true)} variant="default" className="w-full">
             Manage Wallets
           </Button>
-          <Button
-            onClick={onSync}
-            disabled={isSyncing}
-            variant="outline"
-            size="sm"
-            className="w-full"
-          >
-            {isSyncing ? 'Syncing...' : 'Sync Addresses'}
-          </Button>
+          {supportsSync ? (
+            <Button
+              onClick={onSync}
+              disabled={isSyncing}
+              variant="outline"
+              size="sm"
+              className="w-full"
+            >
+              {isSyncing ? 'Syncing...' : 'Sync Addresses'}
+            </Button>
+          ) : (
+            <Button
+              onClick={onAddManualAddress}
+              variant="outline"
+              size="sm"
+              className="w-full"
+            >
+              <Plus size={14} className="mr-1" />
+              Add Address
+            </Button>
+          )}
         </CardContent>
       </Card>
 
@@ -628,7 +968,9 @@ function ExchangeWalletManager({
               </div>
             ) : assetCount === 0 ? (
               <div className="p-8 text-center text-muted-foreground">
-                No withdrawal addresses found. Sync from exchange to fetch them.
+                {supportsSync
+                  ? 'No withdrawal addresses found. Sync from exchange to fetch them.'
+                  : 'No withdrawal addresses added. Add addresses manually for coins you are trading.'}
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
@@ -654,15 +996,24 @@ function ExchangeWalletManager({
                       </div>
 
                       <div className="flex flex-wrap gap-1 mb-3">
-                        {keys.slice(0, 3).map((key) => (
+                        {keys.slice(0, supportsSync ? 3 : keys.length).map((key) => (
                           <span
                             key={key}
-                            className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-muted text-muted-foreground truncate max-w-[100px]"
+                            className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-muted text-muted-foreground truncate max-w-[100px] flex items-center gap-1"
                           >
                             {key}
+                            {!supportsSync && (
+                              <button
+                                onClick={() => onDeleteAddress(asset, key)}
+                                className="text-destructive hover:text-destructive/80 ml-1"
+                                title="Delete address"
+                              >
+                                ×
+                              </button>
+                            )}
                           </span>
                         ))}
-                        {keys.length > 3 && (
+                        {supportsSync && keys.length > 3 && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-muted text-muted-foreground">
                             +{keys.length - 3}
                           </span>
