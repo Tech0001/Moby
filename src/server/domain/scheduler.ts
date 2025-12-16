@@ -6,6 +6,7 @@ import {
   isEnabled,
   getEnabledAssetConfigs,
   hasAnyApiKeys,
+  isExchangeEnabled,
   type AssetConfigRecord,
 } from '../db/repositories.js';
 import { startWithdrawal, isEligibleForWithdrawal } from './withdrawWorker.js';
@@ -117,10 +118,12 @@ export class Scheduler extends EventEmitter {
         return;
       }
 
-      // Process all exchanges that have API keys
+      // Process all exchanges that have API keys and are enabled (database toggle)
       const registry = getExchangeRegistry();
       const allExchanges = registry.getAll().map((a) => a.exchangeId);
-      const enabledExchanges = allExchanges.filter((id) => hasAnyApiKeys(id));
+      const enabledExchanges = allExchanges.filter(
+        (id) => hasAnyApiKeys(id) && isExchangeEnabled(id)
+      );
 
       for (const exchange of enabledExchanges) {
         await this.processExchange(exchange);
@@ -163,12 +166,15 @@ export class Scheduler extends EventEmitter {
       return;
     }
 
+    // Sort by priority (lower number = higher priority)
+    assetConfigs.sort((a, b) => a.priority - b.priority);
+
     // Get current states for this exchange
     const states = new Map(
       getAllAssetStates(exchange).map((s) => [s.asset, s])
     );
 
-    // Process assets (they're already enabled, ordered by asset name)
+    // Process assets in priority order
     let withdrawalsStarted = 0;
     const availableSlots = maxInflightWithdrawals - globalInflight;
 

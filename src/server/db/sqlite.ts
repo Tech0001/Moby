@@ -262,6 +262,27 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_asset_configs_enabled ON asset_configs(enabled);
     `,
   },
+  {
+    version: 6,
+    name: 'exchange_settings_and_asset_config_extensions',
+    sql: `
+      -- Exchange-level settings (enabled toggle per exchange)
+      CREATE TABLE IF NOT EXISTS exchange_settings (
+        exchange TEXT PRIMARY KEY,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      -- Add missing columns to asset_configs for priority, cooldown, and chunking
+      ALTER TABLE asset_configs ADD COLUMN priority INTEGER NOT NULL DEFAULT 10;
+      ALTER TABLE asset_configs ADD COLUMN cooldown_seconds INTEGER NOT NULL DEFAULT 60;
+      ALTER TABLE asset_configs ADD COLUMN method TEXT;
+      ALTER TABLE asset_configs ADD COLUMN chunk_mode TEXT NOT NULL DEFAULT 'all';
+      ALTER TABLE asset_configs ADD COLUMN chunk_amount REAL;
+      ALTER TABLE asset_configs ADD COLUMN chunk_max REAL;
+    `,
+  },
 ];
 
 function runMigrations(database: Database.Database): void {

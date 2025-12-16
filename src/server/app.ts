@@ -162,6 +162,15 @@ async function main() {
       const newEnabledExchanges = getEnabledExchanges();
       statusPoller.updateEnabledExchanges(newEnabledExchanges);
     },
+    updateConfig: (newConfig: AppConfig) => {
+      config = newConfig;
+      fillProcessor.updateConfig(config);
+      scheduler.updateConfig(config);
+
+      // Update enabled exchanges
+      const newEnabledExchanges = getEnabledExchanges();
+      statusPoller.updateEnabledExchanges(newEnabledExchanges);
+    }
   });
 
   app.use(routes);

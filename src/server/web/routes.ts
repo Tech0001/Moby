@@ -33,12 +33,18 @@ import {
   upsertAssetConfig,
   deleteAssetConfig,
   setAssetConfigEnabled,
+  getExchangeSettings,
+  getAllExchangeSettings,
+  setExchangeEnabled,
+  isExchangeEnabled,
   type ApiKeyTier,
+  type ChunkMode,
 } from '../db/repositories.js';
 import { getClientPool } from '../exchanges/clientPool.js';
 import { getExchangeRegistry } from '../exchanges/registry.js';
 import type { AppConfig } from '../config/schema.js';
 import type { ExchangeId } from '../domain/types.js';
+import { saveConfig } from '../config/loadConfig.js';
 
 const logger = createChildLogger('routes');
 
@@ -48,6 +54,7 @@ const DEFAULT_EXCHANGE: ExchangeId = 'kraken';
 export interface RoutesContext {
   config: AppConfig;
   reloadConfig: () => Promise<void>;
+  updateConfig: (newConfig: AppConfig) => void;
 }
 
 export function createRoutes(context: RoutesContext): Router {
@@ -152,14 +159,48 @@ export function createRoutes(context: RoutesContext): Router {
   // Get all supported exchanges and their configuration (for UI)
   router.get('/api/exchanges/available', requireAuth, (req: Request, res: Response) => {
     const registry = getExchangeRegistry();
-    const exchanges = registry.getAll().map((adapter) => ({
-      id: adapter.exchangeId,
-      name: adapter.displayName,
-      requiresPassphrase: adapter.requiresPassphrase(),
-      defaultTier: adapter.getDefaultTier(),
-      tiers: adapter.getAvailableTiers(),
-    }));
+    const allSettings = getAllExchangeSettings();
+    const settingsMap = new Map(allSettings.map((s) => [s.exchange, s]));
+
+    const exchanges = registry.getAll().map((adapter) => {
+      const settings = settingsMap.get(adapter.exchangeId);
+      return {
+        id: adapter.exchangeId,
+        name: adapter.displayName,
+        requiresPassphrase: adapter.requiresPassphrase(),
+        defaultTier: adapter.getDefaultTier(),
+        tiers: adapter.getAvailableTiers(),
+        enabled: settings ? settings.enabled : true, // Default to enabled
+      };
+    });
     res.json({ exchanges });
+  });
+
+  // ============== Exchange Settings ==============
+
+  // Get exchange settings
+  router.get('/api/exchanges/:exchange/settings', requireAuth, (req: Request, res: Response) => {
+    const exchange = req.params.exchange as ExchangeId;
+    const settings = getExchangeSettings(exchange);
+    res.json({
+      exchange,
+      enabled: settings ? settings.enabled : true,
+    });
+  });
+
+  // Toggle exchange enabled/disabled
+  router.post('/api/exchanges/:exchange/settings', requireAuth, (req: Request, res: Response) => {
+    const exchange = req.params.exchange as ExchangeId;
+    const { enabled } = req.body;
+
+    if (typeof enabled !== 'boolean') {
+      res.status(400).json({ error: 'enabled must be a boolean' });
+      return;
+    }
+
+    setExchangeEnabled(exchange, enabled);
+    logger.info({ exchange, enabled }, 'Exchange enabled state changed');
+    res.json({ success: true, exchange, enabled });
   });
 
   // Get application status (optionally filtered by exchange)
@@ -567,7 +608,18 @@ export function createRoutes(context: RoutesContext): Router {
     requireAuth,
     (req: Request, res: Response) => {
       const { exchange, asset } = req.params;
-      const { enabled, threshold, reserve, destKeys } = req.body;
+      const {
+        enabled,
+        threshold,
+        reserve,
+        destKeys,
+        priority,
+        cooldownSeconds,
+        method,
+        chunkMode,
+        chunkAmount,
+        chunkMax,
+      } = req.body;
 
       // Basic validation
       if (typeof threshold !== 'number' || threshold <= 0) {
@@ -580,15 +632,40 @@ export function createRoutes(context: RoutesContext): Router {
         return;
       }
 
+      // Validate priority if provided
+      if (priority !== undefined && (typeof priority !== 'number' || priority < 1)) {
+        res.status(400).json({ error: 'priority must be a positive number' });
+        return;
+      }
+
+      // Validate cooldownSeconds if provided
+      if (cooldownSeconds !== undefined && (typeof cooldownSeconds !== 'number' || cooldownSeconds < 0)) {
+        res.status(400).json({ error: 'cooldownSeconds must be a non-negative number' });
+        return;
+      }
+
+      // Validate chunkMode if provided
+      const validChunkModes: ChunkMode[] = ['all', 'fixedCoin', 'fixedUsd'];
+      if (chunkMode !== undefined && !validChunkModes.includes(chunkMode)) {
+        res.status(400).json({ error: 'chunkMode must be one of: all, fixedCoin, fixedUsd' });
+        return;
+      }
+
       // Save to database
       upsertAssetConfig(exchange as ExchangeId, asset, {
         enabled: enabled !== false,
         threshold,
         reserve: reserve ?? 0,
         destKeys,
+        priority: priority ?? 10,
+        cooldownSeconds: cooldownSeconds ?? 60,
+        method: method ?? null,
+        chunkMode: chunkMode ?? 'all',
+        chunkAmount: chunkAmount ?? null,
+        chunkMax: chunkMax ?? null,
       });
 
-      logger.info({ exchange, asset, threshold, destKeys }, 'Asset config saved');
+      logger.info({ exchange, asset, threshold, priority, cooldownSeconds, chunkMode }, 'Asset config saved');
       res.json({ success: true });
     }
   );
@@ -630,6 +707,37 @@ export function createRoutes(context: RoutesContext): Router {
 
       logger.info({ exchange, asset, enabled }, 'Asset config toggled');
       res.json({ success: true });
+    }
+  );
+
+  // Toggle exchange global enabled state
+  router.post(
+    '/api/config/exchanges/:exchange/enable',
+    requireAuth,
+    (req: Request, res: Response) => {
+      const exchange = req.params.exchange as ExchangeId;
+      const { enabled } = req.body;
+      
+      const config = context.config;
+      const disabledExchanges = new Set(config.global.disabledExchanges || []);
+      
+      if (enabled) {
+        disabledExchanges.delete(exchange);
+      } else {
+        disabledExchanges.add(exchange);
+      }
+      
+      config.global.disabledExchanges = Array.from(disabledExchanges) as ExchangeId[];
+      
+      try {
+        saveConfig(config);
+        context.updateConfig(config);
+        logger.info({ exchange, enabled }, 'Exchange global enabled state toggled');
+        res.json({ success: true, enabled });
+      } catch (error) {
+        logger.error({ error }, 'Failed to save config');
+        res.status(500).json({ error: 'Failed to save configuration' });
+      }
     }
   );
 

@@ -25,6 +25,7 @@ export const GlobalConfigSchema = z.object({
   schedulerTickMs: z.number().int().positive().default(1000),
   backoffSeconds: z.array(z.number().positive()).default([15, 30, 60, 120, 300, 600]),
   allowedOrderTypes: z.array(z.string()).default(['limit', 'take_profit', 'take_profit_limit']),
+  disabledExchanges: z.array(ExchangeIdSchema).default([]),
 });
 
 // Web UI / Auth configuration

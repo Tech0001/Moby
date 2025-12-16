@@ -178,8 +178,8 @@ export async function startWithdrawal(
   }
 }
 
-// Default cooldown between withdrawals (30 seconds)
-const DEFAULT_COOLDOWN_MS = 30000;
+// Default cooldown between withdrawals (60 seconds)
+const DEFAULT_COOLDOWN_SECONDS = 60;
 
 /**
  * Check if an asset is eligible for withdrawal attempt
@@ -187,7 +187,7 @@ const DEFAULT_COOLDOWN_MS = 30000;
 export function isEligibleForWithdrawal(
   exchange: ExchangeId,
   asset: string,
-  _assetConfig: AssetConfigRecord,
+  assetConfig: AssetConfigRecord,
   globalConfig: GlobalConfig,
   inflightCount: number,
   globalInflightCount: number
@@ -208,11 +208,13 @@ export function isEligibleForWithdrawal(
     };
   }
 
-  // Check cooldown (use default)
+  // Check cooldown (use asset config or default)
+  const cooldownSeconds = assetConfig.cooldownSeconds ?? DEFAULT_COOLDOWN_SECONDS;
+  const cooldownMs = cooldownSeconds * 1000;
   if (state.lastWithdrawAt) {
     const elapsed = now - state.lastWithdrawAt;
-    if (elapsed < DEFAULT_COOLDOWN_MS) {
-      const remainingMs = DEFAULT_COOLDOWN_MS - elapsed;
+    if (elapsed < cooldownMs) {
+      const remainingMs = cooldownMs - elapsed;
       return {
         eligible: false,
         reason: `In cooldown for ${Math.ceil(remainingMs / 1000)}s`,

@@ -4,6 +4,7 @@ import { Button } from "@/ui/components/ui/button";
 import { Input } from "@/ui/components/ui/input";
 import { Label } from "@/ui/components/ui/label";
 import { Badge } from "@/ui/components/ui/badge";
+import { Switch } from "@/ui/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/ui/components/ui/dialog";
 import { Alert, AlertDescription } from "@/ui/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/components/ui/select";
@@ -28,6 +29,7 @@ interface GlobalConfig {
   backoffSeconds: number[];
   allowedOrderTypes: string[];
   keyNamePrefix?: string;
+  disabledExchanges?: string[];
 }
 
 interface Config {
@@ -282,7 +284,17 @@ export function ConfigPanel() {
     }
   }
 
-  async function saveAssetConfig(exchange: string, asset: string, configData: { threshold: number; reserve: number; destKeys: string[]; enabled?: boolean }) {
+  async function saveAssetConfig(exchange: string, asset: string, configData: {
+    threshold: number;
+    reserve: number;
+    destKeys: string[];
+    enabled?: boolean;
+    priority?: number;
+    cooldownSeconds?: number;
+    chunkMode?: 'all' | 'fixedCoin' | 'fixedUsd';
+    chunkAmount?: number;
+    chunkMax?: number;
+  }) {
     setSaving(true);
     setError('');
     setSuccess('');
@@ -326,6 +338,30 @@ export function ConfigPanel() {
       } else {
         const data = await res.json();
         setError(data.error || 'Failed to delete');
+      }
+    } catch (err) {
+      setError('Network error');
+    }
+  }
+
+  async function toggleExchangeEnabled(exchange: string, enabled: boolean) {
+    try {
+      const res = await fetch(`/api/config/exchanges/${exchange}/enable`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        await fetchConfig();
+        if (enabled) {
+          setSuccess(`Enabled ${exchange}`);
+        } else {
+          setSuccess(`Disabled ${exchange}`);
+        }
+      } else {
+        setError('Failed to toggle exchange');
       }
     } catch (err) {
       setError('Network error');
@@ -432,6 +468,8 @@ export function ConfigPanel() {
               supportsSync={exchangeSyncSupport[exchange.id]?.supportsSync ?? true}
               onAddManualAddress={() => setAddManualAddressFor(exchange.id)}
               onDeleteAddress={(asset, key) => deleteManualAddress(exchange.id, asset, key)}
+              isEnabled={!config.global.disabledExchanges?.includes(exchange.id)}
+              onToggleEnabled={(enabled) => toggleExchangeEnabled(exchange.id, enabled)}
             />
           ))}
         </div>
@@ -504,7 +542,16 @@ interface AddAssetDialogProps {
   initialAsset?: string;
   existingAssets: string[];
   addressesByAsset: Record<string, { method: string; keys: string[] }>;
-  onAdd: (asset: string, config: { threshold: number; reserve: number; destKeys: string[] }) => void;
+  onAdd: (asset: string, config: {
+    threshold: number;
+    reserve: number;
+    destKeys: string[];
+    priority?: number;
+    cooldownSeconds?: number;
+    chunkMode?: 'all' | 'fixedCoin' | 'fixedUsd';
+    chunkAmount?: number;
+    chunkMax?: number;
+  }) => void;
   saving: boolean;
 }
 
@@ -517,6 +564,11 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [threshold, setThreshold] = useState(0.001);
   const [reserve, setReserve] = useState(0);
+  const [priority, setPriority] = useState(10);
+  const [cooldownSeconds, setCooldownSeconds] = useState(60);
+  const [chunkMode, setChunkMode] = useState<'all' | 'fixedCoin' | 'fixedUsd'>('all');
+  const [chunkAmount, setChunkAmount] = useState<number | ''>('');
+  const [chunkMax, setChunkMax] = useState<number | ''>('');
 
   useEffect(() => {
     if (open) {
@@ -524,6 +576,11 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
       setSelectedAsset(newDefault);
       setThreshold(0.001);
       setReserve(0);
+      setPriority(10);
+      setCooldownSeconds(60);
+      setChunkMode('all');
+      setChunkAmount('');
+      setChunkMax('');
     }
   }, [open, initialAsset]);
 
@@ -547,6 +604,11 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
       threshold,
       reserve,
       destKeys: selectedKeys,
+      priority,
+      cooldownSeconds,
+      chunkMode,
+      chunkAmount: chunkAmount === '' ? undefined : chunkAmount,
+      chunkMax: chunkMax === '' ? undefined : chunkMax,
     });
   }
 
@@ -636,6 +698,82 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
                     <p className="text-xs text-muted-foreground">Amount to leave on exchange</p>
                   </div>
                 </div>
+
+                {/* Scheduling Settings */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Priority</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={priority}
+                      onChange={(e) => setPriority(parseInt(e.target.value) || 10)}
+                    />
+                    <p className="text-xs text-muted-foreground">Lower = higher priority (1=highest)</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Cooldown (seconds)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={cooldownSeconds}
+                      onChange={(e) => setCooldownSeconds(parseInt(e.target.value) || 60)}
+                    />
+                    <p className="text-xs text-muted-foreground">Wait time between withdrawals</p>
+                  </div>
+                </div>
+
+                {/* Chunking Settings */}
+                <div className="space-y-2">
+                  <Label className="text-xs">Chunk Mode</Label>
+                  <div className="flex gap-2">
+                    {(['all', 'fixedCoin', 'fixedUsd'] as const).map((mode) => (
+                      <Button
+                        key={mode}
+                        type="button"
+                        variant={chunkMode === mode ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setChunkMode(mode)}
+                      >
+                        {mode === 'all' ? 'All at once' : mode === 'fixedCoin' ? 'Fixed coin' : 'Fixed USD'}
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {chunkMode === 'all' && 'Withdraw entire balance at once'}
+                    {chunkMode === 'fixedCoin' && 'Withdraw fixed coin amount per transaction'}
+                    {chunkMode === 'fixedUsd' && 'Withdraw fixed USD value per transaction'}
+                  </p>
+                </div>
+
+                {chunkMode !== 'all' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <Label className="text-xs">
+                        Chunk Amount ({chunkMode === 'fixedCoin' ? selectedAsset : 'USD'})
+                      </Label>
+                      <Input
+                        type="number"
+                        step="any"
+                        value={chunkAmount}
+                        onChange={(e) => setChunkAmount(e.target.value ? parseFloat(e.target.value) : '')}
+                        placeholder={chunkMode === 'fixedCoin' ? '0.01' : '500'}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">
+                        Max per withdrawal ({chunkMode === 'fixedCoin' ? selectedAsset : 'USD'})
+                      </Label>
+                      <Input
+                        type="number"
+                        step="any"
+                        value={chunkMax}
+                        onChange={(e) => setChunkMax(e.target.value ? parseFloat(e.target.value) : '')}
+                        placeholder="Optional max"
+                      />
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -884,6 +1022,8 @@ interface ExchangeWalletManagerProps {
   supportsSync: boolean;
   onAddManualAddress: () => void;
   onDeleteAddress: (asset: string, key: string) => void;
+  isEnabled: boolean;
+  onToggleEnabled: (enabled: boolean) => void;
 }
 
 function ExchangeWalletManager({
@@ -898,6 +1038,8 @@ function ExchangeWalletManager({
   supportsSync,
   onAddManualAddress,
   onDeleteAddress,
+  isEnabled,
+  onToggleEnabled,
 }: ExchangeWalletManagerProps) {
   const [open, setOpen] = useState(false);
   const assetCount = Object.keys(addresses).length;
@@ -905,10 +1047,17 @@ function ExchangeWalletManager({
 
   return (
     <>
-      <Card>
+      <Card className={!isEnabled ? "opacity-75" : ""}>
         <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
           <div className="space-y-1">
-            <CardTitle>{exchange.name}</CardTitle>
+            <div className="flex items-center gap-2">
+               <CardTitle>{exchange.name}</CardTitle>
+               <Switch 
+                 checked={isEnabled} 
+                 onCheckedChange={onToggleEnabled}
+                 className="scale-75" 
+               />
+            </div>
             <div className="flex gap-2">
               <Badge variant="secondary">{assetCount} assets</Badge>
               {configuredCount > 0 && (
@@ -925,13 +1074,13 @@ function ExchangeWalletManager({
           </div>
         </CardHeader>
         <CardContent className="p-4 pt-6 flex flex-col gap-2">
-          <Button onClick={() => setOpen(true)} variant="default" className="w-full">
+          <Button onClick={() => setOpen(true)} variant="default" className="w-full" disabled={!isEnabled}>
             Manage Wallets
           </Button>
           {supportsSync ? (
             <Button
               onClick={onSync}
-              disabled={isSyncing}
+              disabled={isSyncing || !isEnabled}
               variant="outline"
               size="sm"
               className="w-full"
@@ -944,6 +1093,7 @@ function ExchangeWalletManager({
               variant="outline"
               size="sm"
               className="w-full"
+              disabled={!isEnabled}
             >
               <Plus size={14} className="mr-1" />
               Add Address

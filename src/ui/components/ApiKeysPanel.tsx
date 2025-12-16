@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Input } from "@/ui/components/ui/input";
 import { Label } from "@/ui/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/components/ui/select";
+import { Switch } from "@/ui/components/ui/switch";
 import { Alert, AlertDescription, AlertTitle } from "@/ui/components/ui/alert";
 import { AlertTriangle, Info, ChevronDown, ChevronRight } from 'lucide-react';
 
@@ -34,6 +35,7 @@ interface ExchangeInfo {
   requiresPassphrase: boolean;
   defaultTier: string;
   tiers: Array<{ value: string; label: string; maxCounter: number; decayRate: number }>;
+  enabled: boolean;
 }
 
 // Fallback tier info if not loaded
@@ -154,6 +156,28 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
     }
   }
 
+  async function handleToggleExchangeEnabled(exchangeId: string, currentEnabled: boolean) {
+    try {
+      const res = await fetch(`/api/exchanges/${exchangeId}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !currentEnabled }),
+      });
+      if (res.ok) {
+        // Update local state
+        setExchanges((prev) =>
+          prev.map((ex) =>
+            ex.id === exchangeId ? { ...ex, enabled: !currentEnabled } : ex
+          )
+        );
+        setSuccess(`${currentEnabled ? 'Disabled' : 'Enabled'} ${exchangeId}`);
+        onUpdate();
+      }
+    } catch (err) {
+      setError('Failed to update exchange setting');
+    }
+  }
+
   async function handleRevalidate(id: string) {
     try {
       const res = await fetch(`/api/keys/${id}/revalidate`, { method: 'POST' });
@@ -244,16 +268,33 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
                           ) : (
                             <ChevronRight className="h-4 w-4" />
                           )}
-                          <span className="font-medium">{exchange.name}</span>
+                          <span className={`font-medium ${!exchange.enabled ? 'text-muted-foreground' : ''}`}>
+                            {exchange.name}
+                          </span>
                           {hasKeys && (
                             <Badge variant="secondary" className="ml-2">
                               {exchangeKeys.length} key{exchangeKeys.length !== 1 ? 's' : ''}
                             </Badge>
                           )}
+                          {!exchange.enabled && (
+                            <Badge variant="outline" className="ml-2 text-muted-foreground">
+                              Disabled
+                            </Badge>
+                          )}
                         </div>
-                        {!hasKeys && (
-                          <span className="text-xs text-muted-foreground">No keys configured</span>
-                        )}
+                        <div className="flex items-center gap-3">
+                          {!hasKeys && (
+                            <span className="text-xs text-muted-foreground">No keys configured</span>
+                          )}
+                          {hasKeys && (
+                            <Switch
+                              checked={exchange.enabled}
+                              onCheckedChange={() => handleToggleExchangeEnabled(exchange.id, exchange.enabled)}
+                              onClick={(e) => e.stopPropagation()}
+                              aria-label={`${exchange.enabled ? 'Disable' : 'Enable'} ${exchange.name}`}
+                            />
+                          )}
+                        </div>
                       </div>
 
                       {/* Summary Bars (visible when closed) */}

@@ -15,6 +15,8 @@ global:
     - limit
     - take_profit
     - take_profit_limit
+  disabledExchanges:
+    - kucoin
 polling:
   withdrawStatus:
     fastSeconds: 10
@@ -26,7 +28,5 @@ polling:
 web:
   port: 3000
   host: 0.0.0.0
-  trustProxy: false
   sessionSecret: ad26763b9481986f03728ce7af05342c8f29d7e44182744210877884a5fa996c
-# Note: Asset sweep configurations are now stored in the database.
-# Use the web UI to configure which assets to sweep.
+  trustProxy: false

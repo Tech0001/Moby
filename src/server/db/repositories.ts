@@ -814,7 +814,78 @@ export const upsertKrakenAddress = (asset: string, method: string, key: string, 
 export const hasAnyKrakenAddresses = () => hasAnyExchangeAddresses('kraken');
 export type KrakenAddressRecord = ExchangeAddressRecord;
 
+// ============== Exchange Settings Repository ==============
+
+export interface ExchangeSettingsRecord {
+  exchange: ExchangeId;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export function getExchangeSettings(exchange: ExchangeId): ExchangeSettingsRecord | null {
+  const db = getDb();
+  const row = db
+    .prepare('SELECT * FROM exchange_settings WHERE exchange = ?')
+    .get(exchange) as Record<string, unknown> | undefined;
+
+  if (!row) return null;
+  return {
+    exchange: row.exchange as ExchangeId,
+    enabled: row.enabled === 1,
+    createdAt: row.created_at as number,
+    updatedAt: row.updated_at as number,
+  };
+}
+
+export function getAllExchangeSettings(): ExchangeSettingsRecord[] {
+  const db = getDb();
+  const rows = db.prepare('SELECT * FROM exchange_settings ORDER BY exchange').all() as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    exchange: row.exchange as ExchangeId,
+    enabled: row.enabled === 1,
+    createdAt: row.created_at as number,
+    updatedAt: row.updated_at as number,
+  }));
+}
+
+export function isExchangeEnabled(exchange: ExchangeId): boolean {
+  const settings = getExchangeSettings(exchange);
+  // Default to enabled if no settings exist
+  return settings ? settings.enabled : true;
+}
+
+export function setExchangeEnabled(exchange: ExchangeId, enabled: boolean): void {
+  const db = getDb();
+  const now = Date.now();
+
+  db.prepare(
+    `INSERT INTO exchange_settings (exchange, enabled, created_at, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(exchange) DO UPDATE SET
+       enabled = excluded.enabled,
+       updated_at = excluded.updated_at`
+  ).run(exchange, enabled ? 1 : 0, now, now);
+}
+
+export function getEnabledExchanges(): ExchangeId[] {
+  const db = getDb();
+  // Get exchanges that either have no settings (default enabled) or are explicitly enabled
+  // We need to check api_keys table to know which exchanges have keys
+  const rows = db.prepare(`
+    SELECT DISTINCT ak.exchange
+    FROM api_keys ak
+    LEFT JOIN exchange_settings es ON ak.exchange = es.exchange
+    WHERE ak.is_active = 1 AND ak.is_valid = 1
+      AND (es.enabled IS NULL OR es.enabled = 1)
+  `).all() as Array<{ exchange: ExchangeId }>;
+
+  return rows.map((r) => r.exchange);
+}
+
 // ============== Asset Configs Repository ==============
+
+export type ChunkMode = 'all' | 'fixedCoin' | 'fixedUsd';
 
 export interface AssetConfigRecord {
   exchange: ExchangeId;
@@ -823,6 +894,12 @@ export interface AssetConfigRecord {
   threshold: number;
   reserve: number;
   destKeys: string[];
+  priority: number;
+  cooldownSeconds: number;
+  method: string | null;
+  chunkMode: ChunkMode;
+  chunkAmount: number | null;
+  chunkMax: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -835,6 +912,12 @@ function mapAssetConfigRow(row: Record<string, unknown>): AssetConfigRecord {
     threshold: row.threshold as number,
     reserve: row.reserve as number,
     destKeys: JSON.parse(row.dest_keys as string),
+    priority: (row.priority as number) ?? 10,
+    cooldownSeconds: (row.cooldown_seconds as number) ?? 60,
+    method: row.method as string | null,
+    chunkMode: (row.chunk_mode as ChunkMode) ?? 'all',
+    chunkAmount: row.chunk_amount as number | null,
+    chunkMax: row.chunk_max as number | null,
     createdAt: row.created_at as number,
     updatedAt: row.updated_at as number,
   };
@@ -878,24 +961,49 @@ export function getEnabledAssetConfigs(exchange?: ExchangeId): AssetConfigRecord
   return rows.map(mapAssetConfigRow);
 }
 
+export interface AssetConfigInput {
+  enabled?: boolean;
+  threshold: number;
+  reserve?: number;
+  destKeys: string[];
+  priority?: number;
+  cooldownSeconds?: number;
+  method?: string | null;
+  chunkMode?: ChunkMode;
+  chunkAmount?: number | null;
+  chunkMax?: number | null;
+}
+
 export function upsertAssetConfig(
   exchange: ExchangeId,
   asset: string,
-  config: { enabled?: boolean; threshold: number; reserve?: number; destKeys: string[] }
+  config: AssetConfigInput
 ): void {
   const db = getDb();
   const now = Date.now();
   const enabled = config.enabled !== undefined ? config.enabled : true;
   const reserve = config.reserve ?? 0;
+  const priority = config.priority ?? 10;
+  const cooldownSeconds = config.cooldownSeconds ?? 60;
+  const method = config.method ?? null;
+  const chunkMode = config.chunkMode ?? 'all';
+  const chunkAmount = config.chunkAmount ?? null;
+  const chunkMax = config.chunkMax ?? null;
 
   db.prepare(
-    `INSERT INTO asset_configs (exchange, asset, enabled, threshold, reserve, dest_keys, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO asset_configs (exchange, asset, enabled, threshold, reserve, dest_keys, priority, cooldown_seconds, method, chunk_mode, chunk_amount, chunk_max, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(exchange, asset) DO UPDATE SET
        enabled = excluded.enabled,
        threshold = excluded.threshold,
        reserve = excluded.reserve,
        dest_keys = excluded.dest_keys,
+       priority = excluded.priority,
+       cooldown_seconds = excluded.cooldown_seconds,
+       method = excluded.method,
+       chunk_mode = excluded.chunk_mode,
+       chunk_amount = excluded.chunk_amount,
+       chunk_max = excluded.chunk_max,
        updated_at = excluded.updated_at`
   ).run(
     exchange,
@@ -904,6 +1012,12 @@ export function upsertAssetConfig(
     config.threshold,
     reserve,
     JSON.stringify(config.destKeys),
+    priority,
+    cooldownSeconds,
+    method,
+    chunkMode,
+    chunkAmount,
+    chunkMax,
     now,
     now
   );
