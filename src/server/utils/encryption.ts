@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
-import { existsSync, readFileSync, writeFileSync, appendFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'fs';
+import { dirname, join } from 'path';
 import { createChildLogger } from './logger.js';
 
 const logger = createChildLogger('encryption');
@@ -9,9 +10,36 @@ const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
 const SALT = 'moby-api-key-encryption-v1';
 const ENV_KEY_NAME = 'MOBY_ENCRYPTION_KEY';
-const ENV_FILE_PATH = './.env';
+const DATA_ROOT = process.env.MOBY_DATA_PATH || process.env.DATA_DIR || process.cwd();
+const PRIMARY_ENV_PATH = process.env.ENV_FILE_PATH || join(DATA_ROOT, '.env');
 
 let cachedKey: Buffer | null = null;
+
+function ensureEnvDir(path: string) {
+  const dir = dirname(path);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+}
+
+function readEnvFromFiles(): string | undefined {
+  const candidates = [
+    PRIMARY_ENV_PATH,
+    // Fallback to working directory for backward compatibility (dev)
+    join(process.cwd(), '.env'),
+  ].filter((value, index, arr) => arr.indexOf(value) === index);
+
+  for (const envPath of candidates) {
+    if (!existsSync(envPath)) continue;
+    const envContent = readFileSync(envPath, 'utf-8');
+    const match = envContent.match(new RegExp(`^${ENV_KEY_NAME}=(.+)$`, 'm'));
+    if (match) {
+      return match[1].trim();
+    }
+  }
+
+  return undefined;
+}
 
 /**
  * Generate a new random encryption key (64 hex chars = 32 bytes)
@@ -32,12 +60,9 @@ function getMasterKey(): Buffer {
   let envKey = process.env[ENV_KEY_NAME];
 
   // If not in environment, try to load from .env file
-  if (!envKey && existsSync(ENV_FILE_PATH)) {
-    const envContent = readFileSync(ENV_FILE_PATH, 'utf-8');
-    const match = envContent.match(new RegExp(`^${ENV_KEY_NAME}=(.+)$`, 'm'));
-    if (match) {
-      envKey = match[1].trim();
-      // Also set it in process.env for consistency
+  if (!envKey) {
+    envKey = readEnvFromFiles();
+    if (envKey) {
       process.env[ENV_KEY_NAME] = envKey;
     }
   }
@@ -62,11 +87,10 @@ export function initEncryption(): { keyGenerated: boolean; keySource: string } {
   let keySource = 'environment';
 
   // Try to load from .env file if not in environment
-  if (!envKey && existsSync(ENV_FILE_PATH)) {
-    const envContent = readFileSync(ENV_FILE_PATH, 'utf-8');
-    const match = envContent.match(new RegExp(`^${ENV_KEY_NAME}=(.+)$`, 'm'));
-    if (match) {
-      envKey = match[1].trim();
+  if (!envKey) {
+    const loaded = readEnvFromFiles();
+    if (loaded) {
+      envKey = loaded;
       process.env[ENV_KEY_NAME] = envKey;
       keySource = '.env file';
     }
@@ -80,13 +104,15 @@ export function initEncryption(): { keyGenerated: boolean; keySource: string } {
     // Write to .env file
     const envLine = `\n# Auto-generated encryption key for API credentials\n# BACKUP THIS KEY - if lost, stored API keys cannot be decrypted\n${ENV_KEY_NAME}=${newKey}\n`;
 
-    if (existsSync(ENV_FILE_PATH)) {
-      appendFileSync(ENV_FILE_PATH, envLine);
+    ensureEnvDir(PRIMARY_ENV_PATH);
+
+    if (existsSync(PRIMARY_ENV_PATH)) {
+      appendFileSync(PRIMARY_ENV_PATH, envLine);
     } else {
-      writeFileSync(ENV_FILE_PATH, envLine.trimStart());
+      writeFileSync(PRIMARY_ENV_PATH, envLine.trimStart());
     }
 
-    logger.info('Generated new encryption key and saved to .env file');
+    logger.info({ path: PRIMARY_ENV_PATH }, 'Generated new encryption key and saved to .env file');
     logger.warn('IMPORTANT: Backup your .env file - the encryption key is required to decrypt API credentials');
 
     // Clear cached key so it gets re-derived

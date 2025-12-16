@@ -105,6 +105,19 @@ export const KrakenAdapterFactory: ExchangeAdapterFactory = {
         }));
       },
 
+      async getWithdrawMethods(asset) {
+        const methods = await client.getWithdrawMethods(asset);
+        return methods.map((m) => ({
+          asset: normalizeKrakenAsset(m.asset),
+          method: m.method,
+          network: m.network,
+          minimum: parseFloat(m.minimum),
+          maximum: m.limit === false ? undefined : parseFloat(m.limit),
+          fee: parseFloat(m.fee),
+          genAddress: m['gen-address'],
+        }));
+      },
+
       async getOpenOrders() {
         const result = await client.getOpenOrders();
         // Convert Kraken format to standard format

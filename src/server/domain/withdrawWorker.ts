@@ -6,6 +6,7 @@ import {
   createWithdrawalJob,
   updateWithdrawalJob,
   getExchangeAddressesByAsset,
+  getWithdrawalMethod,
   type AssetConfigRecord,
 } from '../db/repositories.js';
 import { advanceWalletIndex, getCurrentWalletKey } from './rrSelector.js';
@@ -91,7 +92,27 @@ export async function startWithdrawal(
 
     const method = addressRecord.method;
 
-    // Get withdrawal info from exchange (validates amount, gets fees)
+    // Check cached minimum before making API call
+    const cachedMethod = getWithdrawalMethod(exchange, asset, method);
+    if (cachedMethod) {
+      if (withdrawAmount < cachedMethod.minimum) {
+        logger.debug(
+          { exchange, asset, amount: withdrawAmount, minimum: cachedMethod.minimum, method },
+          'Amount below cached minimum, skipping'
+        );
+        return {
+          success: false,
+          skipped: true,
+          skipReason: `Amount ${withdrawAmount} below minimum ${cachedMethod.minimum} for ${method}`,
+        };
+      }
+      logger.debug(
+        { exchange, asset, amount: withdrawAmount, minimum: cachedMethod.minimum, cachedFee: cachedMethod.fee },
+        'Withdrawal amount passes cached minimum check'
+      );
+    }
+
+    // Get withdrawal info from exchange (validates amount, gets current fees)
     const withdrawInfo = await exchangeClient.getWithdrawInfo(
       asset,
       destKey,

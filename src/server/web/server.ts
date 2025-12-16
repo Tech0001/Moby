@@ -75,12 +75,15 @@ export function createWebServer(options: WebServerOptions): Express {
   return app;
 }
 
+// Keep reference to the HTTP server
+let httpServer: ReturnType<Express['listen']> | null = null;
+
 /**
  * Start the web server
  */
 export function startServer(app: Express, config: WebConfig): Promise<void> {
   return new Promise((resolve) => {
-    app.listen(config.port, config.host, () => {
+    httpServer = app.listen(config.port, config.host, () => {
       logger.info(
         { host: config.host, port: config.port },
         'Web server started'
@@ -88,4 +91,11 @@ export function startServer(app: Express, config: WebConfig): Promise<void> {
       resolve();
     });
   });
+}
+
+/**
+ * Get the HTTP server instance (for graceful shutdown)
+ */
+export function getHttpServer() {
+  return httpServer;
 }

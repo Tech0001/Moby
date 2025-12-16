@@ -41,6 +41,9 @@ import {
   getWalletById,
   createWallet,
   deleteWallet,
+  upsertWithdrawalMethod,
+  getAllWithdrawalMethods,
+  getWithdrawalMethodsForAsset,
   type ApiKeyTier,
   type WalletChain,
 } from '../db/repositories.js';
@@ -760,6 +763,32 @@ export function createRoutes(context: RoutesContext): Router {
     );
   });
 
+  // Get cached withdrawal methods (minimums, fees)
+  router.get('/api/withdrawal-methods', requireAuth, (req: Request, res: Response) => {
+    const exchange = (req.query.exchange as ExchangeId) || undefined;
+    const asset = req.query.asset as string | undefined;
+
+    let methods;
+    if (exchange && asset) {
+      methods = getWithdrawalMethodsForAsset(exchange, asset);
+    } else {
+      methods = getAllWithdrawalMethods(exchange);
+    }
+
+    res.json(
+      methods.map((m) => ({
+        exchange: m.exchange,
+        asset: m.asset,
+        method: m.method,
+        network: m.network,
+        minimum: m.minimum,
+        maximum: m.maximum,
+        fee: m.fee,
+        lastSyncedAt: m.lastSyncedAt,
+      }))
+    );
+  });
+
   // Legacy route for Kraken addresses
   router.get('/api/kraken/addresses', requireAuth, (req: Request, res: Response) => {
     const addresses = getAllExchangeAddresses('kraken');
@@ -812,9 +841,6 @@ export function createRoutes(context: RoutesContext): Router {
         if (result.isNew) {
           newCount++;
         }
-        if (result.wasRemoved) {
-          restoredCount++;
-        }
       }
       if (skippedCount > 0) {
         logger.info({ skippedCount }, 'Skipped entries without addresses');
@@ -823,6 +849,39 @@ export function createRoutes(context: RoutesContext): Router {
       // Delete addresses that no longer exist on the exchange
       const deletedCount = deleteRemovedAddresses(exchange, currentKeys);
 
+      // Also fetch and cache withdrawal methods (minimums, fees)
+      let methodsCount = 0;
+      try {
+        const withdrawMethods = await pool.execute(async (client) => {
+          if (client.getWithdrawMethods) {
+            return client.getWithdrawMethods();
+          }
+          return [] as import('../exchanges/types.js').WithdrawalMethod[];
+        });
+
+        for (const method of withdrawMethods) {
+          upsertWithdrawalMethod(exchange, method.asset, method.method, {
+            network: method.network,
+            minimum: method.minimum,
+            maximum: method.maximum,
+            fee: method.fee,
+            genAddress: method.genAddress,
+          });
+          methodsCount++;
+        }
+
+        logger.info(
+          { exchange, count: methodsCount },
+          'Cached withdrawal methods'
+        );
+      } catch (methodErr) {
+        // Don't fail the sync if methods fetch fails
+        logger.warn(
+          { exchange, error: methodErr instanceof Error ? methodErr.message : 'Unknown error' },
+          'Failed to fetch withdrawal methods'
+        );
+      }
+
       logger.info(
         {
           exchange,
@@ -830,12 +889,14 @@ export function createRoutes(context: RoutesContext): Router {
           new: newCount,
           restored: restoredCount,
           deleted: deletedCount,
+          methods: methodsCount,
         },
         'Synced exchange withdrawal addresses'
       );
 
       // Return updated list
       const addresses = getAllExchangeAddresses(exchange);
+      const methods = getAllWithdrawalMethods(exchange);
       res.json({
         addresses: addresses.map((addr) => ({
           id: addr.id,
@@ -847,11 +908,20 @@ export function createRoutes(context: RoutesContext): Router {
           createdAt: addr.createdAt,
           lastSeenAt: addr.lastSeenAt,
         })),
+        withdrawalMethods: methods.map((m) => ({
+          asset: m.asset,
+          method: m.method,
+          network: m.network,
+          minimum: m.minimum,
+          maximum: m.maximum,
+          fee: m.fee,
+        })),
         stats: {
           new: newCount,
           restored: restoredCount,
           deleted: deletedCount,
           fromExchange: exchangeAddresses.length,
+          methodsCached: methodsCount,
         },
       });
     } catch (error) {
@@ -898,10 +968,6 @@ export function createRoutes(context: RoutesContext): Router {
         if (result.isNew) {
           newCount++;
           logger.debug({ asset: addr.asset, key: addr.key }, 'New address added');
-        }
-        if (result.wasRemoved) {
-          restoredCount++;
-          logger.debug({ asset: addr.asset, key: addr.key }, 'Removed address restored');
         }
       }
       if (skippedCount > 0) {
@@ -1196,7 +1262,7 @@ export function createRoutes(context: RoutesContext): Router {
         volumeExecuted: string;
         status: string;
         openTime: number;
-        description: string;
+        description?: string;
       }> = [];
 
       if (!exchangeParam || exchangeParam === 'all') {
@@ -1343,13 +1409,23 @@ export function createRoutes(context: RoutesContext): Router {
       const wallet = await generateWallet(chain);
       const address = wallet.address;
       const privateKey = wallet.privateKey;
+      const mnemonic = wallet.mnemonic;
 
       // Encrypt the private key
       const { encrypted, salt } = encryptPrivateKey(privateKey, password);
 
+      // Encrypt the mnemonic if available
+      let encryptedMnemonic: string | undefined;
+      let mnemonicSalt: string | undefined;
+      if (mnemonic) {
+        const mnemonicEncryption = encryptPrivateKey(mnemonic, password);
+        encryptedMnemonic = mnemonicEncryption.encrypted;
+        mnemonicSalt = mnemonicEncryption.salt;
+      }
+
       // Store in database
       const id = uuid();
-      const record = createWallet(id, name, chain as WalletChain, address, encrypted, salt);
+      const record = createWallet(id, name, chain as WalletChain, address, encrypted, salt, encryptedMnemonic, mnemonicSalt);
 
       logger.info({ id, name, chain, address }, 'New wallet created');
 
@@ -1395,9 +1471,15 @@ export function createRoutes(context: RoutesContext): Router {
       // Decrypt the private key
       const privateKey = decryptPrivateKey(wallet.encryptedPrivateKey, wallet.salt, password);
 
+      // Decrypt the mnemonic if available
+      let mnemonic: string | undefined;
+      if (wallet.encryptedMnemonic && wallet.mnemonicSalt) {
+        mnemonic = decryptPrivateKey(wallet.encryptedMnemonic, wallet.mnemonicSalt, password);
+      }
+
       logger.info({ id, address: wallet.address }, 'Wallet unlocked');
 
-      res.json({ privateKey });
+      res.json({ privateKey, mnemonic });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
       logger.error({ error: msg }, 'Failed to unlock wallet');

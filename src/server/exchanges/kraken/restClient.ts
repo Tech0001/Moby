@@ -117,6 +117,34 @@ export class KrakenRestClient {
   // ============== Withdrawal Methods ==============
 
   /**
+   * Get available withdrawal methods for an asset with minimums and fees
+   */
+  async getWithdrawMethods(asset?: string): Promise<Array<{
+    asset: string;
+    method: string;
+    network?: string;
+    minimum: string;
+    limit: string | false;
+    fee: string;
+    'gen-address': boolean;
+  }>> {
+    logger.debug({ asset }, 'Getting withdrawal methods');
+
+    const params: Record<string, string> = {};
+    if (asset) params.asset = asset;
+
+    return this.privateRequest<Array<{
+      asset: string;
+      method: string;
+      network?: string;
+      minimum: string;
+      limit: string | false;
+      fee: string;
+      'gen-address': boolean;
+    }>>('WithdrawMethods', params);
+  }
+
+  /**
    * Get withdrawal info (limits, fees) for an asset
    */
   async getWithdrawInfo(

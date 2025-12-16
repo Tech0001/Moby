@@ -108,6 +108,16 @@ export type ErrorCategory = 'rate_limit' | 'auth' | 'service' | 'funding' | 'unk
 /**
  * REST client interface that all exchanges must implement
  */
+export interface WithdrawalMethod {
+  asset: string;
+  method: string;
+  network?: string;
+  minimum: number;
+  maximum?: number;
+  fee?: number;
+  genAddress: boolean;
+}
+
 export interface ExchangeRestClient {
   readonly exchangeId: ExchangeId;
 
@@ -119,6 +129,7 @@ export interface ExchangeRestClient {
   withdraw(asset: string, key: string, address: string, amount: number): Promise<WithdrawResult>;
   getWithdrawStatus(asset?: string): Promise<WithdrawStatusRecord[]>;
   getWithdrawAddresses(asset?: string, method?: string): Promise<SavedAddress[]>;
+  getWithdrawMethods?(asset?: string): Promise<WithdrawalMethod[]>;
 
   // Orders
   getOpenOrders(): Promise<{ open: Record<string, OpenOrder> }>;

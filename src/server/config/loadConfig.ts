@@ -1,10 +1,13 @@
-import { readFileSync, existsSync, writeFileSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
 import { parse, stringify } from 'yaml';
 import { randomBytes } from 'crypto';
 import { AppConfigSchema, AppConfig } from './schema.js';
 import { logger } from '../utils/logger.js';
 
-const CONFIG_PATH = process.env.CONFIG_PATH || './config.yaml';
+// Default to the app data directory so packaged apps have a writable location
+const DATA_ROOT = process.env.MOBY_DATA_PATH || process.env.DATA_DIR || process.cwd();
+const CONFIG_PATH = process.env.CONFIG_PATH || join(DATA_ROOT, 'config.yaml');
 
 // Default config template
 const DEFAULT_CONFIG = `# Moby Configuration
@@ -37,6 +40,12 @@ web:
 `;
 
 export function loadConfig(): AppConfig {
+  // Ensure the directory exists for the config path (especially when defaulting to app data)
+  const configDir = dirname(CONFIG_PATH);
+  if (!existsSync(configDir)) {
+    mkdirSync(configDir, { recursive: true });
+  }
+
   if (!existsSync(CONFIG_PATH)) {
     logger.info({ path: CONFIG_PATH }, 'No config file found, creating default');
     writeFileSync(CONFIG_PATH, DEFAULT_CONFIG, 'utf-8');

@@ -1,4 +1,4 @@
-import { Wallet } from 'ethers';
+import { Wallet, Mnemonic, HDNodeWallet } from 'ethers';
 import * as bitcoin from 'bitcoinjs-lib';
 import ECPairFactory from 'ecpair';
 import * as ecc from 'tiny-secp256k1';
@@ -23,6 +23,7 @@ const ECPair = ECPairFactory(ecc);
 export interface GeneratedWallet {
   address: string;
   privateKey: string;
+  mnemonic?: string; // Seed phrase (if available for the chain)
 }
 
 /**
@@ -52,10 +53,13 @@ export async function generateWallet(chain: WalletChain): Promise<GeneratedWalle
 }
 
 function generateEthereumWallet(): GeneratedWallet {
-  const wallet = Wallet.createRandom();
+  // Generate from mnemonic so we have both seed phrase and private key
+  const mnemonic = Mnemonic.fromEntropy(Wallet.createRandom().privateKey);
+  const wallet = HDNodeWallet.fromMnemonic(mnemonic);
   return {
     address: wallet.address,
     privateKey: wallet.privateKey,
+    mnemonic: mnemonic.phrase,
   };
 }
 
@@ -101,7 +105,8 @@ function generateAlgorandWallet(): GeneratedWallet {
   const account = algosdk.generateAccount();
   return {
     address: account.addr.toString(),
-    privateKey: algosdk.secretKeyToMnemonic(account.sk),
+    privateKey: Buffer.from(account.sk).toString('hex'),
+    mnemonic: algosdk.secretKeyToMnemonic(account.sk),
   };
 }
 
@@ -154,7 +159,8 @@ function generateLuncWallet(): GeneratedWallet {
 
   return {
     address: mk.accAddress, // Terra Classic address (property, not method)
-    privateKey: mk.mnemonic, // Store mnemonic as private key
+    privateKey: mk.privateKey.toString('hex'), // Raw private key
+    mnemonic: mk.mnemonic, // Seed phrase
   };
 }
 

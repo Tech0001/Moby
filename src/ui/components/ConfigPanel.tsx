@@ -64,10 +64,21 @@ interface ExchangeSyncSupport {
   requiresManualEntry: boolean;
 }
 
+interface WithdrawalMethod {
+  exchange: string;
+  asset: string;
+  method: string;
+  network: string | null;
+  minimum: number;
+  maximum: number | null;
+  fee: number | null;
+}
+
 export function ConfigPanel() {
   const [config, setConfig] = useState<Config | null>(null);
   const [assetConfigs, setAssetConfigs] = useState<AssetConfig[]>([]);
   const [addresses, setAddresses] = useState<ExchangeAddress[]>([]);
+  const [withdrawalMethods, setWithdrawalMethods] = useState<WithdrawalMethod[]>([]);
   const [exchanges, setExchanges] = useState<AvailableExchange[]>([]);
   const [exchangeSyncSupport, setExchangeSyncSupport] = useState<Record<string, ExchangeSyncSupport>>({});
   const [loading, setLoading] = useState(true);
@@ -87,6 +98,7 @@ export function ConfigPanel() {
     fetchSweeperStatus();
     fetchExchanges().then(() => fetchExchangeSyncSupport());
     fetchAddresses();
+    fetchWithdrawalMethods();
   }, []);
 
   async function fetchExchangeSyncSupport() {
@@ -204,6 +216,18 @@ export function ConfigPanel() {
     }
   }
 
+  async function fetchWithdrawalMethods() {
+    try {
+      const res = await fetch('/api/withdrawal-methods');
+      if (res.ok) {
+        const data = await res.json();
+        setWithdrawalMethods(data);
+      }
+    } catch (err) {
+      // Ignore
+    }
+  }
+
   async function syncAddresses(exchangeId: string, exchangeName: string) {
     setSyncingExchange(exchangeId);
     try {
@@ -211,11 +235,13 @@ export function ConfigPanel() {
       if (res.ok) {
         const data = await res.json();
         await fetchAddresses();
+        await fetchWithdrawalMethods(); // Also refresh withdrawal methods (minimums, fees)
         const parts: string[] = [];
         parts.push(`${data.stats.fromExchange || data.stats.fromKraken || 0} from ${exchangeName}`);
         if (data.stats.new > 0) parts.push(`${data.stats.new} new`);
         if (data.stats.restored > 0) parts.push(`${data.stats.restored} restored`);
         if (data.stats.deleted > 0) parts.push(`${data.stats.deleted} deleted`);
+        if (data.stats.methodsCached > 0) parts.push(`${data.stats.methodsCached} methods cached`);
         setSuccess(`Sync complete: ${parts.join(', ')}`);
       } else {
         const data = await res.json();
@@ -508,6 +534,7 @@ export function ConfigPanel() {
         initialAsset={addAssetFor?.asset}
         existingAssets={Object.keys(configsByExchange[addAssetFor?.exchange || ''] || {})}
         addressesByAsset={addAssetFor ? (addressesByExchange[addAssetFor.exchange] || {}) : {}}
+        withdrawalMethods={addAssetFor ? withdrawalMethods.filter(m => m.exchange === addAssetFor.exchange) : []}
         onAdd={async (asset, configData) => {
           if (!addAssetFor) return;
           const success = await saveAssetConfig(addAssetFor.exchange, asset, configData);
@@ -540,6 +567,7 @@ interface AddAssetDialogProps {
   initialAsset?: string;
   existingAssets: string[];
   addressesByAsset: Record<string, { method: string; keys: string[] }>;
+  withdrawalMethods: WithdrawalMethod[];
   onAdd: (asset: string, config: {
     threshold: number;
     reserve: number;
@@ -551,7 +579,7 @@ interface AddAssetDialogProps {
   saving: boolean;
 }
 
-function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAssets, addressesByAsset, onAdd, saving }: AddAssetDialogProps) {
+function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAssets, addressesByAsset, withdrawalMethods, onAdd, saving }: AddAssetDialogProps) {
   const availableAssets = Object.keys(addressesByAsset).filter(
     (a) => !existingAssets.includes(a) && addressesByAsset[a].keys.length > 0
   );
@@ -564,25 +592,41 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
   const [cooldownSeconds, setCooldownSeconds] = useState(60);
   const [chunkAmount, setChunkAmount] = useState(0.01);
 
+  // Get withdrawal method info for the selected asset (minimum, fee)
+  const assetInfo = selectedAsset ? addressesByAsset[selectedAsset] : null;
+  const methodInfo = selectedAsset && assetInfo
+    ? withdrawalMethods.find(m => m.asset === selectedAsset && m.method === assetInfo.method)
+    : null;
+  const minimum = methodInfo?.minimum ?? 0;
+
   useEffect(() => {
     if (open) {
       const newDefault = initialAsset && availableAssets.includes(initialAsset) ? initialAsset : availableAssets[0] || '';
       setSelectedAsset(newDefault);
-      setThreshold(0.001);
       setReserve(0);
       setPriority(10);
       setCooldownSeconds(60);
       setChunkAmount(0.01);
+      // Threshold will be set by the next useEffect when selectedAsset changes
     }
   }, [open, initialAsset]);
 
+  // When asset changes, set threshold to minimum
   useEffect(() => {
     if (selectedAsset && addressesByAsset[selectedAsset]) {
       setSelectedKeys(addressesByAsset[selectedAsset].keys);
+      // Set threshold to minimum withdrawal amount
+      const info = addressesByAsset[selectedAsset];
+      const method = withdrawalMethods.find(m => m.asset === selectedAsset && m.method === info.method);
+      if (method?.minimum) {
+        setThreshold(method.minimum);
+        setChunkAmount(method.minimum); // Also set chunk size to minimum
+      } else {
+        setThreshold(0.001);
+        setChunkAmount(0.01);
+      }
     }
-  }, [selectedAsset, addressesByAsset]);
-
-  const assetInfo = selectedAsset ? addressesByAsset[selectedAsset] : null;
+  }, [selectedAsset, addressesByAsset, withdrawalMethods]);
 
   function toggleKey(key: string) {
     setSelectedKeys((prev) =>
@@ -671,17 +715,39 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
 
               {assetInfo && (
                 <div className="space-y-4 md:border-l md:pl-6">
+                  {/* Show minimum withdrawal info if available */}
+                  {methodInfo && (
+                    <div className="text-xs bg-muted/50 rounded px-3 py-2 space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Min withdrawal:</span>
+                        <span className="font-mono">{methodInfo.minimum} {selectedAsset}</span>
+                      </div>
+                      {methodInfo.fee !== null && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Est. fee:</span>
+                          <span className="font-mono">{methodInfo.fee} {selectedAsset}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <Label className="text-xs">Sweep Threshold ({selectedAsset})</Label>
                       <Input
                         type="number"
                         step="any"
+                        min={minimum}
                         value={threshold}
-                        onChange={(e) => setThreshold(parseFloat(e.target.value) || 0)}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setThreshold(val < minimum ? minimum : val);
+                        }}
                         placeholder="Min amount to trigger sweep"
                       />
-                      <p className="text-xs text-muted-foreground">Minimum balance to trigger withdrawal</p>
+                      <p className="text-xs text-muted-foreground">
+                        {minimum > 0 ? `Must be at least ${minimum} ${selectedAsset}` : 'Minimum balance to trigger withdrawal'}
+                      </p>
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">Reserve ({selectedAsset})</Label>
@@ -726,9 +792,29 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
                     <Input
                       type="number"
                       step="any"
+                      min={minimum}
                       value={chunkAmount}
-                      onChange={(e) => setChunkAmount(parseFloat(e.target.value) || 0.01)}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setChunkAmount(val < minimum ? minimum : val);
+                      }}
                     />
+                    {minimum > 0 && (
+                      <div className="flex gap-1 flex-wrap">
+                        {[1, 2, 5, 10].map((mult) => (
+                          <Button
+                            key={mult}
+                            type="button"
+                            variant={chunkAmount === minimum * mult ? "default" : "outline"}
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => setChunkAmount(minimum * mult)}
+                          >
+                            {mult}x
+                          </Button>
+                        ))}
+                      </div>
+                    )}
                     <p className="text-xs text-muted-foreground">Amount per withdrawal</p>
                   </div>
                 </div>

@@ -3,7 +3,9 @@ import { createChildLogger } from '../utils/logger.js';
 
 const logger = createChildLogger('sqlite');
 
-const DB_PATH = process.env.DB_PATH || './data/moby.db';
+// Use MOBY_DATA_PATH (set by Electron) or fall back to local data folder
+const dataDir = process.env.MOBY_DATA_PATH || './data';
+const DB_PATH = process.env.DB_PATH || `${dataDir}/moby.db`;
 
 let db: Database.Database | null = null;
 
@@ -322,8 +324,42 @@ const MIGRATIONS = [
     version: 9,
     name: 'add_wallet_chain_column',
     sql: `
-      -- Add chain column if it doesn't exist (for databases that ran v8 before chain was added)
-      ALTER TABLE wallets ADD COLUMN chain TEXT NOT NULL DEFAULT 'ethereum';
+      -- No-op: chain column now included in migration 8
+      -- This migration was for databases that ran an older v8 without the chain column
+      SELECT 1;
+    `,
+  },
+  {
+    version: 10,
+    name: 'add_wallet_mnemonic',
+    sql: `
+      -- Add encrypted mnemonic column for seed phrase storage
+      ALTER TABLE wallets ADD COLUMN encrypted_mnemonic TEXT;
+      ALTER TABLE wallets ADD COLUMN mnemonic_salt TEXT;
+    `,
+  },
+  {
+    version: 11,
+    name: 'withdrawal_methods_cache',
+    sql: `
+      -- Cache withdrawal methods with minimums and fees per asset/method
+      CREATE TABLE IF NOT EXISTS withdrawal_methods (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        exchange TEXT NOT NULL,
+        asset TEXT NOT NULL,
+        method TEXT NOT NULL,
+        network TEXT,
+        minimum REAL NOT NULL,
+        maximum REAL,
+        fee REAL,
+        gen_address INTEGER NOT NULL DEFAULT 0,
+        last_synced_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE(exchange, asset, method)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_withdrawal_methods_exchange_asset ON withdrawal_methods(exchange, asset);
     `,
   },
 ];

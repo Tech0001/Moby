@@ -5,7 +5,7 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 const SALT_LENGTH = 32;
 const KEY_LENGTH = 32;
-const SCRYPT_COST = 1048576; // N parameter (2^20) - high security, ~1s decrypt time
+const SCRYPT_COST = 16384; // N parameter (2^14) - standard secure value
 
 /**
  * Hash password for storage (verification only, NOT for encryption)

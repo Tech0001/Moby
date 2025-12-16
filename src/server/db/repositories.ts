@@ -1046,6 +1046,8 @@ export interface WalletRecord {
   address: string;
   encryptedPrivateKey: string;
   salt: string;
+  encryptedMnemonic?: string;
+  mnemonicSalt?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -1066,6 +1068,8 @@ function mapWalletRow(row: Record<string, unknown>): WalletRecord {
     address: row.address as string,
     encryptedPrivateKey: row.encrypted_private_key as string,
     salt: row.salt as string,
+    encryptedMnemonic: row.encrypted_mnemonic as string | undefined,
+    mnemonicSalt: row.mnemonic_salt as string | undefined,
     createdAt: row.created_at as number,
     updatedAt: row.updated_at as number,
   };
@@ -1109,15 +1113,17 @@ export function createWallet(
   chain: WalletChain,
   address: string,
   encryptedPrivateKey: string,
-  salt: string
+  salt: string,
+  encryptedMnemonic?: string,
+  mnemonicSalt?: string
 ): WalletRecord {
   const db = getDb();
   const now = Date.now();
 
   db.prepare(
-    `INSERT INTO wallets (id, name, chain, address, encrypted_private_key, salt, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, name, chain, address, encryptedPrivateKey, salt, now, now);
+    `INSERT INTO wallets (id, name, chain, address, encrypted_private_key, salt, encrypted_mnemonic, mnemonic_salt, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, name, chain, address, encryptedPrivateKey, salt, encryptedMnemonic ?? null, mnemonicSalt ?? null, now, now);
 
   return {
     id,
@@ -1126,6 +1132,8 @@ export function createWallet(
     address,
     encryptedPrivateKey,
     salt,
+    encryptedMnemonic,
+    mnemonicSalt,
     createdAt: now,
     updatedAt: now,
   };
@@ -1181,4 +1189,223 @@ export function deleteWalletSetting(key: string): boolean {
   const db = getDb();
   const result = db.prepare('DELETE FROM wallet_settings WHERE key = ?').run(key);
   return result.changes > 0;
+}
+
+// ============== Withdrawal Methods Cache ==============
+
+export interface WithdrawalMethodRecord {
+  id: number;
+  exchange: ExchangeId;
+  asset: string;
+  method: string;
+  network: string | null;
+  minimum: number;
+  maximum: number | null;
+  fee: number | null;
+  genAddress: boolean;
+  lastSyncedAt: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export function getWithdrawalMethod(
+  exchange: ExchangeId,
+  asset: string,
+  method: string
+): WithdrawalMethodRecord | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT id, exchange, asset, method, network, minimum, maximum, fee,
+              gen_address, last_synced_at, created_at, updated_at
+       FROM withdrawal_methods
+       WHERE exchange = ? AND asset = ? AND method = ?`
+    )
+    .get(exchange, asset, method) as {
+    id: number;
+    exchange: ExchangeId;
+    asset: string;
+    method: string;
+    network: string | null;
+    minimum: number;
+    maximum: number | null;
+    fee: number | null;
+    gen_address: number;
+    last_synced_at: number;
+    created_at: number;
+    updated_at: number;
+  } | undefined;
+
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    exchange: row.exchange,
+    asset: row.asset,
+    method: row.method,
+    network: row.network,
+    minimum: row.minimum,
+    maximum: row.maximum,
+    fee: row.fee,
+    genAddress: row.gen_address === 1,
+    lastSyncedAt: row.last_synced_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function getWithdrawalMethodsForAsset(
+  exchange: ExchangeId,
+  asset: string
+): WithdrawalMethodRecord[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT id, exchange, asset, method, network, minimum, maximum, fee,
+              gen_address, last_synced_at, created_at, updated_at
+       FROM withdrawal_methods
+       WHERE exchange = ? AND asset = ?
+       ORDER BY method`
+    )
+    .all(exchange, asset) as Array<{
+    id: number;
+    exchange: ExchangeId;
+    asset: string;
+    method: string;
+    network: string | null;
+    minimum: number;
+    maximum: number | null;
+    fee: number | null;
+    gen_address: number;
+    last_synced_at: number;
+    created_at: number;
+    updated_at: number;
+  }>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    exchange: row.exchange,
+    asset: row.asset,
+    method: row.method,
+    network: row.network,
+    minimum: row.minimum,
+    maximum: row.maximum,
+    fee: row.fee,
+    genAddress: row.gen_address === 1,
+    lastSyncedAt: row.last_synced_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export function getAllWithdrawalMethods(exchange?: ExchangeId): WithdrawalMethodRecord[] {
+  const db = getDb();
+  let query = `SELECT id, exchange, asset, method, network, minimum, maximum, fee,
+                      gen_address, last_synced_at, created_at, updated_at
+               FROM withdrawal_methods`;
+  const params: string[] = [];
+
+  if (exchange) {
+    query += ' WHERE exchange = ?';
+    params.push(exchange);
+  }
+
+  query += ' ORDER BY exchange, asset, method';
+
+  const rows = db.prepare(query).all(...params) as Array<{
+    id: number;
+    exchange: ExchangeId;
+    asset: string;
+    method: string;
+    network: string | null;
+    minimum: number;
+    maximum: number | null;
+    fee: number | null;
+    gen_address: number;
+    last_synced_at: number;
+    created_at: number;
+    updated_at: number;
+  }>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    exchange: row.exchange,
+    asset: row.asset,
+    method: row.method,
+    network: row.network,
+    minimum: row.minimum,
+    maximum: row.maximum,
+    fee: row.fee,
+    genAddress: row.gen_address === 1,
+    lastSyncedAt: row.last_synced_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export function upsertWithdrawalMethod(
+  exchange: ExchangeId,
+  asset: string,
+  method: string,
+  data: {
+    network?: string;
+    minimum: number;
+    maximum?: number;
+    fee?: number;
+    genAddress?: boolean;
+  }
+): void {
+  const db = getDb();
+  const now = Date.now();
+
+  db.prepare(
+    `INSERT INTO withdrawal_methods (exchange, asset, method, network, minimum, maximum, fee, gen_address, last_synced_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(exchange, asset, method) DO UPDATE SET
+       network = excluded.network,
+       minimum = excluded.minimum,
+       maximum = excluded.maximum,
+       fee = excluded.fee,
+       gen_address = excluded.gen_address,
+       last_synced_at = excluded.last_synced_at,
+       updated_at = excluded.updated_at`
+  ).run(
+    exchange,
+    asset,
+    method,
+    data.network ?? null,
+    data.minimum,
+    data.maximum ?? null,
+    data.fee ?? null,
+    data.genAddress ? 1 : 0,
+    now,
+    now,
+    now
+  );
+}
+
+export function deleteWithdrawalMethodsForExchange(exchange: ExchangeId): number {
+  const db = getDb();
+  const result = db.prepare('DELETE FROM withdrawal_methods WHERE exchange = ?').run(exchange);
+  return result.changes;
+}
+
+export function isWithdrawalMethodCacheStale(
+  exchange: ExchangeId,
+  maxAgeMs: number = 24 * 60 * 60 * 1000 // 24 hours default
+): boolean {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT MIN(last_synced_at) as oldest_sync
+       FROM withdrawal_methods
+       WHERE exchange = ?`
+    )
+    .get(exchange) as { oldest_sync: number | null } | undefined;
+
+  if (!row || row.oldest_sync === null) {
+    return true; // No cache exists
+  }
+
+  return Date.now() - row.oldest_sync > maxAgeMs;
 }

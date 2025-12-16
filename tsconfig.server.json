@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "composite": true,
     "target": "ES2022",
     "lib": ["ES2022"],
     "module": "ESNext",
@@ -11,8 +10,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "declaration": true,
-    "outDir": "./dist",
+    "outDir": "./dist/server",
     "rootDir": "./src/server",
     "baseUrl": ".",
     "paths": {

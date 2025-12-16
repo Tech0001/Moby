@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+release/
 
 # Data directory (contains SQLite database and user data)
 data/

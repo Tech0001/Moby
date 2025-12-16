@@ -32,8 +32,8 @@ function getEnabledExchanges(): ExchangeId[] {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appLogger = createChildLogger('app');
 
-// Ensure data directory exists
-const dataDir = process.env.DATA_DIR || './data';
+// Ensure data directory exists (MOBY_DATA_PATH is set by Electron)
+const dataDir = process.env.MOBY_DATA_PATH || process.env.DATA_DIR || './data';
 if (!existsSync(dataDir)) {
   mkdirSync(dataDir, { recursive: true });
 }
@@ -206,6 +206,11 @@ async function main() {
   // Handle shutdown
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
+
+  // Keep process alive
+  setInterval(() => {
+    // no-op to keep event loop active
+  }, 1000 * 60 * 60);
 
   appLogger.info('Moby started successfully');
 }

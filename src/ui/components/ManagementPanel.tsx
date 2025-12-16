@@ -91,6 +91,8 @@ export function ManagementPanel() {
   const [unlockWalletId, setUnlockWalletId] = useState<string | null>(null);
   const [unlockPassword, setUnlockPassword] = useState('');
   const [privateKey, setPrivateKey] = useState<string | null>(null);
+  const [mnemonic, setMnemonic] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'privateKey' | 'mnemonic'>('privateKey');
   const [unlocking, setUnlocking] = useState(false);
   const [showPrivateKey, setShowPrivateKey] = useState(false);
 
@@ -230,6 +232,7 @@ export function ManagementPanel() {
       if (res.ok) {
         const data = await res.json();
         setPrivateKey(data.privateKey);
+        setMnemonic(data.mnemonic || null);
         setUnlockPassword('');
       } else {
         const data = await res.json();
@@ -289,6 +292,8 @@ export function ManagementPanel() {
     setUnlockWalletId(null);
     setUnlockPassword('');
     setPrivateKey(null);
+    setMnemonic(null);
+    setViewMode('privateKey');
     setShowPrivateKey(false);
   }
 
@@ -610,17 +615,17 @@ export function ManagementPanel() {
                 <Input
                   value={walletName}
                   onChange={(e) => setWalletName(e.target.value)}
-                  placeholder="e.g., Main Wallet"
+                  placeholder="e.g., Stinky Pete's Wallet"
                 />
               </div>
               <div className="space-y-2">
-                <Label>Wallet Password</Label>
+                <Label>Master Password</Label>
                 <div className="relative">
                   <Input
                     type={showCreatePassword ? 'text' : 'password'}
                     value={walletPassword}
                     onChange={(e) => setWalletPassword(e.target.value)}
-                    placeholder="Enter password"
+                    placeholder="Enter master password to encrypt"
                     className="pr-10"
                   />
                   <Button
@@ -658,9 +663,9 @@ export function ManagementPanel() {
       <Dialog open={showUnlockDialog} onOpenChange={(open) => !open && closeUnlockDialog()}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>View Private Key</DialogTitle>
+            <DialogTitle>View Wallet Secrets</DialogTitle>
             <DialogDescription>
-              Enter your wallet password to decrypt and view the private key.
+              Enter your wallet password to decrypt and view your credentials.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -681,37 +686,98 @@ export function ManagementPanel() {
                 />
               </div>
             ) : (
-              <div className="space-y-2">
-                <Label>Private Key</Label>
-                <div className="relative">
-                  <Input
-                    type={showPrivateKey ? 'text' : 'password'}
-                    value={privateKey}
-                    readOnly
-                    className="font-mono text-xs pr-20"
-                  />
-                  <div className="absolute right-1 top-1 flex gap-1">
+              <div className="space-y-4">
+                {/* Toggle buttons when mnemonic is available */}
+                {mnemonic && (
+                  <div className="flex gap-2 border-b pb-3">
                     <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => setShowPrivateKey(!showPrivateKey)}
+                      variant={viewMode === 'privateKey' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setViewMode('privateKey')}
                     >
-                      {showPrivateKey ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                      <Key className="h-3 w-3 mr-1" />
+                      Private Key
                     </Button>
                     <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => copyToClipboard(privateKey)}
+                      variant={viewMode === 'mnemonic' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setViewMode('mnemonic')}
                     >
-                      <Copy className="h-3 w-3" />
+                      Seed Phrase
                     </Button>
                   </div>
-                </div>
-                <p className="text-xs text-destructive">
-                  Never share your private key. Anyone with this key can access your funds.
-                </p>
+                )}
+
+                {/* Private Key View */}
+                {viewMode === 'privateKey' && (
+                  <div className="space-y-2">
+                    <Label>Private Key</Label>
+                    <div className="relative">
+                      <Input
+                        type={showPrivateKey ? 'text' : 'password'}
+                        value={privateKey}
+                        readOnly
+                        className="font-mono text-xs pr-20"
+                      />
+                      <div className="absolute right-1 top-1 flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => setShowPrivateKey(!showPrivateKey)}
+                        >
+                          {showPrivateKey ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => copyToClipboard(privateKey)}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-destructive">
+                      Never share your private key. Anyone with this key can access your funds.
+                    </p>
+                  </div>
+                )}
+
+                {/* Mnemonic/Seed Phrase View */}
+                {viewMode === 'mnemonic' && mnemonic && (
+                  <div className="space-y-2">
+                    <Label>Seed Phrase (Mnemonic)</Label>
+                    <div className="relative">
+                      <textarea
+                        readOnly
+                        value={showPrivateKey ? mnemonic : '•'.repeat(mnemonic.length)}
+                        className="w-full min-h-[80px] p-3 pr-16 rounded-md border border-input bg-background font-mono text-xs resize-none"
+                      />
+                      <div className="absolute right-1 top-1 flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => setShowPrivateKey(!showPrivateKey)}
+                        >
+                          {showPrivateKey ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => copyToClipboard(mnemonic)}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-destructive">
+                      Never share your seed phrase. Write it down and store it securely offline.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>

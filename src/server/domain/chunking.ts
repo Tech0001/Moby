@@ -24,10 +24,15 @@ export async function computeChunkAmount(
   assetConfig: AssetConfig,
   priceProvider?: PriceProvider
 ): Promise<number> {
-  const { chunk, reserveCoin } = assetConfig;
+  const { chunk, reserveCoin = 0 } = assetConfig;
 
   // Available to withdraw (minus reserve)
   const available = Math.max(0, pendingAmount - reserveCoin);
+
+  // If no chunk config, return all available
+  if (!chunk) {
+    return available;
+  }
 
   if (available <= 0) {
     logger.debug({ asset, pendingAmount, reserveCoin }, 'Nothing available after reserve');
@@ -54,6 +59,11 @@ export async function computeChunkAmount(
     const price = await priceProvider.getUsdPrice(asset);
     if (!price || price <= 0) {
       logger.warn({ asset }, 'Could not get USD price for chunking');
+      return 0;
+    }
+
+    if (!chunk.targetUsd) {
+      logger.warn({ asset }, 'USD chunking mode but no targetUsd specified');
       return 0;
     }
 

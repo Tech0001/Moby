@@ -3,83 +3,16 @@
  *
  * Gemini uses lowercase symbols (e.g., "btcusd", "ethusd")
  * and doesn't use the X-prefixes that Kraken does.
+ *
+ * Most assets just need uppercasing. This map is only for special cases
+ * where the symbol differs from a simple uppercase transformation.
  */
 
-// Asset name mappings (Gemini format → normalized)
+// Asset name mappings for special cases only (Gemini format → normalized)
+// Standard assets are handled by toUpperCase() fallback
 const ASSET_MAP: Record<string, string> = {
-  // Standard crypto
-  btc: 'BTC',
-  eth: 'ETH',
-  ltc: 'LTC',
-  bch: 'BCH',
-  zec: 'ZEC',
-  link: 'LINK',
-  oxt: 'OXT',
-  bat: 'BAT',
-  dai: 'DAI',
-  amp: 'AMP',
-  comp: 'COMP',
-  paxg: 'PAXG',
-  mkr: 'MKR',
-  zrx: 'ZRX',
-  knc: 'KNC',
-  mana: 'MANA',
-  storj: 'STORJ',
-  snx: 'SNX',
-  crv: 'CRV',
-  bal: 'BAL',
-  uni: 'UNI',
-  ren: 'REN',
-  uma: 'UMA',
-  yfi: 'YFI',
-  aave: 'AAVE',
-  fil: 'FIL',
-  bnb: 'BNB',
-  matic: 'MATIC',
-  skl: 'SKL',
-  sushi: 'SUSHI',
-  grt: 'GRT',
-  lrc: 'LRC',
-  sand: 'SAND',
-  cube: 'CUBE',
-  enj: 'ENJ',
-  chz: 'CHZ',
-  axs: 'AXS',
-  slp: 'SLP',
-  luna: 'LUNA',
-  ust: 'UST',
-  doge: 'DOGE',
-  shib: 'SHIB',
-  sol: 'SOL',
-  avax: 'AVAX',
-  ftm: 'FTM',
-  atom: 'ATOM',
-  dot: 'DOT',
-  ada: 'ADA',
-  xrp: 'XRP',
-  xlm: 'XLM',
-  algo: 'ALGO',
-  xtz: 'XTZ',
-  eos: 'EOS',
-  trx: 'TRX',
-  near: 'NEAR',
-  apt: 'APT',
-  arb: 'ARB',
-  op: 'OP',
-  imx: 'IMX',
-  pepe: 'PEPE',
-
-  // Stablecoins
-  usd: 'USD',
-  usdc: 'USDC',
-  usdt: 'USDT',
-  gusd: 'GUSD', // Gemini USD
-  dai: 'DAI',
-
-  // Fiat
-  gbp: 'GBP',
-  eur: 'EUR',
-  sgd: 'SGD',
+  // Add special case mappings here if needed
+  // e.g., if Gemini uses a non-standard symbol name
 };
 
 // Known trading pairs and their components
