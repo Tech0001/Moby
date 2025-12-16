@@ -5,20 +5,21 @@ import {
   getFillEventExists,
   getAppStateValue,
 } from '../db/repositories.js';
-import type { FillEvent, ReceivedAsset } from './types.js';
+import type { FillEvent, ReceivedAsset, ExchangeId } from './types.js';
 import { parsePair, normalizeAsset } from './types.js';
 import type { AppConfig } from '../config/schema.js';
+import { getExchangeAssets } from '../config/schema.js';
 
 const logger = createChildLogger('fill-processor');
 
 export interface FillProcessorOptions {
   config: AppConfig;
-  onPendingUpdated?: (asset: string, amount: number) => void;
+  onPendingUpdated?: (exchange: ExchangeId, asset: string, amount: number) => void;
 }
 
 export class FillProcessor {
-  private readonly config: AppConfig;
-  private readonly onPendingUpdated?: (asset: string, amount: number) => void;
+  private config: AppConfig;
+  private readonly onPendingUpdated?: (exchange: ExchangeId, asset: string, amount: number) => void;
 
   constructor(options: FillProcessorOptions) {
     this.config = options.config;
@@ -29,17 +30,17 @@ export class FillProcessor {
    * Process a fill event from WebSocket
    * Returns the received asset info if processed, null if skipped
    */
-  processFill(fill: FillEvent): ReceivedAsset | null {
+  processFill(exchange: ExchangeId, fill: FillEvent): ReceivedAsset | null {
     // Check if we've already processed this trade (idempotency)
-    if (getFillEventExists(fill.tradeId)) {
-      logger.debug({ tradeId: fill.tradeId }, 'Fill already processed, skipping');
+    if (getFillEventExists(fill.tradeId, exchange)) {
+      logger.debug({ exchange, tradeId: fill.tradeId }, 'Fill already processed, skipping');
       return null;
     }
 
     // Check if order type is allowed
     if (!this.isAllowedOrderType(fill.orderType)) {
       logger.debug(
-        { tradeId: fill.tradeId, orderType: fill.orderType },
+        { exchange, tradeId: fill.tradeId, orderType: fill.orderType },
         'Order type not in allowlist, skipping'
       );
       return null;
@@ -49,27 +50,29 @@ export class FillProcessor {
     const received = this.computeReceivedAsset(fill);
 
     if (!received) {
-      logger.warn({ fill }, 'Could not determine received asset');
+      logger.warn({ exchange, fill }, 'Could not determine received asset');
       return null;
     }
 
-    // Check if we're configured to sweep this asset
-    if (!this.config.assets[received.asset]) {
+    // Check if we're configured to sweep this asset for this exchange
+    const exchangeAssets = getExchangeAssets(this.config, exchange);
+    if (!exchangeAssets[received.asset]) {
       logger.debug(
-        { asset: received.asset },
+        { exchange, asset: received.asset },
         'Asset not configured for sweeping, skipping'
       );
       // Still save the fill event for audit
-      saveFillEvent(fill, received.asset, received.amount);
+      saveFillEvent(exchange, fill, received.asset, received.amount);
       return null;
     }
 
     // Save fill event and update pending amount
-    saveFillEvent(fill, received.asset, received.amount);
-    addPendingAmount(received.asset, received.amount);
+    saveFillEvent(exchange, fill, received.asset, received.amount);
+    addPendingAmount(exchange, received.asset, received.amount);
 
     logger.info(
       {
+        exchange,
         tradeId: fill.tradeId,
         asset: received.asset,
         amount: received.amount,
@@ -81,7 +84,7 @@ export class FillProcessor {
 
     // Notify scheduler
     if (this.onPendingUpdated) {
-      this.onPendingUpdated(received.asset, received.amount);
+      this.onPendingUpdated(exchange, received.asset, received.amount);
     }
 
     return received;
@@ -145,7 +148,7 @@ export class FillProcessor {
   /**
    * Update config (e.g., after reload)
    */
-  updateConfig(config: AppConfig): void {
-    (this as { config: AppConfig }).config = config;
+  updateConfig(newConfig: AppConfig): void {
+    this.config = newConfig;
   }
 }

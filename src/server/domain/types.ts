@@ -1,4 +1,7 @@
-// Fill event from Kraken WebSocket (normalized)
+// Exchange identifier
+export type ExchangeId = 'kraken' | 'gemini' | 'kucoin' | 'gateio';
+
+// Fill event from exchange WebSocket (normalized)
 export interface FillEvent {
   tradeId: string;
   orderId: string;
@@ -11,6 +14,7 @@ export interface FillEvent {
   fee: number;            // Fee amount
   feeCurrency: string;    // Fee currency
   timestamp: number;      // Unix ms
+  exchange?: ExchangeId;  // Which exchange this fill came from
 }
 
 // Derived from FillEvent - what was actually received
@@ -32,12 +36,13 @@ export type WithdrawalStatus =
 // Withdrawal job record
 export interface WithdrawalJob {
   id: string;               // UUID
+  exchange: ExchangeId;     // Which exchange this withdrawal is for
   asset: string;
-  method: string;           // Kraken withdrawal method
-  destKey: string;          // Kraken saved address key name
+  method: string;           // Exchange withdrawal method
+  destKey: string;          // Exchange saved address key name
   amount: number;
   status: WithdrawalStatus;
-  krakenRef?: string;       // Kraken's reference ID
+  exchangeRef?: string;     // Exchange's reference ID (was krakenRef)
   txid?: string;            // On-chain txid when available
   createdAt: number;        // Unix ms
   updatedAt: number;        // Unix ms
@@ -47,6 +52,7 @@ export interface WithdrawalJob {
 
 // Asset state in database
 export interface AssetState {
+  exchange: ExchangeId;            // Which exchange this state is for
   asset: string;
   pendingAmount: number;           // Amount waiting to be swept
   rrIndex: number;                 // Round-robin index for wallet rotation

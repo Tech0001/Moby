@@ -1,4 +1,4 @@
-# Kraken Auto-Sweeper Configuration
+# Moby Configuration
 global:
   enabledOnBoot: false
   maxInflightWithdrawals: 2

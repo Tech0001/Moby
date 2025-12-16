@@ -3,6 +3,7 @@ import { getAssetState, advanceRrIndex, upsertAssetState } from '../db/repositor
 import type { AssetConfig } from '../config/schema.js';
 import type { PriceProvider } from './chunking.js';
 import { checkWalletCap } from './chunking.js';
+import type { ExchangeId } from './types.js';
 
 const logger = createChildLogger('rr-selector');
 
@@ -16,6 +17,7 @@ export interface WalletSelection {
  * Optionally skips wallets that have exceeded their cap
  */
 export async function selectNextWallet(
+  exchange: ExchangeId,
   asset: string,
   assetConfig: AssetConfig,
   proposedAmount: number,
@@ -25,15 +27,16 @@ export async function selectNextWallet(
   const { walletKeys } = assetConfig;
 
   if (walletKeys.length === 0) {
-    logger.error({ asset }, 'No wallet keys configured');
+    logger.error({ exchange, asset }, 'No wallet keys configured');
     return null;
   }
 
   // Get current RR index
-  let state = getAssetState(asset);
+  let state = getAssetState(exchange, asset);
   if (!state) {
     // Initialize state if doesn't exist
     state = {
+      exchange,
       asset,
       pendingAmount: 0,
       rrIndex: 0,
@@ -83,20 +86,20 @@ export async function selectNextWallet(
 /**
  * Advance the RR index after a successful withdrawal submission
  */
-export function advanceWalletIndex(asset: string, walletCount: number): void {
-  advanceRrIndex(asset, walletCount);
-  logger.debug({ asset }, 'Advanced RR index');
+export function advanceWalletIndex(exchange: ExchangeId, asset: string, walletCount: number): void {
+  advanceRrIndex(exchange, asset, walletCount);
+  logger.debug({ exchange, asset }, 'Advanced RR index');
 }
 
 /**
  * Get current wallet key without advancing
  */
-export function getCurrentWalletKey(asset: string, walletKeys: string[]): string {
+export function getCurrentWalletKey(exchange: ExchangeId, asset: string, walletKeys: string[]): string {
   if (walletKeys.length === 0) {
     throw new Error(`No wallet keys configured for ${asset}`);
   }
 
-  const state = getAssetState(asset);
+  const state = getAssetState(exchange, asset);
   const index = (state?.rrIndex ?? 0) % walletKeys.length;
   return walletKeys[index];
 }
@@ -104,11 +107,11 @@ export function getCurrentWalletKey(asset: string, walletKeys: string[]): string
 /**
  * Reset RR index to 0 (useful for testing or manual reset)
  */
-export function resetWalletIndex(asset: string): void {
-  const state = getAssetState(asset);
+export function resetWalletIndex(exchange: ExchangeId, asset: string): void {
+  const state = getAssetState(exchange, asset);
   if (state) {
     state.rrIndex = 0;
     upsertAssetState(state);
-    logger.info({ asset }, 'Reset RR index to 0');
+    logger.info({ exchange, asset }, 'Reset RR index to 0');
   }
 }

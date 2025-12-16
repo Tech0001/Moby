@@ -6,7 +6,7 @@ Below is the updated handoff spec with the changes we discussed (multi-instance 
 
 ⸻
 
-## Project: Kraken Auto-Sweeper (Node/TS)
+## Project: Moby (Node/TS)
 
 ### Goal
 Build a self-hosted Node.js + TypeScript daemon that monitors a user’s Kraken spot account for executed trades and automatically withdraws the newly received asset to pre-saved Kraken withdrawal addresses, using:

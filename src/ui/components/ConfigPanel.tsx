@@ -38,19 +38,43 @@ interface GlobalConfig {
   keyNamePrefix?: string;
 }
 
-interface Config {
-  global: GlobalConfig;
+interface ExchangeConfig {
+  enabled: boolean;
   assets: Record<string, AssetConfig>;
 }
 
-interface KrakenAddress {
+interface Config {
+  global: GlobalConfig;
+  exchanges?: Record<string, ExchangeConfig>;
+  // Legacy format support
+  assets?: Record<string, AssetConfig>;
+}
+
+// Helper to get assets from config (handles both old and new format)
+function getAssets(config: Config): Record<string, AssetConfig> {
+  // New format: exchanges.kraken.assets
+  if (config.exchanges?.kraken?.assets) {
+    return config.exchanges.kraken.assets;
+  }
+  // Legacy format: assets at root
+  return config.assets || {};
+}
+
+interface ExchangeAddress {
   id: number;
+  exchange: string;
   address: string;
   asset: string;
   method: string;
   key: string;
   createdAt: number;
   lastSeenAt: number;
+}
+
+interface AvailableExchange {
+  id: string;
+  name: string;
+  hasKeys: boolean;
 }
 
 interface SweeperStatus {
@@ -60,7 +84,8 @@ interface SweeperStatus {
 
 export function ConfigPanel() {
   const [config, setConfig] = useState<Config | null>(null);
-  const [addresses, setAddresses] = useState<KrakenAddress[]>([]);
+  const [addresses, setAddresses] = useState<ExchangeAddress[]>([]);
+  const [exchanges, setExchanges] = useState<AvailableExchange[]>([]);
   const [addressesFetched, setAddressesFetched] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingAddresses, setLoadingAddresses] = useState(false);
@@ -71,12 +96,13 @@ export function ConfigPanel() {
   const [addAssetFor, setAddAssetFor] = useState<string | null>(null);
   const [sweeperStatus, setSweeperStatus] = useState<SweeperStatus | null>(null);
   const [toggling, setToggling] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [syncStats, setSyncStats] = useState<{ new: number; restored: number; deleted: number; fromKraken: number } | null>(null);
+  const [syncingExchange, setSyncingExchange] = useState<string | null>(null);
+  const [syncStats, setSyncStats] = useState<{ exchange: string; new: number; restored: number; deleted: number; fromExchange: number } | null>(null);
 
   useEffect(() => {
     fetchConfig();
     fetchSweeperStatus();
+    fetchExchanges();
     fetchAddresses(); // Load from local DB on mount (fast)
   }, []);
 
@@ -106,6 +132,34 @@ export function ConfigPanel() {
     }
   }
 
+  async function fetchExchanges() {
+    try {
+      const [exchangesRes, keysRes] = await Promise.all([
+        fetch('/api/exchanges/available'),
+        fetch('/api/keys')
+      ]);
+
+      if (exchangesRes.ok && keysRes.ok) {
+        const exchangesData = await exchangesRes.json();
+        const keysData = await keysRes.json();
+
+        // Create set of exchanges that have keys
+        const exchangesWithKeys = new Set(keysData.keys.map((k: { exchange: string }) => k.exchange));
+
+        // Map exchanges with hasKeys flag
+        const mapped = exchangesData.exchanges.map((ex: { id: string; name: string }) => ({
+          id: ex.id,
+          name: ex.name,
+          hasKeys: exchangesWithKeys.has(ex.id)
+        }));
+
+        setExchanges(mapped);
+      }
+    } catch (err) {
+      console.error('Failed to fetch exchanges:', err);
+    }
+  }
+
   async function toggleSweeper() {
     if (!sweeperStatus) return;
     setToggling(true);
@@ -126,7 +180,7 @@ export function ConfigPanel() {
   async function fetchAddresses() {
     setLoadingAddresses(true);
     try {
-      const res = await fetch('/api/kraken/addresses');
+      const res = await fetch('/api/addresses');
       if (res.ok) {
         const data = await res.json();
         setAddresses(data);
@@ -139,30 +193,30 @@ export function ConfigPanel() {
     }
   }
 
-  async function syncAddresses() {
-    setSyncing(true);
+  async function syncAddresses(exchangeId: string, exchangeName: string) {
+    setSyncingExchange(exchangeId);
     setSyncStats(null);
     try {
-      const res = await fetch('/api/kraken/addresses/sync', { method: 'POST' });
+      const res = await fetch(`/api/exchanges/${exchangeId}/addresses/sync`, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        setAddresses(data.addresses);
-        setAddressesFetched(true);
-        setSyncStats(data.stats);
+        // Refresh all addresses
+        await fetchAddresses();
+        setSyncStats({ ...data.stats, exchange: exchangeName, fromExchange: data.stats.fromExchange || data.stats.fromKraken || 0 });
         const parts: string[] = [];
-        parts.push(`${data.stats.fromKraken} from Kraken`);
+        parts.push(`${data.stats.fromExchange || data.stats.fromKraken || 0} from ${exchangeName}`);
         if (data.stats.new > 0) parts.push(`${data.stats.new} new`);
         if (data.stats.restored > 0) parts.push(`${data.stats.restored} restored`);
         if (data.stats.deleted > 0) parts.push(`${data.stats.deleted} deleted`);
         setSuccess(`Sync complete: ${parts.join(', ')}`);
       } else {
         const data = await res.json();
-        setError(data.error || 'Failed to sync addresses');
+        setError(data.error || `Failed to sync addresses from ${exchangeName}`);
       }
     } catch (err) {
-      setError('Failed to sync addresses from Kraken');
+      setError(`Failed to sync addresses from ${exchangeName}`);
     } finally {
-      setSyncing(false);
+      setSyncingExchange(null);
     }
   }
 
@@ -197,19 +251,40 @@ export function ConfigPanel() {
     }
   }
 
-  // Group addresses by asset
+  // Group addresses by exchange, then by asset
+  const addressesByExchange = addresses.reduce((acc, addr) => {
+    const exchange = addr.exchange || 'kraken';
+    if (!acc[exchange]) {
+      acc[exchange] = {};
+    }
+    if (!acc[exchange][addr.asset]) {
+      acc[exchange][addr.asset] = { method: addr.method, keys: [] };
+    }
+    acc[exchange][addr.asset].keys.push(addr.key);
+    return acc;
+  }, {} as Record<string, Record<string, { method: string; keys: string[] }>>);
+
+  // Flatten to addressesByAsset for backwards compatibility with asset config
   const addressesByAsset = addresses.reduce((acc, addr) => {
     if (!acc[addr.asset]) {
       acc[addr.asset] = { method: addr.method, keys: [] };
     }
-    acc[addr.asset].keys.push(addr.key);
+    if (!acc[addr.asset].keys.includes(addr.key)) {
+      acc[addr.asset].keys.push(addr.key);
+    }
     return acc;
   }, {} as Record<string, { method: string; keys: string[] }>);
 
-  // Assets available from Kraken but not yet configured
+  // Get assets from config (handles both old and new format)
+  const configuredAssets = config ? getAssets(config) : {};
+
+  // Assets available from exchanges but not yet configured
   const unconfiguredAssets = Object.keys(addressesByAsset).filter(
-    (asset) => !config?.assets[asset]
+    (asset) => !configuredAssets[asset]
   );
+
+  // Exchanges that have API keys configured
+  const exchangesWithKeys = exchanges.filter(ex => ex.hasKeys);
 
   if (loading) {
     return <div className="text-muted-foreground">Loading configuration...</div>;
@@ -252,80 +327,103 @@ export function ConfigPanel() {
         </CardContent>
       </Card>
 
-      {/* Kraken Withdrawal Addresses */}
-      <Card>
-        <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
-          <CardTitle>Kraken Withdrawal Addresses</CardTitle>
-          <Button
-            onClick={syncAddresses}
-            disabled={syncing || !sweeperStatus?.hasApiKeys}
-            variant="outline"
-            size="sm"
-          >
-            {syncing ? 'Syncing...' : 'Sync from Kraken'}
-          </Button>
-        </CardHeader>
+      {/* Withdrawal Addresses Per Exchange */}
+      {exchangesWithKeys.length === 0 ? (
+        <Card>
+          <CardHeader className="py-4 border-b">
+            <CardTitle>Withdrawal Addresses</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 text-muted-foreground text-center">
+            Configure API keys first to sync withdrawal addresses.
+          </CardContent>
+        </Card>
+      ) : (
+        exchangesWithKeys.map((exchange) => {
+          const exchangeAddresses = addressesByExchange[exchange.id] || {};
+          const assetCount = Object.keys(exchangeAddresses).length;
 
-        <CardContent className="p-0">
-          {loadingAddresses ? (
-            <div className="p-4 text-muted-foreground text-center">
-              Loading addresses...
-            </div>
-          ) : addresses.length === 0 ? (
-            <div className="p-4 text-muted-foreground text-center">
-              No withdrawal addresses found. Click "Sync from Kraken" to fetch addresses, or add them in Kraken first.
-            </div>
-          ) : (
-            <div className="p-4 grid gap-3">
-              {Object.entries(addressesByAsset).map(([asset, { method, keys }]) => {
-                const isConfigured = !!config.assets[asset];
-                return (
-                  <Card
-                    key={asset}
-                    className={`border ${
-                      isConfigured
-                        ? 'bg-green-500/10 border-green-500/50'
-                        : 'bg-card'
-                    }`}
-                  >
-                    <CardContent className="p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{asset}</span>
-                          <Badge variant="outline" className="text-xs">via {method}</Badge>
-                          {isConfigured && (
-                            <Badge variant="outline" className="text-green-500 border-green-500">Configured</Badge>
-                          )}
-                        </div>
-                        {!isConfigured && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setAddAssetFor(asset)}
-                            className="text-primary hover:text-primary/80 h-auto p-0"
-                          >
-                            + Add to sweep
-                          </Button>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {keys.map((key) => (
-                          <span
-                            key={key}
-                            className="text-xs px-2 py-1 rounded font-mono bg-muted text-muted-foreground"
-                          >
-                            {key}
-                          </span>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          return (
+            <Card key={exchange.id}>
+              <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CardTitle>{exchange.name} Withdrawal Addresses</CardTitle>
+                  {assetCount > 0 && (
+                    <Badge variant="secondary">{assetCount} assets</Badge>
+                  )}
+                </div>
+                <Button
+                  onClick={() => syncAddresses(exchange.id, exchange.name)}
+                  disabled={syncingExchange !== null}
+                  variant="outline"
+                  size="sm"
+                >
+                  {syncingExchange === exchange.id ? 'Syncing...' : `Sync from ${exchange.name}`}
+                </Button>
+              </CardHeader>
+
+              <CardContent className="p-0">
+                {loadingAddresses ? (
+                  <div className="p-4 text-muted-foreground text-center">
+                    Loading addresses...
+                  </div>
+                ) : assetCount === 0 ? (
+                  <div className="p-4 text-muted-foreground text-center">
+                    No withdrawal addresses found. Click "Sync from {exchange.name}" to fetch addresses, or add them in {exchange.name} first.
+                  </div>
+                ) : (
+                  <div className="p-4 grid gap-3">
+                    {Object.entries(exchangeAddresses).map(([asset, { method, keys }]) => {
+                      const isConfigured = !!configuredAssets[asset];
+                      return (
+                        <Card
+                          key={asset}
+                          className={`border ${
+                            isConfigured
+                              ? 'bg-green-500/10 border-green-500/50'
+                              : 'bg-card'
+                          }`}
+                        >
+                          <CardContent className="p-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{asset}</span>
+                                <Badge variant="outline" className="text-xs">via {method}</Badge>
+                                {isConfigured && (
+                                  <Badge variant="outline" className="text-green-500 border-green-500">Configured</Badge>
+                                )}
+                              </div>
+                              {!isConfigured && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setAddAssetFor(asset)}
+                                  className="text-primary hover:text-primary/80 h-auto p-0"
+                                >
+                                  + Add to sweep
+                                </Button>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {keys.map((key) => (
+                                <span
+                                  key={key}
+                                  className="text-xs px-2 py-1 rounded font-mono bg-muted text-muted-foreground"
+                                >
+                                  {key}
+                                </span>
+                              ))}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })
+      )}
 
       {/* Global Settings */}
       <Card>
@@ -369,7 +467,7 @@ export function ConfigPanel() {
           {error && <Alert variant="destructive" className="m-4"><AlertDescription>{error}</AlertDescription></Alert>}
           {success && <Alert className="m-4 text-green-500 border-green-500"><AlertDescription>{success}</AlertDescription></Alert>}
 
-          {Object.keys(config.assets).length === 0 ? (
+          {Object.keys(configuredAssets).length === 0 ? (
             <div className="p-4 text-muted-foreground text-center">
               No assets configured for sweeping.
               {unconfiguredAssets.length > 0
@@ -378,7 +476,7 @@ export function ConfigPanel() {
             </div>
           ) : (
             <div className="divide-y">
-              {Object.entries(config.assets)
+              {Object.entries(configuredAssets)
                 .sort(([, a], [, b]) => a.priority - b.priority)
                 .map(([asset, assetConfig]) => (
                   <AssetConfigRow
@@ -403,7 +501,7 @@ export function ConfigPanel() {
         open={addAssetFor !== null}
         onOpenChange={(open) => !open && setAddAssetFor(null)}
         initialAsset={addAssetFor || undefined}
-        existingAssets={Object.keys(config.assets)}
+        existingAssets={Object.keys(configuredAssets)}
         addressesByAsset={addressesByAsset}
         onAdd={async (asset, assetConfig) => {
           const success = await saveAssetConfig(asset, assetConfig);

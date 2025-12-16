@@ -6,15 +6,16 @@ import {
   incrementPollCount,
   addPendingAmount,
 } from '../db/repositories.js';
-import type { KrakenRestClient } from '../kraken/restClient.js';
+import { getClientPool } from '../exchanges/clientPool.js';
+import type { ExchangeRestClient, WithdrawStatusRecord } from '../exchanges/types.js';
 import type { PollingConfig } from '../config/schema.js';
-import type { WithdrawalJob, KrakenWithdrawStatus, WithdrawalStatus } from './types.js';
+import type { WithdrawalJob, WithdrawalStatus, ExchangeId } from './types.js';
 
 const logger = createChildLogger('status-poller');
 
 export interface StatusPollerOptions {
-  krakenClient: KrakenRestClient;
   pollingConfig: PollingConfig;
+  enabledExchanges: ExchangeId[];
 }
 
 export interface StatusPollerEvents {
@@ -25,22 +26,28 @@ export interface StatusPollerEvents {
 }
 
 /**
- * Maps Kraken status strings to our internal status
+ * Maps exchange status strings to our internal status
  */
-function mapKrakenStatus(krakenStatus: string): WithdrawalStatus {
-  switch (krakenStatus.toLowerCase()) {
+function mapStatus(exchangeStatus: string): WithdrawalStatus {
+  switch (exchangeStatus.toLowerCase()) {
     case 'initial':
     case 'pending':
       return 'pending';
+    case 'processing':
+      return 'pending';
     case 'settled':
     case 'success':
+    case 'complete':
       return 'complete';
     case 'failure':
+    case 'failed':
       return 'failed';
     case 'on hold':
+    case 'held':
       return 'held';
     case 'cancel pending':
     case 'canceled':
+    case 'cancelled':
       return 'cancelled';
     default:
       return 'pending';
@@ -48,8 +55,8 @@ function mapKrakenStatus(krakenStatus: string): WithdrawalStatus {
 }
 
 export class StatusPoller extends EventEmitter {
-  private krakenClient: KrakenRestClient;
   private pollingConfig: PollingConfig;
+  private enabledExchanges: ExchangeId[];
 
   private pollTimer: NodeJS.Timeout | null = null;
   private running = false;
@@ -57,8 +64,8 @@ export class StatusPoller extends EventEmitter {
 
   constructor(options: StatusPollerOptions) {
     super();
-    this.krakenClient = options.krakenClient;
     this.pollingConfig = options.pollingConfig;
+    this.enabledExchanges = options.enabledExchanges;
   }
 
   /**
@@ -92,10 +99,10 @@ export class StatusPoller extends EventEmitter {
   }
 
   /**
-   * Update Kraken client
+   * Update enabled exchanges
    */
-  updateKrakenClient(client: KrakenRestClient): void {
-    this.krakenClient = client;
+  updateEnabledExchanges(exchanges: ExchangeId[]): void {
+    this.enabledExchanges = exchanges;
   }
 
   /**
@@ -156,28 +163,28 @@ export class StatusPoller extends EventEmitter {
     this.lastPollTime = now;
 
     try {
-      const jobs = getActiveWithdrawalJobs();
+      // Get all active jobs
+      const allJobs = getActiveWithdrawalJobs();
 
-      if (jobs.length === 0) {
+      if (allJobs.length === 0) {
         logger.debug('No active jobs to poll');
         this.schedulePoll();
         return;
       }
 
-      logger.debug({ jobCount: jobs.length }, 'Polling withdrawal status');
-
-      // Fetch status from Kraken (one call for all jobs)
-      const statuses = await this.krakenClient.getWithdrawStatus();
-
-      // Build lookup map by refid
-      const statusMap = new Map<string, KrakenWithdrawStatus>();
-      for (const status of statuses) {
-        statusMap.set(status.refid, status);
+      // Group jobs by exchange
+      const jobsByExchange = new Map<ExchangeId, WithdrawalJob[]>();
+      for (const job of allJobs) {
+        const exchange = job.exchange;
+        if (!jobsByExchange.has(exchange)) {
+          jobsByExchange.set(exchange, []);
+        }
+        jobsByExchange.get(exchange)!.push(job);
       }
 
-      // Update each job
-      for (const job of jobs) {
-        await this.updateJobStatus(job, statusMap, now);
+      // Poll each exchange
+      for (const [exchange, jobs] of jobsByExchange) {
+        await this.pollExchange(exchange, jobs, now);
       }
     } catch (error) {
       logger.error({ error }, 'Status poll failed');
@@ -187,29 +194,69 @@ export class StatusPoller extends EventEmitter {
   }
 
   /**
-   * Update a single job's status based on Kraken response
+   * Poll status for jobs on a specific exchange
+   */
+  private async pollExchange(
+    exchange: ExchangeId,
+    jobs: WithdrawalJob[],
+    now: number
+  ): Promise<void> {
+    logger.debug({ exchange, jobCount: jobs.length }, 'Polling withdrawal status');
+
+    const pool = getClientPool(exchange);
+    const selection = pool.selectBestKey();
+
+    if (!selection) {
+      logger.warn({ exchange }, 'No available API keys to poll status');
+      return;
+    }
+
+    try {
+      // Fetch status from exchange (one call for all jobs)
+      const statuses = await selection.client.getWithdrawStatus();
+      pool.recordUsage(selection.keyId, 1);
+
+      // Build lookup map by refid
+      const statusMap = new Map<string, WithdrawStatusRecord>();
+      for (const status of statuses) {
+        statusMap.set(status.refId, status);
+      }
+
+      // Update each job
+      for (const job of jobs) {
+        await this.updateJobStatus(job, statusMap, now);
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      pool.handleError(selection.keyId, errorMsg);
+      logger.error({ exchange, error: errorMsg }, 'Failed to poll status');
+    }
+  }
+
+  /**
+   * Update a single job's status based on exchange response
    */
   private async updateJobStatus(
     job: WithdrawalJob,
-    statusMap: Map<string, KrakenWithdrawStatus>,
+    statusMap: Map<string, WithdrawStatusRecord>,
     now: number
   ): Promise<void> {
-    // Find matching status by Kraken reference
-    const krakenStatus = job.krakenRef ? statusMap.get(job.krakenRef) : null;
+    // Find matching status by exchange reference
+    const exchangeStatus = job.exchangeRef ? statusMap.get(job.exchangeRef) : null;
 
     // Increment poll count
     incrementPollCount(job.id);
 
-    if (!krakenStatus) {
+    if (!exchangeStatus) {
       // Status not found - might be too new or already processed
-      logger.debug({ jobId: job.id, krakenRef: job.krakenRef }, 'Status not found');
+      logger.debug({ jobId: job.id, exchangeRef: job.exchangeRef }, 'Status not found');
 
       // Check if stuck
       this.checkStuck(job, now);
       return;
     }
 
-    const newStatus = mapKrakenStatus(krakenStatus.status);
+    const newStatus = mapStatus(exchangeStatus.status);
 
     // No change
     if (newStatus === job.status) {
@@ -220,9 +267,10 @@ export class StatusPoller extends EventEmitter {
     logger.info(
       {
         jobId: job.id,
+        exchange: job.exchange,
         oldStatus: job.status,
         newStatus,
-        txid: krakenStatus.txid,
+        txid: exchangeStatus.txid,
       },
       'Job status updated'
     );
@@ -230,17 +278,17 @@ export class StatusPoller extends EventEmitter {
     // Update job in database
     updateWithdrawalJob(job.id, {
       status: newStatus,
-      txid: krakenStatus.txid,
+      txid: exchangeStatus.txid,
     });
 
     // Emit events based on new status
     switch (newStatus) {
       case 'complete':
-        this.emit('jobComplete', { ...job, status: newStatus }, krakenStatus.txid);
+        this.emit('jobComplete', { ...job, status: newStatus }, exchangeStatus.txid);
         break;
 
       case 'failed':
-        this.handleJobFailure(job, krakenStatus.statusProp || 'Unknown failure');
+        this.handleJobFailure(job, exchangeStatus.error || 'Unknown failure');
         break;
 
       case 'held':
@@ -249,7 +297,7 @@ export class StatusPoller extends EventEmitter {
 
       case 'cancelled':
         // Return amount to pending
-        addPendingAmount(job.asset, job.amount);
+        addPendingAmount(job.exchange, job.asset, job.amount);
         logger.info({ jobId: job.id, amount: job.amount }, 'Cancelled withdrawal returned to pending');
         break;
     }
@@ -282,6 +330,7 @@ export class StatusPoller extends EventEmitter {
       logger.warn(
         {
           jobId: job.id,
+          exchange: job.exchange,
           asset: job.asset,
           age: Math.floor(age / 60000) + 'm',
         },

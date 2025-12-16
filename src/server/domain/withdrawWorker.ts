@@ -8,15 +8,16 @@ import {
 } from '../db/repositories.js';
 import { advanceWalletIndex, getCurrentWalletKey } from './rrSelector.js';
 import { computeChunkAmount, clampWithWithdrawInfo } from './chunking.js';
-import type { KrakenRestClient } from '../kraken/restClient.js';
+import type { ExchangeRestClient } from '../exchanges/types.js';
 import type { AssetConfig, GlobalConfig } from '../config/schema.js';
-import type { WithdrawalJob } from './types.js';
+import type { WithdrawalJob, ExchangeId } from './types.js';
 import type { PriceProvider } from './chunking.js';
 
 const logger = createChildLogger('withdraw-worker');
 
 export interface WithdrawWorkerOptions {
-  krakenClient: KrakenRestClient;
+  exchangeClient: ExchangeRestClient;
+  exchange: ExchangeId;
   globalConfig: GlobalConfig;
   priceProvider?: PriceProvider;
 }
@@ -37,11 +38,11 @@ export async function startWithdrawal(
   assetConfig: AssetConfig,
   options: WithdrawWorkerOptions
 ): Promise<WithdrawResult> {
-  const { krakenClient, globalConfig, priceProvider } = options;
+  const { exchangeClient, exchange, globalConfig, priceProvider } = options;
 
   try {
     // Get current state
-    const state = getAssetState(asset);
+    const state = getAssetState(exchange, asset);
     if (!state) {
       return { success: false, skipped: true, skipReason: 'No asset state' };
     }
@@ -63,13 +64,13 @@ export async function startWithdrawal(
     }
 
     // Get destination wallet key
-    const destKey = getCurrentWalletKey(asset, assetConfig.walletKeys);
+    const destKey = getCurrentWalletKey(exchange, asset, assetConfig.walletKeys);
 
     // Check prefix filter if configured
     if (globalConfig.keyNamePrefix) {
       if (!destKey.startsWith(globalConfig.keyNamePrefix)) {
         logger.warn(
-          { asset, destKey, prefix: globalConfig.keyNamePrefix },
+          { exchange, asset, destKey, prefix: globalConfig.keyNamePrefix },
           'Wallet key does not match prefix filter'
         );
         return {
@@ -80,14 +81,14 @@ export async function startWithdrawal(
       }
     }
 
-    // Get withdrawal info from Kraken (validates amount, gets fees)
-    const withdrawInfo = await krakenClient.getWithdrawInfo(
+    // Get withdrawal info from exchange (validates amount, gets fees)
+    const withdrawInfo = await exchangeClient.getWithdrawInfo(
       asset,
       destKey,
       chunkAmount
     );
 
-    // Clamp amount based on Kraken constraints
+    // Clamp amount based on exchange constraints
     const chunkResult = clampWithWithdrawInfo(chunkAmount, withdrawInfo);
 
     if (chunkResult.amount <= 0) {
@@ -101,6 +102,7 @@ export async function startWithdrawal(
     // Submit withdrawal
     logger.info(
       {
+        exchange,
         asset,
         amount: chunkResult.amount,
         destKey,
@@ -110,36 +112,38 @@ export async function startWithdrawal(
       'Submitting withdrawal'
     );
 
-    const result = await krakenClient.withdraw(asset, destKey, chunkResult.amount);
+    const result = await exchangeClient.withdraw(asset, destKey, chunkResult.amount);
 
     // Success - update state
-    subtractPendingAmount(asset, chunkResult.amount);
-    advanceWalletIndex(asset, assetConfig.walletKeys.length);
-    recordWithdrawalAttempt(asset, true);
+    subtractPendingAmount(exchange, asset, chunkResult.amount);
+    advanceWalletIndex(exchange, asset, assetConfig.walletKeys.length);
+    recordWithdrawalAttempt(exchange, asset, true);
 
     // Create job record
     const job = createWithdrawalJob(
+      exchange,
       asset,
       assetConfig.method,
       destKey,
       chunkResult.amount
     );
 
-    // Update with Kraken reference
+    // Update with exchange reference
     updateWithdrawalJob(job.id, {
-      krakenRef: result.refid,
+      exchangeRef: result.refId,
       status: 'pending',
     });
 
-    job.krakenRef = result.refid;
+    job.exchangeRef = result.refId;
     job.status = 'pending';
 
     logger.info(
       {
+        exchange,
         asset,
         amount: chunkResult.amount,
         destKey,
-        refid: result.refid,
+        refId: result.refId,
         jobId: job.id,
       },
       'Withdrawal submitted successfully'
@@ -148,16 +152,16 @@ export async function startWithdrawal(
     return { success: true, job };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    logger.error({ asset, error: errorMsg }, 'Withdrawal failed');
+    logger.error({ exchange, asset, error: errorMsg }, 'Withdrawal failed');
 
     // Calculate backoff
-    const state = getAssetState(asset);
+    const state = getAssetState(exchange, asset);
     const failures = (state?.consecutiveFailures ?? 0) + 1;
     const backoffIndex = Math.min(failures - 1, globalConfig.backoffSeconds.length - 1);
     const backoffMs = globalConfig.backoffSeconds[backoffIndex] * 1000;
     const backoffUntil = Date.now() + backoffMs;
 
-    recordWithdrawalAttempt(asset, false, backoffUntil);
+    recordWithdrawalAttempt(exchange, asset, false, backoffUntil);
 
     return { success: false, error: errorMsg };
   }
@@ -167,6 +171,7 @@ export async function startWithdrawal(
  * Check if an asset is eligible for withdrawal attempt
  */
 export function isEligibleForWithdrawal(
+  exchange: ExchangeId,
   asset: string,
   assetConfig: AssetConfig,
   globalConfig: GlobalConfig,
@@ -174,7 +179,7 @@ export function isEligibleForWithdrawal(
   globalInflightCount: number
 ): { eligible: boolean; reason?: string } {
   const now = Date.now();
-  const state = getAssetState(asset);
+  const state = getAssetState(exchange, asset);
 
   if (!state) {
     return { eligible: false, reason: 'No asset state' };

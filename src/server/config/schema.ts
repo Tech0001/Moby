@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import type { ExchangeId } from '../domain/types.js';
+
+// Supported exchange identifiers
+export const ExchangeIdSchema = z.enum(['kraken', 'gemini', 'kucoin', 'gateio']);
 
 // Chunk configuration - either fixed coin amount or USD-based
 export const ChunkConfigSchema = z.discriminatedUnion('mode', [
@@ -68,12 +72,49 @@ export const WebConfigSchema = z.object({
   trustProxy: z.boolean().default(false), // Set true behind reverse proxy
 });
 
+// Per-exchange configuration
+export const ExchangeConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  assets: z.record(z.string(), AssetConfigSchema).default({}),
+});
+
 // Full application configuration
+// Supports both new format (exchanges map) and legacy format (assets at root)
 export const AppConfigSchema = z.object({
   global: GlobalConfigSchema.default({}),
   polling: PollingConfigSchema.default({}),
   web: WebConfigSchema.default({}),
-  assets: z.record(z.string(), AssetConfigSchema).default({}),
+  // New format: per-exchange configuration
+  exchanges: z.record(ExchangeIdSchema, ExchangeConfigSchema).optional(),
+  // Legacy format: assets at root (will be migrated to exchanges.kraken.assets)
+  assets: z.record(z.string(), AssetConfigSchema).optional(),
+}).transform((config) => {
+  // Migrate legacy format to new format
+  if (config.assets && Object.keys(config.assets).length > 0 && !config.exchanges) {
+    return {
+      ...config,
+      exchanges: {
+        kraken: {
+          enabled: true,
+          assets: config.assets,
+        },
+      },
+      assets: undefined, // Remove legacy field
+    };
+  }
+  // Ensure exchanges exists (default to empty kraken)
+  if (!config.exchanges) {
+    return {
+      ...config,
+      exchanges: {
+        kraken: {
+          enabled: true,
+          assets: {},
+        },
+      },
+    };
+  }
+  return config;
 });
 
 // Type exports
@@ -82,4 +123,23 @@ export type AssetConfig = z.infer<typeof AssetConfigSchema>;
 export type PollingConfig = z.infer<typeof PollingConfigSchema>;
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
 export type WebConfig = z.infer<typeof WebConfigSchema>;
+export type ExchangeConfig = z.infer<typeof ExchangeConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;
+
+// Helper to get assets for a specific exchange
+export function getExchangeAssets(config: AppConfig, exchange: ExchangeId): Record<string, AssetConfig> {
+  return config.exchanges?.[exchange]?.assets ?? {};
+}
+
+// Helper to check if an exchange is enabled
+export function isExchangeEnabled(config: AppConfig, exchange: ExchangeId): boolean {
+  return config.exchanges?.[exchange]?.enabled ?? false;
+}
+
+// Get all enabled exchanges
+export function getEnabledExchanges(config: AppConfig): ExchangeId[] {
+  if (!config.exchanges) return [];
+  return (Object.entries(config.exchanges) as [ExchangeId, ExchangeConfig][])
+    .filter(([_, cfg]) => cfg.enabled)
+    .map(([id]) => id);
+}

@@ -7,7 +7,7 @@ import { logger } from '../utils/logger.js';
 const CONFIG_PATH = process.env.CONFIG_PATH || './config.yaml';
 
 // Default config template
-const DEFAULT_CONFIG = `# Kraken Auto-Sweeper Configuration
+const DEFAULT_CONFIG = `# Moby Configuration
 global:
   enabledOnBoot: false
   maxInflightWithdrawals: 2
@@ -71,8 +71,17 @@ export function loadConfig(): AppConfig {
     logger.info('Generated session secret (not persisted - provide in config for persistence)');
   }
 
+  // Log enabled exchanges and their assets
+  const enabledExchanges = config.exchanges ? Object.keys(config.exchanges).filter(
+    (id) => config.exchanges?.[id as keyof typeof config.exchanges]?.enabled
+  ) : [];
+  const totalAssets = enabledExchanges.reduce((sum, id) => {
+    const exchangeConfig = config.exchanges?.[id as keyof typeof config.exchanges];
+    return sum + (exchangeConfig?.assets ? Object.keys(exchangeConfig.assets).length : 0);
+  }, 0);
+
   logger.info(
-    { assets: Object.keys(config.assets), enabled: config.global.enabledOnBoot },
+    { enabledExchanges, totalAssets, enabledOnBoot: config.global.enabledOnBoot },
     'Configuration loaded'
   );
 

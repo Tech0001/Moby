@@ -807,3 +807,9 @@ html[data-style="parchment"] .wallet-add-button:hover:not(:disabled) {
   transform: translateY(-1px) !important;
   box-shadow: 0 2px 4px rgba(61, 40, 23, 0.15) !important;
 }
+
+/* Switch Thumb Override for Parchment */
+html[data-style="parchment"] button[role="switch"] span {
+  background-color: hsl(var(--background)) !important;
+  box-shadow: 0 1px 2px rgba(61, 40, 23, 0.2);
+}

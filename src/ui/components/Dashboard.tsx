@@ -13,6 +13,7 @@ import {
   Waves,
   AlertCircle
 } from 'lucide-react';
+import { WhaleIcon } from '@/ui/components/ui/WhaleIcon';
 import { ApiKeysPanel } from './ApiKeysPanel';
 import { StatusPanel } from './StatusPanel';
 import { ConfigPanel } from './ConfigPanel';
@@ -20,6 +21,8 @@ import { OrdersPanel } from './OrdersPanel';
 
 import { ModeToggle } from './ModeToggle';
 import { ThemeSelector } from './ThemeSelector';
+import { useTheme } from '@/ui/components/ThemeProvider';
+import { externalPalettes } from '@/ui/themes/registry';
 
 interface DashboardProps {
   user: { userId: string; username: string };
@@ -50,6 +53,7 @@ interface Status {
 }
 
 export function Dashboard({ user, onLogout }: DashboardProps) {
+  const { style, setStyle } = useTheme();
   const [status, setStatus] = useState<Status | null>(null);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
@@ -61,6 +65,21 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
   useEffect(() => {
     localStorage.setItem('activeTab', activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Alt + T to cycle themes
+      if (e.altKey && e.code === 'KeyT') {
+        e.preventDefault();
+        const currentIndex = externalPalettes.findIndex((p) => p.id === style);
+        const nextIndex = (currentIndex + 1) % externalPalettes.length;
+        setStyle(externalPalettes[nextIndex].id);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [style, setStyle]);
 
   useEffect(() => {
     fetchStatus();
@@ -117,9 +136,7 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
       <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-              <Waves className="w-5 h-5 text-white" />
-            </div>
+            <WhaleIcon className="h-8 w-auto text-primary" />
             <h1 className="text-xl font-bold tracking-tight">Moby</h1>
           </div>
 

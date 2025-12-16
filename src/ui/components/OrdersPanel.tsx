@@ -23,21 +23,27 @@ interface Fill {
   fee: number;
   feeCurrency: string;
   timestamp: number;
+  exchange?: string;
 }
 
 interface OpenOrder {
-  txid: string;
+  orderId: string;
+  exchange: string;
   pair: string;
   type: 'buy' | 'sell';
   orderType: string;
   price: string;
   volume: string;
   volumeExecuted: string;
-  cost: string;
-  fee: string;
   status: string;
   openTime: number;
   description: string;
+}
+
+interface ExchangeWithKeys {
+  id: string;
+  name: string;
+  hasKeys: boolean;
 }
 
 export function OrdersPanel() {
@@ -45,9 +51,12 @@ export function OrdersPanel() {
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [exchanges, setExchanges] = useState<ExchangeWithKeys[]>([]);
+  const [selectedExchange, setSelectedExchange] = useState<string>('all');
   const hasFetched = useRef(false);
 
   useEffect(() => {
+    fetchExchanges();
     // Only fetch once on mount
     if (!hasFetched.current) {
       hasFetched.current = true;
@@ -56,7 +65,36 @@ export function OrdersPanel() {
     // No auto-refresh interval - manual refresh only
   }, []);
 
-  async function fetchData(force = false) {
+  async function fetchExchanges() {
+    try {
+      // Fetch available exchanges
+      const [exchangesRes, keysRes] = await Promise.all([
+        fetch('/api/exchanges/available'),
+        fetch('/api/keys')
+      ]);
+
+      if (exchangesRes.ok && keysRes.ok) {
+        const exchangesData = await exchangesRes.json();
+        const keysData = await keysRes.json();
+
+        // Create set of exchanges that have keys
+        const exchangesWithKeys = new Set(keysData.keys.map((k: { exchange: string }) => k.exchange));
+
+        // Map exchanges with hasKeys flag
+        const mapped = exchangesData.exchanges.map((ex: { id: string; name: string }) => ({
+          id: ex.id,
+          name: ex.name,
+          hasKeys: exchangesWithKeys.has(ex.id)
+        }));
+
+        setExchanges(mapped);
+      }
+    } catch (error) {
+      console.error('Failed to fetch exchanges:', error);
+    }
+  }
+
+  async function fetchData(force = false, exchange?: string) {
     // Prevent concurrent fetches
     if (isFetching) {
       console.log('Fetch already in progress, skipping');
@@ -73,10 +111,16 @@ export function OrdersPanel() {
     isFetching = true;
     setRefreshing(true);
 
+    const exchangeFilter = exchange || selectedExchange;
+    const exchangeParam = exchangeFilter !== 'all' ? `&exchange=${exchangeFilter}` : '';
+
     try {
+      const ordersUrl = exchangeFilter !== 'all'
+        ? `/api/orders?exchange=${exchangeFilter}`
+        : '/api/orders';
       const [fillsRes, ordersRes] = await Promise.all([
-        fetch('/api/fills?limit=50'),
-        fetch('/api/kraken/orders')
+        fetch(`/api/fills?limit=50${exchangeParam}`),
+        fetch(ordersUrl)
       ]);
 
       if (fillsRes.ok) {
@@ -97,6 +141,11 @@ export function OrdersPanel() {
       setLoading(false);
       setRefreshing(false);
     }
+  }
+
+  function handleExchangeSelect(exchange: string) {
+    setSelectedExchange(exchange);
+    fetchData(true, exchange);
   }
 
   function forceRefresh() {
@@ -138,7 +187,28 @@ export function OrdersPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
+      <div className="flex justify-between items-center">
+        {/* Exchange Filter Buttons */}
+        <div className="flex items-center gap-2">
+          <Button
+            variant={selectedExchange === 'all' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => handleExchangeSelect('all')}
+          >
+            All
+          </Button>
+          {exchanges.filter(ex => ex.hasKeys).map((ex) => (
+            <Button
+              key={ex.id}
+              variant={selectedExchange === ex.id ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => handleExchangeSelect(ex.id)}
+            >
+              {ex.name}
+            </Button>
+          ))}
+        </div>
+
         <Button
           variant="ghost"
           size="sm"
@@ -164,7 +234,7 @@ export function OrdersPanel() {
         <CardContent className="p-0">
           {!openOrders || openOrders.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
-              No open orders found on Kraken.
+              No open orders found.
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -172,6 +242,7 @@ export function OrdersPanel() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Opened</TableHead>
+                    {selectedExchange === 'all' && <TableHead>Exchange</TableHead>}
                     <TableHead>Pair</TableHead>
                     <TableHead>Side</TableHead>
                     <TableHead>Type</TableHead>
@@ -182,10 +253,15 @@ export function OrdersPanel() {
                 </TableHeader>
                 <TableBody>
                   {Array.isArray(openOrders) && openOrders.map((order) => (
-                    <TableRow key={order.txid}>
+                    <TableRow key={`${order.exchange}-${order.orderId}`}>
                       <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                         {formatKrakenTime(order.openTime)}
                       </TableCell>
+                      {selectedExchange === 'all' && (
+                        <TableCell className="capitalize">
+                          {order.exchange}
+                        </TableCell>
+                      )}
                       <TableCell className="font-medium">
                         {formatPair(order.pair)}
                       </TableCell>
@@ -247,6 +323,7 @@ export function OrdersPanel() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Time</TableHead>
+                    {selectedExchange === 'all' && <TableHead>Exchange</TableHead>}
                     <TableHead>Pair</TableHead>
                     <TableHead>Side</TableHead>
                     <TableHead className="text-right">Price</TableHead>
@@ -257,10 +334,15 @@ export function OrdersPanel() {
                 </TableHeader>
                 <TableBody>
                   {Array.isArray(fills) && fills.map((fill) => (
-                    <TableRow key={fill.tradeId}>
+                    <TableRow key={`${fill.exchange || 'unknown'}-${fill.tradeId}`}>
                       <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                         {formatTime(fill.timestamp)}
                       </TableCell>
+                      {selectedExchange === 'all' && (
+                        <TableCell className="capitalize">
+                          {fill.exchange || 'kraken'}
+                        </TableCell>
+                      )}
                       <TableCell className="font-medium">
                         {formatPair(fill.pair)}
                       </TableCell>

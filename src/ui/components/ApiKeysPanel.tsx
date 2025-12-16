@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/ui/components/ui/card";
 import { Button } from "@/ui/components/ui/button";
 import { Badge } from "@/ui/components/ui/badge";
@@ -8,7 +8,7 @@ import { Input } from "@/ui/components/ui/input";
 import { Label } from "@/ui/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/ui/components/ui/alert";
-import { AlertTriangle, Info } from 'lucide-react';
+import { AlertTriangle, Info, ChevronDown, ChevronRight } from 'lucide-react';
 
 interface ApiKeysPanelProps {
   hasKeys: boolean;
@@ -18,7 +18,8 @@ interface ApiKeysPanelProps {
 interface ApiKeyInfo {
   id: string;
   name: string;
-  tier: 'starter' | 'intermediate' | 'pro';
+  exchange: string;
+  tier: string;
   isActive: boolean;
   isValid: boolean;
   estimatedCounter: number;
@@ -27,32 +28,58 @@ interface ApiKeyInfo {
   lastError: string | null;
 }
 
-const TIER_INFO = {
+interface ExchangeInfo {
+  id: string;
+  name: string;
+  requiresPassphrase: boolean;
+  defaultTier: string;
+  tiers: Array<{ value: string; label: string; maxCounter: number; decayRate: number }>;
+}
+
+// Fallback tier info if not loaded
+const DEFAULT_TIER_INFO: Record<string, { maxCounter: number; decayRate: number; label: string }> = {
   starter: { maxCounter: 15, decayRate: 0.33, label: 'Starter' },
   intermediate: { maxCounter: 20, decayRate: 0.5, label: 'Intermediate' },
   pro: { maxCounter: 20, decayRate: 1.0, label: 'Pro' },
+  standard: { maxCounter: 30, decayRate: 3, label: 'Standard' },
+  vip1: { maxCounter: 60, decayRate: 6, label: 'VIP 1' },
+  vip2: { maxCounter: 100, decayRate: 10, label: 'VIP 2+' },
 };
 
 export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
   const [keys, setKeys] = useState<ApiKeyInfo[]>([]);
+  const [exchanges, setExchanges] = useState<ExchangeInfo[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [expandedExchanges, setExpandedExchanges] = useState<Set<string>>(new Set(['kraken']));
+  const initialLoadDone = useRef(false);
 
   useEffect(() => {
-    fetchKeys();
+    fetchKeys(true); // Initial load - auto-expand
+    fetchExchanges();
     // Refresh every 5 seconds to update counter estimates
-    const interval = setInterval(fetchKeys, 5000);
+    const interval = setInterval(() => fetchKeys(false), 5000);
     return () => clearInterval(interval);
   }, []);
 
-  async function fetchKeys() {
+  async function fetchKeys(autoExpand: boolean = false) {
     try {
       const res = await fetch('/api/keys');
       if (res.ok) {
         const data = await res.json();
         setKeys(data.keys);
+        // Only auto-expand on initial load
+        if (autoExpand && !initialLoadDone.current) {
+          initialLoadDone.current = true;
+          const exchangesWithKeys = data.keys.map((k: ApiKeyInfo) => k.exchange) as string[];
+          setExpandedExchanges((prev) => {
+            const newSet = new Set(prev);
+            exchangesWithKeys.forEach((ex: string) => newSet.add(ex));
+            return newSet;
+          });
+        }
       }
     } catch (err) {
       console.error('Failed to fetch keys:', err);
@@ -60,6 +87,38 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
       setLoading(false);
     }
   }
+
+  async function fetchExchanges() {
+    try {
+      const res = await fetch('/api/exchanges/available');
+      if (res.ok) {
+        const data = await res.json();
+        setExchanges(data.exchanges);
+      }
+    } catch (err) {
+      console.error('Failed to fetch exchanges:', err);
+    }
+  }
+
+  function toggleExchange(exchangeId: string) {
+    setExpandedExchanges((prev) => {
+      const next = new Set(prev);
+      if (next.has(exchangeId)) {
+        next.delete(exchangeId);
+      } else {
+        next.add(exchangeId);
+      }
+      return next;
+    });
+  }
+
+  // Group keys by exchange
+  const keysByExchange = keys.reduce((acc, key) => {
+    const exchange = key.exchange || 'kraken';
+    if (!acc[exchange]) acc[exchange] = [];
+    acc[exchange].push(key);
+    return acc;
+  }, {} as Record<string, ApiKeyInfo[]>);
 
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Are you sure you want to delete the API key "${name}"?`)) {
@@ -130,12 +189,17 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
     );
   }
 
+  // Get exchange info by id
+  function getExchangeInfo(exchangeId: string): ExchangeInfo | undefined {
+    return exchanges.find((e) => e.id === exchangeId);
+  }
+
   return (
     <div className="space-y-4">
       {/* Header */}
       <Card>
         <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
-          <CardTitle>Kraken API Keys</CardTitle>
+          <CardTitle>Exchange API Keys</CardTitle>
           <Button onClick={() => setShowAddForm(true)} size="sm">
             + Add Key
           </Button>
@@ -157,23 +221,65 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
             </Alert>
           )}
 
-          {keys.length === 0 ? (
+          {exchanges.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
-              No API keys configured. Add a key to start using the sweeper.
+              Loading exchanges...
             </div>
           ) : (
             <div className="divide-y">
-              {keys.map((key) => (
-                <ApiKeyRow
-                  key={key.id}
-                  keyInfo={key}
-                  onDelete={() => handleDelete(key.id, key.name)}
-                  onToggleActive={() => handleToggleActive(key.id, key.isActive)}
-                  onClearRateLimit={() => handleClearRateLimit(key.id)}
-                  onRevalidate={() => handleRevalidate(key.id)}
-                  onUpdate={fetchKeys}
-                />
-              ))}
+              {exchanges.map((exchange) => {
+                const exchangeKeys = keysByExchange[exchange.id] || [];
+                const isExpanded = expandedExchanges.has(exchange.id);
+                const hasKeys = exchangeKeys.length > 0;
+
+                return (
+                  <div key={exchange.id}>
+                    <div
+                      className="flex items-center justify-between p-4 hover:bg-muted/50 cursor-pointer"
+                      onClick={() => toggleExchange(exchange.id)}
+                    >
+                      <div className="flex items-center gap-2">
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                        <span className="font-medium">{exchange.name}</span>
+                        {hasKeys && (
+                          <Badge variant="secondary" className="ml-2">
+                            {exchangeKeys.length} key{exchangeKeys.length !== 1 ? 's' : ''}
+                          </Badge>
+                        )}
+                      </div>
+                      {!hasKeys && (
+                        <span className="text-xs text-muted-foreground">No keys configured</span>
+                      )}
+                    </div>
+                    {isExpanded && (
+                      exchangeKeys.length === 0 ? (
+                        <div className="px-4 pb-4 text-sm text-muted-foreground ml-6">
+                          Add an API key for {exchange.name} to start sweeping.
+                        </div>
+                      ) : (
+                        <div className="divide-y border-t">
+                          {exchangeKeys.map((key) => (
+                            <ApiKeyRow
+                              key={key.id}
+                              keyInfo={key}
+                              exchangeInfo={exchange}
+                              onDelete={() => handleDelete(key.id, key.name)}
+                              onToggleActive={() => handleToggleActive(key.id, key.isActive)}
+                              onClearRateLimit={() => handleClearRateLimit(key.id)}
+                              onRevalidate={() => handleRevalidate(key.id)}
+                              onUpdate={fetchKeys}
+                            />
+                          ))}
+                        </div>
+                      )
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </CardContent>
@@ -183,6 +289,7 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
       <AddKeyDialog
         open={showAddForm}
         onOpenChange={setShowAddForm}
+        exchanges={exchanges}
         onSuccess={() => {
           setShowAddForm(false);
           fetchKeys();
@@ -196,6 +303,7 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
 
 interface ApiKeyRowProps {
   keyInfo: ApiKeyInfo;
+  exchangeInfo?: ExchangeInfo;
   onDelete: () => void;
   onToggleActive: () => void;
   onClearRateLimit: () => void;
@@ -205,6 +313,7 @@ interface ApiKeyRowProps {
 
 function ApiKeyRow({
   keyInfo,
+  exchangeInfo,
   onDelete,
   onToggleActive,
   onClearRateLimit,
@@ -219,7 +328,11 @@ function ApiKeyRow({
     error?: string;
   } | null>(null);
 
-  const tierInfo = TIER_INFO[keyInfo.tier];
+  // Get tier info from exchange or fallback
+  const tierFromExchange = exchangeInfo?.tiers.find((t) => t.value === keyInfo.tier);
+  const tierInfo = tierFromExchange
+    ? { maxCounter: tierFromExchange.maxCounter, decayRate: tierFromExchange.decayRate, label: tierFromExchange.label }
+    : DEFAULT_TIER_INFO[keyInfo.tier] || { maxCounter: 20, decayRate: 1, label: keyInfo.tier };
   const isRateLimited = keyInfo.rateLimitedUntil && keyInfo.rateLimitedUntil > Date.now();
   const rateLimitSeconds = isRateLimited
     ? Math.ceil((keyInfo.rateLimitedUntil! - Date.now()) / 1000)
@@ -367,16 +480,46 @@ function ApiKeyRow({
 interface AddKeyDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  exchanges: ExchangeInfo[];
   onSuccess: () => void;
 }
 
-function AddKeyDialog({ open, onOpenChange, onSuccess }: AddKeyDialogProps) {
+function AddKeyDialog({ open, onOpenChange, exchanges, onSuccess }: AddKeyDialogProps) {
+  const [exchange, setExchange] = useState('kraken');
   const [name, setName] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
-  const [tier, setTier] = useState<'starter' | 'intermediate' | 'pro'>('starter');
+  const [passphrase, setPassphrase] = useState('');
+  const [tier, setTier] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Get selected exchange info
+  const selectedExchange = exchanges.find((e) => e.id === exchange);
+  const requiresPassphrase = selectedExchange?.requiresPassphrase ?? false;
+  const tiers = selectedExchange?.tiers ?? [];
+
+  // Reset tier when exchange changes
+  useEffect(() => {
+    if (selectedExchange) {
+      setTier(selectedExchange.defaultTier);
+    }
+  }, [exchange, selectedExchange]);
+
+  // Reset form when dialog opens
+  useEffect(() => {
+    if (open) {
+      setName('');
+      setApiKey('');
+      setApiSecret('');
+      setPassphrase('');
+      setError('');
+      if (exchanges.length > 0) {
+        setExchange(exchanges[0].id);
+        setTier(exchanges[0].defaultTier);
+      }
+    }
+  }, [open, exchanges]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -384,10 +527,15 @@ function AddKeyDialog({ open, onOpenChange, onSuccess }: AddKeyDialogProps) {
     setLoading(true);
 
     try {
+      const body: Record<string, string> = { name, apiKey, apiSecret, tier, exchange };
+      if (requiresPassphrase && passphrase) {
+        body.passphrase = passphrase;
+      }
+
       const res = await fetch('/api/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, apiKey, apiSecret, tier }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json();
@@ -405,23 +553,49 @@ function AddKeyDialog({ open, onOpenChange, onSuccess }: AddKeyDialogProps) {
     }
   }
 
+  // Permission requirements by exchange
+  const permissionInfo: Record<string, string[]> = {
+    kraken: ['Funds: Query', 'Funds: Withdraw', 'Orders & Trades: Query closed orders & trades'],
+    gemini: ['Fund Management', 'Trading'],
+    kucoin: ['General', 'Trade', 'Transfer'],
+    gateio: ['Spot/Margin Trade', 'Wallet'],
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add API Key</DialogTitle>
-          <DialogDescription>Add your Kraken API credentials. Ensure permissions are set correctly.</DialogDescription>
+          <DialogDescription>Add your exchange API credentials. Ensure permissions are set correctly.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
+          {/* Exchange selector */}
+          <div className="space-y-2">
+            <Label htmlFor="exchange">Exchange</Label>
+            <Select value={exchange} onValueChange={setExchange}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {exchanges.map((ex) => (
+                  <SelectItem key={ex.id} value={ex.id}>
+                    {ex.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Permission info based on selected exchange */}
           <Alert className="bg-yellow-500/10 border-yellow-500/50 text-yellow-500">
             <Info className="h-4 w-4" />
-            <AlertTitle>Required permissions</AlertTitle>
+            <AlertTitle>Required permissions for {selectedExchange?.name || 'Exchange'}</AlertTitle>
             <AlertDescription>
               <ul className="list-disc list-inside mt-1">
-                <li>Funds: Query</li>
-                <li>Funds: Withdraw</li>
-                <li>Orders & Trades: Query closed orders & trades</li>
+                {(permissionInfo[exchange] || ['Check exchange documentation']).map((perm, i) => (
+                  <li key={i}>{perm}</li>
+                ))}
               </ul>
             </AlertDescription>
           </Alert>
@@ -437,25 +611,27 @@ function AddKeyDialog({ open, onOpenChange, onSuccess }: AddKeyDialogProps) {
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="tier">Tier</Label>
-            <Select
-              value={tier}
-              onValueChange={(value) => setTier(value as typeof tier)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="starter">Starter (15 max, -0.33/sec)</SelectItem>
-                <SelectItem value="intermediate">Intermediate (20 max, -0.5/sec)</SelectItem>
-                <SelectItem value="pro">Pro (20 max, -1/sec)</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Match this to your Kraken verification level (Starter = Express, Intermediate, Pro).
-            </p>
-          </div>
+          {/* Tier selector - dynamic based on exchange */}
+          {tiers.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="tier">Tier / Rate Limit Level</Label>
+              <Select value={tier} onValueChange={setTier}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {tiers.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label} ({t.maxCounter} max, -{t.decayRate}/sec)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Match this to your account verification level.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="api-key">API Key</Label>
@@ -464,7 +640,7 @@ function AddKeyDialog({ open, onOpenChange, onSuccess }: AddKeyDialogProps) {
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               className="font-mono"
-              placeholder="Enter your Kraken API key"
+              placeholder={`Enter your ${selectedExchange?.name || 'exchange'} API key`}
               required
             />
           </div>
@@ -477,10 +653,29 @@ function AddKeyDialog({ open, onOpenChange, onSuccess }: AddKeyDialogProps) {
               value={apiSecret}
               onChange={(e) => setApiSecret(e.target.value)}
               className="font-mono"
-              placeholder="Enter your Kraken API secret"
+              placeholder={`Enter your ${selectedExchange?.name || 'exchange'} API secret`}
               required
             />
           </div>
+
+          {/* Passphrase field for exchanges that require it */}
+          {requiresPassphrase && (
+            <div className="space-y-2">
+              <Label htmlFor="passphrase">Passphrase</Label>
+              <Input
+                id="passphrase"
+                type="password"
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+                className="font-mono"
+                placeholder="Enter your API passphrase"
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                {selectedExchange?.name} requires a passphrase for API authentication.
+              </p>
+            </div>
+          )}
 
           {error && <div className="text-destructive text-sm">{error}</div>}
 

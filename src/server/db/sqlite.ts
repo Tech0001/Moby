@@ -171,6 +171,76 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(is_active, is_valid);
     `,
   },
+  {
+    version: 4,
+    name: 'multi_exchange_support',
+    sql: `
+      -- Add exchange column to api_keys
+      ALTER TABLE api_keys ADD COLUMN exchange TEXT NOT NULL DEFAULT 'kraken';
+
+      -- Add exchange column to fill_events
+      ALTER TABLE fill_events ADD COLUMN exchange TEXT NOT NULL DEFAULT 'kraken';
+
+      -- Recreate asset_state with composite primary key (exchange, asset)
+      CREATE TABLE asset_state_new (
+        exchange TEXT NOT NULL DEFAULT 'kraken',
+        asset TEXT NOT NULL,
+        pending_amount REAL NOT NULL DEFAULT 0,
+        rr_index INTEGER NOT NULL DEFAULT 0,
+        last_withdraw_at INTEGER,
+        consecutive_failures INTEGER NOT NULL DEFAULT 0,
+        backoff_until INTEGER,
+        PRIMARY KEY (exchange, asset)
+      );
+      INSERT INTO asset_state_new (exchange, asset, pending_amount, rr_index, last_withdraw_at, consecutive_failures, backoff_until)
+        SELECT 'kraken', asset, pending_amount, rr_index, last_withdraw_at, consecutive_failures, backoff_until FROM asset_state;
+      DROP TABLE asset_state;
+      ALTER TABLE asset_state_new RENAME TO asset_state;
+
+      -- Recreate withdrawal_jobs with exchange column and rename kraken_ref to exchange_ref
+      CREATE TABLE withdrawal_jobs_new (
+        id TEXT PRIMARY KEY,
+        exchange TEXT NOT NULL DEFAULT 'kraken',
+        asset TEXT NOT NULL,
+        method TEXT NOT NULL,
+        dest_key TEXT NOT NULL,
+        amount REAL NOT NULL,
+        status TEXT NOT NULL DEFAULT 'submitted',
+        exchange_ref TEXT,
+        txid TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        poll_count INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT
+      );
+      INSERT INTO withdrawal_jobs_new (id, exchange, asset, method, dest_key, amount, status, exchange_ref, txid, created_at, updated_at, poll_count, last_error)
+        SELECT id, 'kraken', asset, method, dest_key, amount, status, kraken_ref, txid, created_at, updated_at, poll_count, last_error FROM withdrawal_jobs;
+      DROP TABLE withdrawal_jobs;
+      ALTER TABLE withdrawal_jobs_new RENAME TO withdrawal_jobs;
+      CREATE INDEX IF NOT EXISTS idx_withdrawal_jobs_exchange ON withdrawal_jobs(exchange);
+      CREATE INDEX IF NOT EXISTS idx_withdrawal_jobs_asset ON withdrawal_jobs(asset);
+      CREATE INDEX IF NOT EXISTS idx_withdrawal_jobs_status ON withdrawal_jobs(status);
+      CREATE INDEX IF NOT EXISTS idx_withdrawal_jobs_created ON withdrawal_jobs(created_at);
+
+      -- Rename kraken_addresses to exchange_addresses and add exchange column
+      CREATE TABLE exchange_addresses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        exchange TEXT NOT NULL DEFAULT 'kraken',
+        asset TEXT NOT NULL,
+        method TEXT NOT NULL,
+        key TEXT NOT NULL,
+        address TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        last_seen_at INTEGER NOT NULL,
+        UNIQUE(exchange, asset, key)
+      );
+      INSERT INTO exchange_addresses (id, exchange, asset, method, key, address, created_at, last_seen_at)
+        SELECT id, 'kraken', asset, method, key, address, created_at, last_seen_at FROM kraken_addresses WHERE removed_at IS NULL;
+      DROP TABLE kraken_addresses;
+      CREATE INDEX IF NOT EXISTS idx_exchange_addresses_exchange ON exchange_addresses(exchange);
+      CREATE INDEX IF NOT EXISTS idx_exchange_addresses_asset ON exchange_addresses(asset);
+    `,
+  },
 ];
 
 function runMigrations(database: Database.Database): void {

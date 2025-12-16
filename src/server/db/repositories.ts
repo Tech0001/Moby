@@ -6,19 +6,21 @@ import type {
   WithdrawalStatus,
   FillEvent,
   AppState,
+  ExchangeId,
 } from '../domain/types.js';
 
 // ============== Asset State Repository ==============
 
-export function getAssetState(asset: string): AssetState | null {
+export function getAssetState(exchange: ExchangeId, asset: string): AssetState | null {
   const db = getDb();
   const row = db
     .prepare(
-      `SELECT asset, pending_amount, rr_index, last_withdraw_at,
+      `SELECT exchange, asset, pending_amount, rr_index, last_withdraw_at,
               consecutive_failures, backoff_until
-       FROM asset_state WHERE asset = ?`
+       FROM asset_state WHERE exchange = ? AND asset = ?`
     )
-    .get(asset) as {
+    .get(exchange, asset) as {
+    exchange: ExchangeId;
     asset: string;
     pending_amount: number;
     rr_index: number;
@@ -30,6 +32,7 @@ export function getAssetState(asset: string): AssetState | null {
   if (!row) return null;
 
   return {
+    exchange: row.exchange,
     asset: row.asset,
     pendingAmount: row.pending_amount,
     rrIndex: row.rr_index,
@@ -42,10 +45,19 @@ export function getAssetState(asset: string): AssetState | null {
 /**
  * Get recent fill events
  */
-export function getRecentFills(limit = 50): FillEvent[] {
+export function getRecentFills(limit = 50, exchange?: ExchangeId): FillEvent[] {
   const db = getDb();
-  const stmt = db.prepare<[number]>('SELECT * FROM fill_events ORDER BY ts DESC LIMIT ?');
-  const rows = stmt.all(limit) as any[];
+  let sql = 'SELECT * FROM fill_events';
+  const params: unknown[] = [];
+
+  if (exchange) {
+    sql += ' WHERE exchange = ?';
+    params.push(exchange);
+  }
+  sql += ' ORDER BY ts DESC LIMIT ?';
+  params.push(limit);
+
+  const rows = db.prepare(sql).all(...params) as any[];
 
   return rows.map((row) => ({
     tradeId: row.id, // map id back to tradeId
@@ -59,18 +71,23 @@ export function getRecentFills(limit = 50): FillEvent[] {
     fee: row.fee,
     feeCurrency: row.fee_currency,
     timestamp: row.ts,
+    exchange: row.exchange as ExchangeId,
   }));
 }
 
-export function getAllAssetStates(): AssetState[] {
+export function getAllAssetStates(exchange?: ExchangeId): AssetState[] {
   const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT asset, pending_amount, rr_index, last_withdraw_at,
-              consecutive_failures, backoff_until
-       FROM asset_state`
-    )
-    .all() as Array<{
+  let sql = `SELECT exchange, asset, pending_amount, rr_index, last_withdraw_at,
+              consecutive_failures, backoff_until FROM asset_state`;
+  const params: unknown[] = [];
+
+  if (exchange) {
+    sql += ' WHERE exchange = ?';
+    params.push(exchange);
+  }
+
+  const rows = db.prepare(sql).all(...params) as Array<{
+    exchange: ExchangeId;
     asset: string;
     pending_amount: number;
     rr_index: number;
@@ -80,6 +97,7 @@ export function getAllAssetStates(): AssetState[] {
   }>;
 
   return rows.map((row) => ({
+    exchange: row.exchange,
     asset: row.asset,
     pendingAmount: row.pending_amount,
     rrIndex: row.rr_index,
@@ -92,15 +110,16 @@ export function getAllAssetStates(): AssetState[] {
 export function upsertAssetState(state: AssetState): void {
   const db = getDb();
   db.prepare(
-    `INSERT INTO asset_state (asset, pending_amount, rr_index, last_withdraw_at, consecutive_failures, backoff_until)
-     VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(asset) DO UPDATE SET
+    `INSERT INTO asset_state (exchange, asset, pending_amount, rr_index, last_withdraw_at, consecutive_failures, backoff_until)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(exchange, asset) DO UPDATE SET
        pending_amount = excluded.pending_amount,
        rr_index = excluded.rr_index,
        last_withdraw_at = excluded.last_withdraw_at,
        consecutive_failures = excluded.consecutive_failures,
        backoff_until = excluded.backoff_until`
   ).run(
+    state.exchange,
     state.asset,
     state.pendingAmount,
     state.rrIndex,
@@ -110,31 +129,31 @@ export function upsertAssetState(state: AssetState): void {
   );
 }
 
-export function addPendingAmount(asset: string, amount: number): void {
+export function addPendingAmount(exchange: ExchangeId, asset: string, amount: number): void {
   const db = getDb();
   db.prepare(
-    `INSERT INTO asset_state (asset, pending_amount, rr_index, consecutive_failures)
-     VALUES (?, ?, 0, 0)
-     ON CONFLICT(asset) DO UPDATE SET
+    `INSERT INTO asset_state (exchange, asset, pending_amount, rr_index, consecutive_failures)
+     VALUES (?, ?, ?, 0, 0)
+     ON CONFLICT(exchange, asset) DO UPDATE SET
        pending_amount = pending_amount + ?`
-  ).run(asset, amount, amount);
+  ).run(exchange, asset, amount, amount);
 }
 
-export function subtractPendingAmount(asset: string, amount: number): void {
+export function subtractPendingAmount(exchange: ExchangeId, asset: string, amount: number): void {
   const db = getDb();
   db.prepare(
-    `UPDATE asset_state SET pending_amount = MAX(0, pending_amount - ?) WHERE asset = ?`
-  ).run(amount, asset);
+    `UPDATE asset_state SET pending_amount = MAX(0, pending_amount - ?) WHERE exchange = ? AND asset = ?`
+  ).run(amount, exchange, asset);
 }
 
-export function advanceRrIndex(asset: string, walletCount: number): void {
+export function advanceRrIndex(exchange: ExchangeId, asset: string, walletCount: number): void {
   const db = getDb();
   db.prepare(
-    `UPDATE asset_state SET rr_index = (rr_index + 1) % ? WHERE asset = ?`
-  ).run(walletCount, asset);
+    `UPDATE asset_state SET rr_index = (rr_index + 1) % ? WHERE exchange = ? AND asset = ?`
+  ).run(walletCount, exchange, asset);
 }
 
-export function recordWithdrawalAttempt(asset: string, success: boolean, backoffUntil?: number): void {
+export function recordWithdrawalAttempt(exchange: ExchangeId, asset: string, success: boolean, backoffUntil?: number): void {
   const db = getDb();
   const now = Date.now();
 
@@ -144,21 +163,22 @@ export function recordWithdrawalAttempt(asset: string, success: boolean, backoff
          last_withdraw_at = ?,
          consecutive_failures = 0,
          backoff_until = NULL
-       WHERE asset = ?`
-    ).run(now, asset);
+       WHERE exchange = ? AND asset = ?`
+    ).run(now, exchange, asset);
   } else {
     db.prepare(
       `UPDATE asset_state SET
          consecutive_failures = consecutive_failures + 1,
          backoff_until = ?
-       WHERE asset = ?`
-    ).run(backoffUntil || null, asset);
+       WHERE exchange = ? AND asset = ?`
+    ).run(backoffUntil || null, exchange, asset);
   }
 }
 
 // ============== Withdrawal Jobs Repository ==============
 
 export function createWithdrawalJob(
+  exchange: ExchangeId,
   asset: string,
   method: string,
   destKey: string,
@@ -168,6 +188,7 @@ export function createWithdrawalJob(
   const now = Date.now();
   const job: WithdrawalJob = {
     id: uuid(),
+    exchange,
     asset,
     method,
     destKey,
@@ -180,9 +201,9 @@ export function createWithdrawalJob(
 
   db.prepare(
     `INSERT INTO withdrawal_jobs
-     (id, asset, method, dest_key, amount, status, created_at, updated_at, poll_count)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(job.id, job.asset, job.method, job.destKey, job.amount, job.status, job.createdAt, job.updatedAt, job.pollCount);
+     (id, exchange, asset, method, dest_key, amount, status, created_at, updated_at, poll_count)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(job.id, job.exchange, job.asset, job.method, job.destKey, job.amount, job.status, job.createdAt, job.updatedAt, job.pollCount);
 
   return job;
 }
@@ -193,43 +214,42 @@ export function getWithdrawalJob(id: string): WithdrawalJob | null {
   return row ? mapWithdrawalJobRow(row) : null;
 }
 
-export function getActiveWithdrawalJobs(): WithdrawalJob[] {
+export function getActiveWithdrawalJobs(exchange?: ExchangeId): WithdrawalJob[] {
   const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT * FROM withdrawal_jobs
-       WHERE status IN ('submitted', 'pending')
-       ORDER BY created_at ASC`
-    )
-    .all() as Array<Record<string, unknown>>;
+  let sql = `SELECT * FROM withdrawal_jobs WHERE status IN ('submitted', 'pending')`;
+  const params: unknown[] = [];
 
+  if (exchange) {
+    sql += ' AND exchange = ?';
+    params.push(exchange);
+  }
+  sql += ' ORDER BY created_at ASC';
+
+  const rows = db.prepare(sql).all(...params) as Array<Record<string, unknown>>;
   return rows.map(mapWithdrawalJobRow);
 }
 
-export function getInflightCount(asset?: string): number {
+export function getInflightCount(exchange?: ExchangeId, asset?: string): number {
   const db = getDb();
+  let sql = `SELECT COUNT(*) as count FROM withdrawal_jobs WHERE status IN ('submitted', 'pending')`;
+  const params: unknown[] = [];
+
+  if (exchange) {
+    sql += ' AND exchange = ?';
+    params.push(exchange);
+  }
   if (asset) {
-    const row = db
-      .prepare(
-        `SELECT COUNT(*) as count FROM withdrawal_jobs
-         WHERE asset = ? AND status IN ('submitted', 'pending')`
-      )
-      .get(asset) as { count: number };
-    return row.count;
+    sql += ' AND asset = ?';
+    params.push(asset);
   }
 
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) as count FROM withdrawal_jobs
-       WHERE status IN ('submitted', 'pending')`
-    )
-    .get() as { count: number };
+  const row = db.prepare(sql).get(...params) as { count: number };
   return row.count;
 }
 
 export function updateWithdrawalJob(
   id: string,
-  updates: Partial<Pick<WithdrawalJob, 'status' | 'krakenRef' | 'txid' | 'lastError' | 'pollCount'>>
+  updates: Partial<Pick<WithdrawalJob, 'status' | 'exchangeRef' | 'txid' | 'lastError' | 'pollCount'>>
 ): void {
   const db = getDb();
   const now = Date.now();
@@ -241,9 +261,9 @@ export function updateWithdrawalJob(
     setClauses.push('status = ?');
     values.push(updates.status);
   }
-  if (updates.krakenRef !== undefined) {
-    setClauses.push('kraken_ref = ?');
-    values.push(updates.krakenRef);
+  if (updates.exchangeRef !== undefined) {
+    setClauses.push('exchange_ref = ?');
+    values.push(updates.exchangeRef);
   }
   if (updates.txid !== undefined) {
     setClauses.push('txid = ?');
@@ -274,12 +294,13 @@ export function incrementPollCount(id: string): void {
 function mapWithdrawalJobRow(row: Record<string, unknown>): WithdrawalJob {
   return {
     id: row.id as string,
+    exchange: row.exchange as ExchangeId,
     asset: row.asset as string,
     method: row.method as string,
     destKey: row.dest_key as string,
     amount: row.amount as number,
     status: row.status as WithdrawalStatus,
-    krakenRef: row.kraken_ref as string | undefined,
+    exchangeRef: row.exchange_ref as string | undefined,
     txid: row.txid as string | undefined,
     createdAt: row.created_at as number,
     updatedAt: row.updated_at as number,
@@ -290,15 +311,16 @@ function mapWithdrawalJobRow(row: Record<string, unknown>): WithdrawalJob {
 
 // ============== Fill Events Repository ==============
 
-export function saveFillEvent(fill: FillEvent, netReceivedAsset: string, netReceivedAmount: number): void {
+export function saveFillEvent(exchange: ExchangeId, fill: FillEvent, netReceivedAsset: string, netReceivedAmount: number): void {
   const db = getDb();
   db.prepare(
     `INSERT OR IGNORE INTO fill_events
-     (id, order_id, pair, side, order_type, price, volume, cost, fee, fee_currency,
+     (id, exchange, order_id, pair, side, order_type, price, volume, cost, fee, fee_currency,
       net_received_asset, net_received_amount, ts)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     fill.tradeId,
+    exchange,
     fill.orderId,
     fill.pair,
     fill.side,
@@ -314,8 +336,12 @@ export function saveFillEvent(fill: FillEvent, netReceivedAsset: string, netRece
   );
 }
 
-export function getFillEventExists(tradeId: string): boolean {
+export function getFillEventExists(tradeId: string, exchange?: ExchangeId): boolean {
   const db = getDb();
+  if (exchange) {
+    const row = db.prepare('SELECT 1 FROM fill_events WHERE id = ? AND exchange = ?').get(tradeId, exchange);
+    return !!row;
+  }
   const row = db.prepare('SELECT 1 FROM fill_events WHERE id = ?').get(tradeId);
   return !!row;
 }
@@ -350,6 +376,7 @@ export type ApiKeyTier = 'starter' | 'intermediate' | 'pro';
 
 export interface ApiKeyRecord {
   id: string;
+  exchange: ExchangeId;
   name: string;
   apiKey: string;
   apiSecret: string;
@@ -365,19 +392,30 @@ export interface ApiKeyRecord {
   updatedAt: number;
 }
 
-const TIER_CONFIG: Record<ApiKeyTier, { maxCounter: number; decayRate: number }> = {
+// Tier configurations for all exchanges
+const TIER_CONFIG: Record<string, { maxCounter: number; decayRate: number }> = {
+  // Kraken tiers
   starter: { maxCounter: 15, decayRate: 0.33 },
   intermediate: { maxCounter: 20, decayRate: 0.5 },
   pro: { maxCounter: 20, decayRate: 1.0 },
+  // Gemini tiers
+  standard: { maxCounter: 600, decayRate: 10 },
+  // KuCoin tiers
+  vip1: { maxCounter: 60, decayRate: 6 },
+  vip2: { maxCounter: 100, decayRate: 10 },
 };
 
+// Default tier config as fallback
+const DEFAULT_TIER_CONFIG = { maxCounter: 30, decayRate: 3 };
+
 export function getTierConfig(tier: ApiKeyTier) {
-  return TIER_CONFIG[tier];
+  return TIER_CONFIG[tier] || DEFAULT_TIER_CONFIG;
 }
 
 function mapApiKeyRow(row: Record<string, unknown>): ApiKeyRecord {
   return {
     id: row.id as string,
+    exchange: (row.exchange || 'kraken') as ExchangeId,
     name: row.name as string,
     apiKey: row.api_key as string,
     apiSecret: row.api_secret as string,
@@ -394,14 +432,24 @@ function mapApiKeyRow(row: Record<string, unknown>): ApiKeyRecord {
   };
 }
 
-export function getAllApiKeys(): ApiKeyRecord[] {
+export function getAllApiKeys(exchange?: ExchangeId): ApiKeyRecord[] {
   const db = getDb();
+  if (exchange) {
+    const rows = db.prepare('SELECT * FROM api_keys WHERE exchange = ? ORDER BY created_at ASC').all(exchange) as Array<Record<string, unknown>>;
+    return rows.map(mapApiKeyRow);
+  }
   const rows = db.prepare('SELECT * FROM api_keys ORDER BY created_at ASC').all() as Array<Record<string, unknown>>;
   return rows.map(mapApiKeyRow);
 }
 
-export function getActiveApiKeys(): ApiKeyRecord[] {
+export function getActiveApiKeys(exchange?: ExchangeId): ApiKeyRecord[] {
   const db = getDb();
+  if (exchange) {
+    const rows = db
+      .prepare('SELECT * FROM api_keys WHERE exchange = ? AND is_active = 1 AND is_valid = 1 ORDER BY created_at ASC')
+      .all(exchange) as Array<Record<string, unknown>>;
+    return rows.map(mapApiKeyRow);
+  }
   const rows = db
     .prepare('SELECT * FROM api_keys WHERE is_active = 1 AND is_valid = 1 ORDER BY created_at ASC')
     .all() as Array<Record<string, unknown>>;
@@ -416,6 +464,7 @@ export function getApiKeyById(id: string): ApiKeyRecord | null {
 
 export function createApiKey(
   id: string,
+  exchange: ExchangeId,
   name: string,
   apiKey: string,
   apiSecret: string,
@@ -424,9 +473,9 @@ export function createApiKey(
   const db = getDb();
   const now = Date.now();
   db.prepare(
-    `INSERT INTO api_keys (id, name, api_key, api_secret, tier, is_active, is_valid, estimated_counter, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 1, 1, 0, ?, ?)`
-  ).run(id, name, apiKey, apiSecret, tier, now, now);
+    `INSERT INTO api_keys (id, exchange, name, api_key, api_secret, tier, is_active, is_valid, estimated_counter, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, 1, 1, 0, ?, ?)`
+  ).run(id, exchange, name, apiKey, apiSecret, tier, now, now);
   return getApiKeyById(id)!;
 }
 
@@ -510,15 +559,19 @@ export function markApiKeyValid(id: string): void {
   ).run(now, id);
 }
 
-export function hasAnyApiKeys(): boolean {
+export function hasAnyApiKeys(exchange?: ExchangeId): boolean {
   const db = getDb();
+  if (exchange) {
+    const row = db.prepare('SELECT 1 FROM api_keys WHERE exchange = ? AND is_active = 1 AND is_valid = 1 LIMIT 1').get(exchange);
+    return !!row;
+  }
   const row = db.prepare('SELECT 1 FROM api_keys WHERE is_active = 1 AND is_valid = 1 LIMIT 1').get();
   return !!row;
 }
 
-// Legacy compatibility - get first active key (for simple cases)
-export function getApiCredentials(): { apiKey: string; apiSecret: string } | null {
-  const keys = getActiveApiKeys();
+// Legacy compatibility - get first active key for an exchange (for simple cases)
+export function getApiCredentials(exchange: ExchangeId = 'kraken'): { apiKey: string; apiSecret: string } | null {
+  const keys = getActiveApiKeys(exchange);
   if (keys.length === 0) return null;
   return { apiKey: keys[0].apiKey, apiSecret: keys[0].apiSecret };
 }
@@ -553,165 +606,138 @@ export function userExists(): boolean {
   return !!row;
 }
 
-// ============== Kraken Addresses Repository ==============
+// ============== Exchange Addresses Repository ==============
 
-export interface KrakenAddressRecord {
+export interface ExchangeAddressRecord {
   id: number;
+  exchange: ExchangeId;
   asset: string;
   method: string;
   key: string;
   address: string;
   createdAt: number;
   lastSeenAt: number;
-  removedAt: number | null;
 }
 
-export function getAllKrakenAddresses(): KrakenAddressRecord[] {
+export function getAllExchangeAddresses(exchange?: ExchangeId): ExchangeAddressRecord[] {
   const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT id, asset, method, key, address, created_at, last_seen_at, removed_at
-       FROM kraken_addresses
-       ORDER BY asset, key`
-    )
-    .all() as Array<{
+  let sql = `SELECT id, exchange, asset, method, key, address, created_at, last_seen_at
+             FROM exchange_addresses`;
+  const params: unknown[] = [];
+
+  if (exchange) {
+    sql += ' WHERE exchange = ?';
+    params.push(exchange);
+  }
+  sql += ' ORDER BY exchange, asset, key';
+
+  const rows = db.prepare(sql).all(...params) as Array<{
     id: number;
+    exchange: ExchangeId;
     asset: string;
     method: string;
     key: string;
     address: string;
     created_at: number;
     last_seen_at: number;
-    removed_at: number | null;
   }>;
 
   return rows.map((row) => ({
     id: row.id,
+    exchange: row.exchange,
     asset: row.asset,
     method: row.method,
     key: row.key,
     address: row.address,
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
-    removedAt: row.removed_at,
   }));
 }
 
-export function getKrakenAddressesByAsset(asset: string): KrakenAddressRecord[] {
+export function getExchangeAddressesByAsset(exchange: ExchangeId, asset: string): ExchangeAddressRecord[] {
   const db = getDb();
   const rows = db
     .prepare(
-      `SELECT id, asset, method, key, address, created_at, last_seen_at, removed_at
-       FROM kraken_addresses
-       WHERE asset = ?
+      `SELECT id, exchange, asset, method, key, address, created_at, last_seen_at
+       FROM exchange_addresses
+       WHERE exchange = ? AND asset = ?
        ORDER BY key`
     )
-    .all(asset) as Array<{
+    .all(exchange, asset) as Array<{
     id: number;
+    exchange: ExchangeId;
     asset: string;
     method: string;
     key: string;
     address: string;
     created_at: number;
     last_seen_at: number;
-    removed_at: number | null;
   }>;
 
   return rows.map((row) => ({
     id: row.id,
+    exchange: row.exchange,
     asset: row.asset,
     method: row.method,
     key: row.key,
     address: row.address,
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
-    removedAt: row.removed_at,
   }));
 }
 
-export function getActiveKrakenAddresses(): KrakenAddressRecord[] {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT id, asset, method, key, address, created_at, last_seen_at, removed_at
-       FROM kraken_addresses
-       WHERE removed_at IS NULL
-       ORDER BY asset, key`
-    )
-    .all() as Array<{
-    id: number;
-    asset: string;
-    method: string;
-    key: string;
-    address: string;
-    created_at: number;
-    last_seen_at: number;
-    removed_at: number | null;
-  }>;
-
-  return rows.map((row) => ({
-    id: row.id,
-    asset: row.asset,
-    method: row.method,
-    key: row.key,
-    address: row.address,
-    createdAt: row.created_at,
-    lastSeenAt: row.last_seen_at,
-    removedAt: row.removed_at,
-  }));
-}
-
-export function upsertKrakenAddress(
+export function upsertExchangeAddress(
+  exchange: ExchangeId,
   asset: string,
   method: string,
   key: string,
   address: string
-): { isNew: boolean; wasRemoved: boolean } {
+): { isNew: boolean } {
   const db = getDb();
   const now = Date.now();
 
   // Check if it exists
   const existing = db
-    .prepare('SELECT id, removed_at FROM kraken_addresses WHERE asset = ? AND key = ?')
-    .get(asset, key) as { id: number; removed_at: number | null } | undefined;
+    .prepare('SELECT id FROM exchange_addresses WHERE exchange = ? AND asset = ? AND key = ?')
+    .get(exchange, asset, key) as { id: number } | undefined;
 
   if (existing) {
-    // Update last_seen_at and clear removed_at if it was flagged
+    // Update last_seen_at
     db.prepare(
-      `UPDATE kraken_addresses
-       SET method = ?, address = ?, last_seen_at = ?, removed_at = NULL
-       WHERE asset = ? AND key = ?`
-    ).run(method, address, now, asset, key);
+      `UPDATE exchange_addresses
+       SET method = ?, address = ?, last_seen_at = ?
+       WHERE exchange = ? AND asset = ? AND key = ?`
+    ).run(method, address, now, exchange, asset, key);
 
-    return { isNew: false, wasRemoved: existing.removed_at !== null };
+    return { isNew: false };
   }
 
   // Insert new
   db.prepare(
-    `INSERT INTO kraken_addresses (asset, method, key, address, created_at, last_seen_at)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(asset, method, key, address, now, now);
+    `INSERT INTO exchange_addresses (exchange, asset, method, key, address, created_at, last_seen_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(exchange, asset, method, key, address, now, now);
 
-  return { isNew: true, wasRemoved: false };
+  return { isNew: true };
 }
 
-export function deleteRemovedAddresses(currentKeys: Array<{ asset: string; key: string }>): number {
+export function deleteRemovedAddresses(exchange: ExchangeId, currentKeys: Array<{ asset: string; key: string }>): number {
   const db = getDb();
 
   // Build a set of current asset+key combinations
   const currentSet = new Set(currentKeys.map((k) => `${k.asset}:${k.key}`));
 
-  // Get all addresses in the database
+  // Get all addresses for this exchange
   const allAddresses = db
-    .prepare('SELECT id, asset, key FROM kraken_addresses')
-    .all() as Array<{ id: number; asset: string; key: string }>;
+    .prepare('SELECT id, asset, key FROM exchange_addresses WHERE exchange = ?')
+    .all(exchange) as Array<{ id: number; asset: string; key: string }>;
 
   let deletedCount = 0;
 
   for (const addr of allAddresses) {
     if (!currentSet.has(`${addr.asset}:${addr.key}`)) {
-      // This address is no longer in Kraken, delete it
-      db.prepare('DELETE FROM kraken_addresses WHERE id = ?').run(addr.id);
+      // This address is no longer on the exchange, delete it
+      db.prepare('DELETE FROM exchange_addresses WHERE id = ?').run(addr.id);
       deletedCount++;
     }
   }
@@ -719,8 +745,21 @@ export function deleteRemovedAddresses(currentKeys: Array<{ asset: string; key: 
   return deletedCount;
 }
 
-export function hasAnyKrakenAddresses(): boolean {
+export function hasAnyExchangeAddresses(exchange?: ExchangeId): boolean {
   const db = getDb();
-  const row = db.prepare('SELECT 1 FROM kraken_addresses LIMIT 1').get();
+  if (exchange) {
+    const row = db.prepare('SELECT 1 FROM exchange_addresses WHERE exchange = ? LIMIT 1').get(exchange);
+    return !!row;
+  }
+  const row = db.prepare('SELECT 1 FROM exchange_addresses LIMIT 1').get();
   return !!row;
 }
+
+// Legacy aliases for backward compatibility
+export const getAllKrakenAddresses = () => getAllExchangeAddresses('kraken');
+export const getKrakenAddressesByAsset = (asset: string) => getExchangeAddressesByAsset('kraken', asset);
+export const getActiveKrakenAddresses = () => getAllExchangeAddresses('kraken');
+export const upsertKrakenAddress = (asset: string, method: string, key: string, address: string) =>
+  upsertExchangeAddress('kraken', asset, method, key, address);
+export const hasAnyKrakenAddresses = () => hasAnyExchangeAddresses('kraken');
+export type KrakenAddressRecord = ExchangeAddressRecord;

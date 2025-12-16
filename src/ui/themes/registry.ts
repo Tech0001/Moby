@@ -22,10 +22,18 @@ const extractAccent = (css: string) => {
   const match = css.match(/--primary:\s*([^;]+);/);
   if (!match) return undefined;
   const value = match[1].trim();
-  // RainbowKit prefers hex, fallback to undefined if not hex
+  
+  // Check for hex
   if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) {
     return value;
   }
+  
+  // Check for HSL (space separated numbers/percentages)
+  // e.g. "222.2 47.4% 11.2%" or "222 47% 11%"
+  if (/^[\d.]+\s+[\d.]+%?\s+[\d.]+%?$/.test(value)) {
+    return `hsl(${value})`;
+  }
+  
   return undefined;
 };
 

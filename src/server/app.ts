@@ -3,17 +3,22 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { logger, createChildLogger } from './utils/logger.js';
 import { loadConfig, reloadConfig } from './config/loadConfig.js';
+import { getEnabledExchanges } from './config/schema.js';
 import { initDb, closeDb } from './db/sqlite.js';
-import { getApiCredentials, setEnabled, isEnabled } from './db/repositories.js';
-import { KrakenRestClient } from './kraken/restClient.js';
-import { KrakenWsClient } from './kraken/wsClient.js';
+import { getAllApiKeys, setEnabled, isEnabled } from './db/repositories.js';
 import { FillProcessor } from './domain/fillProcessor.js';
 import { Scheduler, createPriceProvider } from './domain/scheduler.js';
 import { StatusPoller } from './domain/statusPoller.js';
 import { createWebServer, startServer } from './web/server.js';
 import { createRoutes } from './web/routes.js';
+import { getPoolManager, getClientPool } from './exchanges/clientPool.js';
+import { getExchangeRegistry, registerExchange } from './exchanges/registry.js';
+import { KrakenAdapterFactory } from './exchanges/kraken/factory.js';
+import { GeminiAdapterFactory } from './exchanges/gemini/factory.js';
+import { KuCoinAdapterFactory } from './exchanges/kucoin/factory.js';
+import { GateAdapterFactory } from './exchanges/gateio/factory.js';
 import type { AppConfig } from './config/schema.js';
-import type { FillEvent } from './domain/types.js';
+import type { FillEvent, ExchangeId } from './domain/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appLogger = createChildLogger('app');
@@ -26,14 +31,22 @@ if (!existsSync(dataDir)) {
 
 // Global state
 let config: AppConfig;
-let krakenRestClient: KrakenRestClient | null = null;
-let krakenWsClient: KrakenWsClient | null = null;
 let fillProcessor: FillProcessor;
 let scheduler: Scheduler;
 let statusPoller: StatusPoller;
 
+// WS client connections by exchange
+const wsClients = new Map<ExchangeId, { disconnect: () => void }>();
+
 async function main() {
-  appLogger.info('Starting Kraken Auto-Sweeper');
+  appLogger.info('Starting Moby');
+
+  // Register exchange adapters
+  registerExchange(KrakenAdapterFactory);
+  registerExchange(GeminiAdapterFactory);
+  registerExchange(KuCoinAdapterFactory);
+  registerExchange(GateAdapterFactory);
+  appLogger.debug('Registered exchange adapters: Kraken, Gemini, KuCoin, Gate.io');
 
   // Load configuration
   config = loadConfig();
@@ -47,59 +60,64 @@ async function main() {
     appLogger.info('Sweeper enabled on boot');
   }
 
-  // Initialize Kraken clients if credentials exist
-  const creds = getApiCredentials();
-  if (creds) {
-    await initializeKrakenClients(creds.apiKey, creds.apiSecret);
-  } else {
-    appLogger.warn('No API credentials configured - sweeper will not process fills');
-  }
+  // Get enabled exchanges
+  const enabledExchanges = getEnabledExchanges(config);
 
   // Initialize fill processor
   fillProcessor = new FillProcessor({
     config,
-    onPendingUpdated: (asset, amount) => {
-      appLogger.debug({ asset, amount }, 'Pending updated, waking scheduler');
+    onPendingUpdated: (exchange, asset, amount) => {
+      appLogger.debug({ exchange, asset, amount }, 'Pending updated, waking scheduler');
       scheduler?.wake();
     },
   });
 
-  // Initialize scheduler (will be null client until keys are set)
+  // Initialize scheduler
   scheduler = new Scheduler({
     config,
-    krakenClient: krakenRestClient!,
-    priceProvider: krakenRestClient ? createPriceProvider(krakenRestClient) : undefined,
+    priceProvider: createPriceProvider(),
   });
 
   scheduler.on('withdrawalStarted', (job) => {
-    appLogger.info({ jobId: job.id, asset: job.asset, amount: job.amount }, 'Withdrawal started');
+    appLogger.info(
+      { jobId: job.id, exchange: job.exchange, asset: job.asset, amount: job.amount },
+      'Withdrawal started'
+    );
   });
 
-  scheduler.on('withdrawalFailed', (asset, error) => {
-    appLogger.error({ asset, error }, 'Withdrawal failed');
+  scheduler.on('withdrawalFailed', (exchange, asset, error) => {
+    appLogger.error({ exchange, asset, error }, 'Withdrawal failed');
   });
 
   // Initialize status poller
   statusPoller = new StatusPoller({
-    krakenClient: krakenRestClient!,
     pollingConfig: config.polling,
+    enabledExchanges,
   });
 
   statusPoller.on('jobComplete', (job, txid) => {
-    appLogger.info({ jobId: job.id, asset: job.asset, txid }, 'Withdrawal complete');
+    appLogger.info({ jobId: job.id, exchange: job.exchange, asset: job.asset, txid }, 'Withdrawal complete');
   });
 
   statusPoller.on('jobFailed', (job, error) => {
-    appLogger.error({ jobId: job.id, asset: job.asset, error }, 'Withdrawal failed');
+    appLogger.error({ jobId: job.id, exchange: job.exchange, asset: job.asset, error }, 'Withdrawal failed');
   });
 
   statusPoller.on('jobHeld', (job) => {
-    appLogger.warn({ jobId: job.id, asset: job.asset }, 'Withdrawal held for review');
+    appLogger.warn({ jobId: job.id, exchange: job.exchange, asset: job.asset }, 'Withdrawal held for review');
   });
 
   statusPoller.on('jobStuck', (job, duration) => {
-    appLogger.warn({ jobId: job.id, asset: job.asset, durationMin: Math.floor(duration / 60000) }, 'Withdrawal appears stuck');
+    appLogger.warn(
+      { jobId: job.id, exchange: job.exchange, asset: job.asset, durationMin: Math.floor(duration / 60000) },
+      'Withdrawal appears stuck'
+    );
   });
+
+  // Initialize WebSocket connections for enabled exchanges
+  for (const exchangeId of enabledExchanges) {
+    await initializeExchangeWs(exchangeId);
+  }
 
   // Create and start web server
   const app = createWebServer({ config: config.web });
@@ -107,22 +125,14 @@ async function main() {
   // Set up routes with context
   const routes = createRoutes({
     config,
-    getKrakenClient: () => krakenRestClient,
     reloadConfig: async () => {
       config = reloadConfig();
       fillProcessor.updateConfig(config);
       scheduler.updateConfig(config);
-    },
-    updateKrakenClient: async (client) => {
-      krakenRestClient = client;
-      scheduler.updateKrakenClient(client);
-      statusPoller.updateKrakenClient(client);
 
-      // Also initialize WebSocket client
-      const creds = getApiCredentials();
-      if (creds) {
-        await initializeWsClient(creds.apiKey, creds.apiSecret);
-      }
+      // Update enabled exchanges
+      const newEnabledExchanges = getEnabledExchanges(config);
+      statusPoller.updateEnabledExchanges(newEnabledExchanges);
     },
   });
 
@@ -141,61 +151,85 @@ async function main() {
   // Start web server
   await startServer(app, config.web);
 
-  // Start scheduler and poller if we have clients
-  if (krakenRestClient) {
+  // Initialize client pools for enabled exchanges
+  const poolManager = getPoolManager();
+  for (const exchangeId of enabledExchanges) {
+    getClientPool(exchangeId); // This creates and initializes the pool
+    appLogger.debug({ exchange: exchangeId }, 'Initialized client pool');
+  }
+
+  // Start scheduler and poller if we have any clients
+  if (poolManager.hasAnyClients()) {
     scheduler.start();
     statusPoller.start();
+  } else {
+    appLogger.warn('No API keys configured - scheduler and poller not started');
   }
 
   // Handle shutdown
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
 
-  appLogger.info('Kraken Auto-Sweeper started successfully');
+  appLogger.info('Moby started successfully');
 }
 
-async function initializeKrakenClients(apiKey: string, apiSecret: string) {
-  appLogger.info('Initializing Kraken clients');
-
-  // REST client
-  krakenRestClient = new KrakenRestClient({
-    apiKey,
-    apiSecret,
-    dryRun: process.env.DRY_RUN === 'true',
-  });
-
-  // WebSocket client
-  await initializeWsClient(apiKey, apiSecret);
-}
-
-async function initializeWsClient(apiKey: string, apiSecret: string) {
-  // Disconnect existing client if any
-  if (krakenWsClient) {
-    krakenWsClient.disconnect();
+/**
+ * Initialize WebSocket connection for an exchange
+ */
+async function initializeExchangeWs(exchangeId: ExchangeId) {
+  const keys = getAllApiKeys(exchangeId);
+  if (keys.length === 0) {
+    appLogger.debug({ exchange: exchangeId }, 'No API keys for exchange, skipping WS');
+    return;
   }
 
-  krakenWsClient = new KrakenWsClient({
-    apiKey,
-    apiSecret,
-    onFill: (fill: FillEvent) => {
-      appLogger.info({ tradeId: fill.tradeId, pair: fill.pair }, 'Fill received from WebSocket');
-      fillProcessor.processFill(fill);
-    },
-    onConnect: () => {
-      appLogger.info('WebSocket connected');
-    },
-    onDisconnect: () => {
-      appLogger.warn('WebSocket disconnected');
-    },
-    onError: (error) => {
-      appLogger.error({ error: error.message }, 'WebSocket error');
-    },
-  });
+  const adapter = getExchangeRegistry().get(exchangeId);
+  if (!adapter) {
+    appLogger.warn({ exchange: exchangeId }, 'No adapter found for exchange');
+    return;
+  }
+
+  // Use the first active key for WS connection
+  const activeKey = keys.find((k) => k.isActive && k.isValid);
+  if (!activeKey) {
+    appLogger.warn({ exchange: exchangeId }, 'No active/valid API keys for WS');
+    return;
+  }
+
+  appLogger.info({ exchange: exchangeId }, 'Initializing WebSocket connection');
+
+  // Disconnect existing if any
+  const existingWs = wsClients.get(exchangeId);
+  if (existingWs) {
+    existingWs.disconnect();
+  }
 
   try {
-    await krakenWsClient.connect();
+    const wsClient = adapter.createWsClient({
+      apiKey: activeKey.apiKey,
+      apiSecret: activeKey.apiSecret,
+      onFill: (fill: FillEvent) => {
+        appLogger.info(
+          { exchange: exchangeId, tradeId: fill.tradeId, pair: fill.pair },
+          'Fill received from WebSocket'
+        );
+        fillProcessor.processFill(exchangeId, fill);
+      },
+      onConnect: () => {
+        appLogger.info({ exchange: exchangeId }, 'WebSocket connected');
+      },
+      onDisconnect: () => {
+        appLogger.warn({ exchange: exchangeId }, 'WebSocket disconnected');
+      },
+      onError: (error: Error) => {
+        appLogger.error({ exchange: exchangeId, error: error.message }, 'WebSocket error');
+      },
+    });
+
+    await wsClient.connect();
+    wsClients.set(exchangeId, wsClient);
   } catch (error) {
-    appLogger.error({ error }, 'Failed to connect WebSocket');
+    appLogger.error({ exchange: exchangeId, error }, 'Failed to connect WebSocket');
   }
 }
 
@@ -205,7 +239,13 @@ function shutdown() {
   // Stop services
   scheduler?.stop();
   statusPoller?.stop();
-  krakenWsClient?.disconnect();
+
+  // Disconnect all WS clients
+  for (const [exchangeId, ws] of wsClients) {
+    appLogger.debug({ exchange: exchangeId }, 'Disconnecting WebSocket');
+    ws.disconnect();
+  }
+  wsClients.clear();
 
   // Close database
   closeDb();
