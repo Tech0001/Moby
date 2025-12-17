@@ -44,8 +44,11 @@ import {
   upsertWithdrawalMethod,
   getAllWithdrawalMethods,
   getWithdrawalMethodsForAsset,
+  getAllSettings,
+  setAllSettings,
   type ApiKeyTier,
   type WalletChain,
+  type GlobalSettings,
 } from '../db/repositories.js';
 import {
   hasWalletPassword,
@@ -66,10 +69,18 @@ const logger = createChildLogger('routes');
 // Default to kraken for backward compatibility
 const DEFAULT_EXCHANGE: ExchangeId = 'kraken';
 
+export interface ReconcileResult {
+  exchange: string;
+  tradesProcessed: number;
+  tradesSkipped: number;
+  balancesAdjusted: string[];
+}
+
 export interface RoutesContext {
   config: AppConfig;
   reloadConfig: () => Promise<void>;
   updateConfig: (newConfig: AppConfig) => void;
+  runReconciliation?: (exchange?: ExchangeId) => Promise<ReconcileResult[]>;
 }
 
 export function createRoutes(context: RoutesContext): Router {
@@ -264,6 +275,31 @@ export function createRoutes(context: RoutesContext): Router {
     setEnabled(false);
     logger.info('Sweeper disabled via UI');
     res.json({ enabled: false });
+  });
+
+  // Manual reconciliation (settle up)
+  router.post('/api/control/reconcile', requireAuth, async (req: Request, res: Response) => {
+    if (!context.runReconciliation) {
+      res.status(501).json({ error: 'Reconciliation not available' });
+      return;
+    }
+
+    const exchange = req.body.exchange as ExchangeId | undefined;
+    logger.info({ exchange: exchange || 'all' }, 'Manual reconciliation triggered');
+
+    try {
+      const results = await context.runReconciliation(exchange);
+      res.json({
+        success: true,
+        results,
+        message: `Reconciliation complete for ${results.length} exchange(s)`,
+      });
+    } catch (error) {
+      logger.error({ error: error instanceof Error ? error.message : 'Unknown' }, 'Manual reconciliation failed');
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Reconciliation failed',
+      });
+    }
   });
 
   // ============== API Keys Management (Multi-Key) ==============
@@ -595,6 +631,62 @@ export function createRoutes(context: RoutesContext): Router {
       polling: config.polling,
       // Don't include web config with session secret
     });
+  });
+
+  // ============== Global Settings (Database-backed) ==============
+
+  // Get all global settings
+  router.get('/api/settings', requireAuth, (req: Request, res: Response) => {
+    const settings = getAllSettings();
+    res.json(settings);
+  });
+
+  // Update global settings
+  router.put('/api/settings', requireAuth, (req: Request, res: Response) => {
+    const updates = req.body as Partial<GlobalSettings>;
+
+    // Validate inputs
+    if (updates.dryRun !== undefined && typeof updates.dryRun !== 'boolean') {
+      res.status(400).json({ error: 'dryRun must be a boolean' });
+      return;
+    }
+
+    if (updates.maxInflightWithdrawals !== undefined) {
+      if (typeof updates.maxInflightWithdrawals !== 'number' || updates.maxInflightWithdrawals < 1) {
+        res.status(400).json({ error: 'maxInflightWithdrawals must be a positive number' });
+        return;
+      }
+    }
+
+    if (updates.perAssetMaxInflight !== undefined) {
+      if (typeof updates.perAssetMaxInflight !== 'number' || updates.perAssetMaxInflight < 1) {
+        res.status(400).json({ error: 'perAssetMaxInflight must be a positive number' });
+        return;
+      }
+    }
+
+    if (updates.keyNamePrefix !== undefined && typeof updates.keyNamePrefix !== 'string') {
+      res.status(400).json({ error: 'keyNamePrefix must be a string' });
+      return;
+    }
+
+    if (updates.allowedOrderTypes !== undefined) {
+      if (!Array.isArray(updates.allowedOrderTypes)) {
+        res.status(400).json({ error: 'allowedOrderTypes must be an array' });
+        return;
+      }
+      if (!updates.allowedOrderTypes.every((t) => typeof t === 'string')) {
+        res.status(400).json({ error: 'allowedOrderTypes must contain only strings' });
+        return;
+      }
+    }
+
+    setAllSettings(updates);
+    logger.info({ updates }, 'Global settings updated');
+
+    // Return the updated settings
+    const settings = getAllSettings();
+    res.json({ success: true, settings });
   });
 
   // Get all asset configs (optionally filtered by exchange)

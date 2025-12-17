@@ -119,6 +119,32 @@ export async function startWithdrawal(
       withdrawAmount
     );
 
+    // Check if withdrawal limit has been reached
+    if (withdrawInfo.limit <= 0) {
+      logger.info(
+        { exchange, asset, limit: withdrawInfo.limit },
+        'Withdrawal limit reached, skipping'
+      );
+      return {
+        success: false,
+        skipped: true,
+        skipReason: 'Withdrawal limit reached (limit=0)',
+      };
+    }
+
+    // Check if we're trying to withdraw more than the limit allows
+    if (withdrawAmount > withdrawInfo.limit) {
+      logger.info(
+        { exchange, asset, withdrawAmount, limit: withdrawInfo.limit },
+        'Withdrawal amount exceeds current limit, skipping until limit resets'
+      );
+      return {
+        success: false,
+        skipped: true,
+        skipReason: `Amount ${withdrawAmount} exceeds withdrawal limit ${withdrawInfo.limit}`,
+      };
+    }
+
     // Check if amount after fees is positive
     const netAmount = withdrawInfo.amount;
     if (netAmount <= 0) {

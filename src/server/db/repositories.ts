@@ -147,6 +147,13 @@ export function subtractPendingAmount(exchange: ExchangeId, asset: string, amoun
   ).run(amount, exchange, asset);
 }
 
+export function setPendingAmount(exchange: ExchangeId, asset: string, amount: number): void {
+  const db = getDb();
+  db.prepare(
+    `UPDATE asset_state SET pending_amount = ? WHERE exchange = ? AND asset = ?`
+  ).run(amount, exchange, asset);
+}
+
 export function advanceRrIndex(exchange: ExchangeId, asset: string, walletCount: number): void {
   const db = getDb();
   db.prepare(
@@ -1408,4 +1415,92 @@ export function isWithdrawalMethodCacheStale(
   }
 
   return Date.now() - row.oldest_sync > maxAgeMs;
+}
+
+// ============== Global Settings Repository ==============
+
+export interface GlobalSettings {
+  dryRun: boolean;
+  maxInflightWithdrawals: number;
+  perAssetMaxInflight: number;
+  keyNamePrefix: string;
+  allowedOrderTypes: string[];
+}
+
+const SETTINGS_DEFAULTS: GlobalSettings = {
+  dryRun: false,
+  maxInflightWithdrawals: 2,
+  perAssetMaxInflight: 1,
+  keyNamePrefix: '',
+  allowedOrderTypes: ['limit', 'take_profit', 'take_profit_limit'],
+};
+
+export function getSetting<K extends keyof GlobalSettings>(key: K): GlobalSettings[K] {
+  const db = getDb();
+  const row = db
+    .prepare('SELECT value FROM settings WHERE key = ?')
+    .get(key) as { value: string } | undefined;
+
+  if (!row) {
+    return SETTINGS_DEFAULTS[key];
+  }
+
+  try {
+    return JSON.parse(row.value) as GlobalSettings[K];
+  } catch {
+    return SETTINGS_DEFAULTS[key];
+  }
+}
+
+export function setSetting<K extends keyof GlobalSettings>(key: K, value: GlobalSettings[K]): void {
+  const db = getDb();
+  const now = Date.now();
+  const jsonValue = JSON.stringify(value);
+
+  db.prepare(
+    `INSERT INTO settings (key, value, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET
+       value = excluded.value,
+       updated_at = excluded.updated_at`
+  ).run(key, jsonValue, now);
+}
+
+export function getAllSettings(): GlobalSettings {
+  const db = getDb();
+  const rows = db.prepare('SELECT key, value FROM settings').all() as Array<{ key: string; value: string }>;
+
+  const settings = { ...SETTINGS_DEFAULTS };
+
+  for (const row of rows) {
+    try {
+      const key = row.key as keyof GlobalSettings;
+      if (key in SETTINGS_DEFAULTS) {
+        (settings as Record<string, unknown>)[key] = JSON.parse(row.value);
+      }
+    } catch {
+      // Skip invalid values
+    }
+  }
+
+  return settings;
+}
+
+export function setAllSettings(settings: Partial<GlobalSettings>): void {
+  const db = getDb();
+  const now = Date.now();
+
+  const stmt = db.prepare(
+    `INSERT INTO settings (key, value, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET
+       value = excluded.value,
+       updated_at = excluded.updated_at`
+  );
+
+  for (const [key, value] of Object.entries(settings)) {
+    if (key in SETTINGS_DEFAULTS && value !== undefined) {
+      stmt.run(key, JSON.stringify(value), now);
+    }
+  }
 }

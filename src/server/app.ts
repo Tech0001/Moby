@@ -9,6 +9,7 @@ import { getAllApiKeys, setEnabled, hasAnyApiKeys, migrateApiKeysToEncrypted, ge
 import { FillProcessor } from './domain/fillProcessor.js';
 import { Scheduler } from './domain/scheduler.js';
 import { StatusPoller } from './domain/statusPoller.js';
+import { Reconciler } from './domain/reconciler.js';
 import { createWebServer, startServer } from './web/server.js';
 import { createRoutes } from './web/routes.js';
 import { getPoolManager, getClientPool } from './exchanges/clientPool.js';
@@ -43,9 +44,14 @@ let config: AppConfig;
 let fillProcessor: FillProcessor;
 let scheduler: Scheduler;
 let statusPoller: StatusPoller;
+let reconciler: Reconciler;
 
 // WS client connections by exchange
 const wsClients = new Map<ExchangeId, { disconnect: () => void }>();
+
+// Reconciliation interval (5 minutes)
+const RECONCILE_INTERVAL_MS = 5 * 60 * 1000;
+let reconcileInterval: ReturnType<typeof setInterval> | null = null;
 
 async function main() {
   appLogger.info('Starting Moby');
@@ -97,6 +103,15 @@ async function main() {
     config,
     onPendingUpdated: (exchange, asset, amount) => {
       appLogger.debug({ exchange, asset, amount }, 'Pending updated, waking scheduler');
+      scheduler?.wake();
+    },
+  });
+
+  // Initialize reconciler (for trade history sync and balance reconciliation)
+  reconciler = new Reconciler({
+    config,
+    onPendingUpdated: (exchange, asset, amount) => {
+      appLogger.debug({ exchange, asset, amount }, 'Pending updated from reconciler, waking scheduler');
       scheduler?.wake();
     },
   });
@@ -157,6 +172,7 @@ async function main() {
       config = reloadConfig();
       fillProcessor.updateConfig(config);
       scheduler.updateConfig(config);
+      reconciler.updateConfig(config);
 
       // Update enabled exchanges
       const newEnabledExchanges = getEnabledExchanges();
@@ -166,11 +182,49 @@ async function main() {
       config = newConfig;
       fillProcessor.updateConfig(config);
       scheduler.updateConfig(config);
+      reconciler.updateConfig(config);
 
       // Update enabled exchanges
       const newEnabledExchanges = getEnabledExchanges();
       statusPoller.updateEnabledExchanges(newEnabledExchanges);
-    }
+    },
+    runReconciliation: async (exchangeFilter?: ExchangeId) => {
+      const exchanges = exchangeFilter ? [exchangeFilter] : getEnabledExchanges();
+      const results: Array<{
+        exchange: string;
+        tradesProcessed: number;
+        tradesSkipped: number;
+        balancesAdjusted: string[];
+      }> = [];
+
+      for (const exchangeId of exchanges) {
+        const pool = getClientPool(exchangeId);
+        if (!pool.hasAvailableClients()) {
+          continue;
+        }
+
+        try {
+          const result = await pool.execute(async (client) => {
+            const tradeResult = await reconciler.syncTradeHistory(exchangeId, client);
+            const balanceResult = await reconciler.reconcileBalances(exchangeId, client);
+            return {
+              exchange: exchangeId,
+              tradesProcessed: tradeResult.processed,
+              tradesSkipped: tradeResult.skipped,
+              balancesAdjusted: balanceResult.adjusted,
+            };
+          });
+          results.push(result);
+        } catch (err) {
+          appLogger.error(
+            { exchange: exchangeId, error: err instanceof Error ? err.message : 'Unknown' },
+            'Manual reconciliation failed for exchange'
+          );
+        }
+      }
+
+      return results;
+    },
   });
 
   app.use(routes);
@@ -199,6 +253,41 @@ async function main() {
   if (poolManager.hasAnyClients()) {
     scheduler.start();
     statusPoller.start();
+
+    // Run initial reconciliation to catch any missed trades during downtime
+    appLogger.info('Running initial reconciliation');
+    for (const exchangeId of enabledExchanges) {
+      const pool = getClientPool(exchangeId);
+      if (pool.hasAvailableClients()) {
+        pool.execute(async (client) => {
+          await reconciler.runFullReconciliation(exchangeId, client);
+        }).catch((err) => {
+          appLogger.error(
+            { exchange: exchangeId, error: err instanceof Error ? err.message : 'Unknown error' },
+            'Initial reconciliation failed'
+          );
+        });
+      }
+    }
+
+    // Start periodic reconciliation (balance check every 5 minutes)
+    reconcileInterval = setInterval(async () => {
+      for (const exchangeId of getEnabledExchanges()) {
+        const pool = getClientPool(exchangeId);
+        if (pool.hasAvailableClients()) {
+          try {
+            await pool.execute(async (client) => {
+              await reconciler.reconcileBalances(exchangeId, client);
+            });
+          } catch (err) {
+            appLogger.error(
+              { exchange: exchangeId, error: err instanceof Error ? err.message : 'Unknown error' },
+              'Periodic reconciliation failed'
+            );
+          }
+        }
+      }
+    }, RECONCILE_INTERVAL_MS);
   } else {
     appLogger.warn('No API keys configured - scheduler and poller not started');
   }
@@ -269,6 +358,19 @@ async function initializeExchangeWs(exchangeId: ExchangeId) {
       },
       onConnect: () => {
         appLogger.info({ exchange: exchangeId }, 'WebSocket connected');
+        // Trigger trade history sync on reconnect to catch any missed fills
+        const pool = getClientPool(exchangeId);
+        if (pool.hasAvailableClients()) {
+          pool.execute(async (client) => {
+            appLogger.info({ exchange: exchangeId }, 'Running trade history sync after WS reconnect');
+            await reconciler.syncTradeHistory(exchangeId, client);
+          }).catch((err) => {
+            appLogger.error(
+              { exchange: exchangeId, error: err instanceof Error ? err.message : 'Unknown error' },
+              'Post-reconnect trade sync failed'
+            );
+          });
+        }
       },
       onDisconnect: () => {
         appLogger.warn({ exchange: exchangeId }, 'WebSocket disconnected');
@@ -292,6 +394,12 @@ function shutdown() {
   // Stop services
   scheduler?.stop();
   statusPoller?.stop();
+
+  // Stop reconciliation interval
+  if (reconcileInterval) {
+    clearInterval(reconcileInterval);
+    reconcileInterval = null;
+  }
 
   // Disconnect all WS clients
   for (const [exchangeId, ws] of wsClients) {

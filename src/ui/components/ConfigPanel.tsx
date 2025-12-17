@@ -36,6 +36,15 @@ interface Config {
   global: GlobalConfig;
 }
 
+// Database-backed settings (editable)
+interface GlobalSettings {
+  dryRun: boolean;
+  maxInflightWithdrawals: number;
+  perAssetMaxInflight: number;
+  keyNamePrefix: string;
+  allowedOrderTypes: string[];
+}
+
 interface ExchangeAddress {
   id: number;
   exchange: string;
@@ -90,7 +99,14 @@ export function ConfigPanel() {
   const [addManualAddressFor, setAddManualAddressFor] = useState<string | null>(null);
   const [sweeperStatus, setSweeperStatus] = useState<SweeperStatus | null>(null);
   const [toggling, setToggling] = useState(false);
+  const [reconciling, setReconciling] = useState(false);
   const [syncingExchange, setSyncingExchange] = useState<string | null>(null);
+
+  // Settings state (database-backed)
+  const [settings, setSettings] = useState<GlobalSettings | null>(null);
+  const [editingSettings, setEditingSettings] = useState(false);
+  const [settingsForm, setSettingsForm] = useState<GlobalSettings | null>(null);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   useEffect(() => {
     fetchConfig();
@@ -99,6 +115,7 @@ export function ConfigPanel() {
     fetchExchanges().then(() => fetchExchangeSyncSupport());
     fetchAddresses();
     fetchWithdrawalMethods();
+    fetchSettings();
   }, []);
 
   async function fetchExchangeSyncSupport() {
@@ -201,6 +218,38 @@ export function ConfigPanel() {
     }
   }
 
+  async function runReconcile() {
+    setReconciling(true);
+    setError('');
+    setSuccess('');
+    try {
+      const res = await fetch('/api/control/reconcile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const parts: string[] = [];
+        for (const r of data.results || []) {
+          const items: string[] = [];
+          if (r.tradesProcessed > 0) items.push(`${r.tradesProcessed} trades`);
+          if (r.balancesAdjusted?.length > 0) items.push(`${r.balancesAdjusted.length} balances adjusted`);
+          if (items.length > 0) {
+            parts.push(`${r.exchange}: ${items.join(', ')}`);
+          }
+        }
+        setSuccess(parts.length > 0 ? `Reconciled: ${parts.join('; ')}` : 'Reconciliation complete - no changes needed');
+      } else {
+        setError(data.error || 'Reconciliation failed');
+      }
+    } catch (err) {
+      setError('Failed to run reconciliation');
+    } finally {
+      setReconciling(false);
+    }
+  }
+
   async function fetchAddresses() {
     setLoadingAddresses(true);
     try {
@@ -226,6 +275,61 @@ export function ConfigPanel() {
     } catch (err) {
       // Ignore
     }
+  }
+
+  async function fetchSettings() {
+    try {
+      const res = await fetch('/api/settings');
+      if (res.ok) {
+        const data = await res.json();
+        setSettings(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch settings:', err);
+    }
+  }
+
+  async function saveSettings() {
+    if (!settingsForm) return;
+
+    setSavingSettings(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settingsForm),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || 'Failed to save settings');
+        return;
+      }
+
+      setSettings(data.settings);
+      setEditingSettings(false);
+      setSuccess('Settings saved successfully');
+    } catch (err) {
+      setError('Network error');
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
+  function startEditingSettings() {
+    if (settings) {
+      setSettingsForm({ ...settings });
+      setEditingSettings(true);
+    }
+  }
+
+  function cancelEditingSettings() {
+    setSettingsForm(null);
+    setEditingSettings(false);
   }
 
   async function syncAddresses(exchangeId: string, exchangeName: string) {
@@ -442,7 +546,7 @@ export function ConfigPanel() {
             <span className="font-medium">
               {sweeperStatus?.enabled ? 'Running' : 'Stopped'}
             </span>
-            {config.global.dryRun && (
+            {settings?.dryRun && (
               <Badge variant="outline" className="text-yellow-500 border-yellow-500">
                 DRY RUN
               </Badge>
@@ -453,13 +557,23 @@ export function ConfigPanel() {
               </span>
             )}
           </div>
-          <Button
-            onClick={toggleSweeper}
-            disabled={toggling || !sweeperStatus?.hasApiKeys}
-            variant={sweeperStatus?.enabled ? 'destructive' : 'default'}
-          >
-            {toggling ? 'Working...' : sweeperStatus?.enabled ? 'Stop Sweeper' : 'Start Sweeper'}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={runReconcile}
+              disabled={reconciling || !sweeperStatus?.hasApiKeys}
+              variant="outline"
+              title="Sync trade history and reconcile balances"
+            >
+              {reconciling ? 'Reconciling...' : 'Reconcile'}
+            </Button>
+            <Button
+              onClick={toggleSweeper}
+              disabled={toggling || !sweeperStatus?.hasApiKeys}
+              variant={sweeperStatus?.enabled ? 'destructive' : 'default'}
+            >
+              {toggling ? 'Working...' : sweeperStatus?.enabled ? 'Stop Sweeper' : 'Start Sweeper'}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -499,29 +613,134 @@ export function ConfigPanel() {
         </div>
       )}
 
-      {/* Global Settings */}
+      {/* Global Settings (Editable) */}
       <Card>
-        <CardHeader className="py-4 border-b">
+        <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
           <CardTitle>Global Settings</CardTitle>
+          {!editingSettings && settings && (
+            <Button variant="outline" size="sm" onClick={startEditingSettings}>
+              Edit
+            </Button>
+          )}
         </CardHeader>
-        <CardContent className="p-4 grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="text-muted-foreground">Max Inflight Withdrawals:</span>
-            <span className="ml-2">{config.global.maxInflightWithdrawals}</span>
-          </div>
-          <div>
-            <span className="text-muted-foreground">Per-Asset Max Inflight:</span>
-            <span className="ml-2">{config.global.perAssetMaxInflight}</span>
-          </div>
-          <div>
-            <span className="text-muted-foreground">Allowed Order Types:</span>
-            <span className="ml-2">{config.global.allowedOrderTypes.join(', ')}</span>
-          </div>
-          {config.global.keyNamePrefix && (
-            <div>
-              <span className="text-muted-foreground">Key Name Prefix:</span>
-              <span className="ml-2">{config.global.keyNamePrefix}</span>
+        <CardContent className="p-4">
+          {editingSettings && settingsForm ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <Label>Dry Run Mode</Label>
+                  <p className="text-xs text-muted-foreground">Simulate withdrawals without executing</p>
+                </div>
+                <Switch
+                  checked={settingsForm.dryRun}
+                  onCheckedChange={(checked) => setSettingsForm({ ...settingsForm, dryRun: checked })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs">Max Inflight Withdrawals</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={settingsForm.maxInflightWithdrawals}
+                    onChange={(e) => setSettingsForm({
+                      ...settingsForm,
+                      maxInflightWithdrawals: parseInt(e.target.value) || 1
+                    })}
+                  />
+                  <p className="text-xs text-muted-foreground">Total active withdrawals across all assets</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Per-Asset Max Inflight</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="5"
+                    value={settingsForm.perAssetMaxInflight}
+                    onChange={(e) => setSettingsForm({
+                      ...settingsForm,
+                      perAssetMaxInflight: parseInt(e.target.value) || 1
+                    })}
+                  />
+                  <p className="text-xs text-muted-foreground">Max active withdrawals per asset</p>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Key Name Prefix</Label>
+                <Input
+                  value={settingsForm.keyNamePrefix}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, keyNamePrefix: e.target.value })}
+                  placeholder="Filter addresses by prefix (optional)"
+                />
+                <p className="text-xs text-muted-foreground">Only use addresses starting with this prefix</p>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Allowed Order Types</Label>
+                <div className="flex flex-wrap gap-2">
+                  {['limit', 'take_profit', 'take_profit_limit', 'market', 'stop_loss', 'stop_loss_limit'].map((orderType) => (
+                    <Button
+                      key={orderType}
+                      type="button"
+                      variant={settingsForm.allowedOrderTypes.includes(orderType) ? "default" : "outline"}
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        const current = settingsForm.allowedOrderTypes;
+                        const newTypes = current.includes(orderType)
+                          ? current.filter(t => t !== orderType)
+                          : [...current, orderType];
+                        setSettingsForm({ ...settingsForm, allowedOrderTypes: newTypes });
+                      }}
+                    >
+                      {orderType}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">Order types that trigger sweep accumulation</p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="ghost" onClick={cancelEditingSettings} disabled={savingSettings}>
+                  Cancel
+                </Button>
+                <Button onClick={saveSettings} disabled={savingSettings}>
+                  {savingSettings ? 'Saving...' : 'Save Settings'}
+                </Button>
+              </div>
             </div>
+          ) : settings ? (
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Dry Run:</span>
+                <Badge variant={settings.dryRun ? "outline" : "secondary"} className={settings.dryRun ? "text-yellow-500 border-yellow-500" : ""}>
+                  {settings.dryRun ? 'ON' : 'OFF'}
+                </Badge>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Max Inflight:</span>
+                <span className="ml-2">{settings.maxInflightWithdrawals}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Per-Asset Max:</span>
+                <span className="ml-2">{settings.perAssetMaxInflight}</span>
+              </div>
+              {settings.keyNamePrefix && (
+                <div>
+                  <span className="text-muted-foreground">Key Prefix:</span>
+                  <span className="ml-2 font-mono">{settings.keyNamePrefix}</span>
+                </div>
+              )}
+              <div className="col-span-2">
+                <span className="text-muted-foreground">Order Types:</span>
+                <span className="ml-2">{settings.allowedOrderTypes.join(', ')}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="text-muted-foreground">Loading settings...</div>
           )}
         </CardContent>
       </Card>

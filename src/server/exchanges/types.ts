@@ -134,11 +134,32 @@ export interface ExchangeRestClient {
   // Orders
   getOpenOrders(): Promise<{ open: Record<string, OpenOrder> }>;
 
+  // Trade history (for reconciliation)
+  getTradesHistory?(options?: {
+    start?: number;
+    end?: number;
+  }): Promise<TradeHistoryRecord[]>;
+
   // Market data
   getTicker(pairs: string[]): Promise<Record<string, { c: [string, string] }>>;
 
   // Connection
   testConnection(): Promise<ConnectionTestResult>;
+}
+
+// Trade history record for reconciliation
+export interface TradeHistoryRecord {
+  tradeId: string;
+  orderId: string;
+  pair: string;
+  side: 'buy' | 'sell';
+  orderType: string;
+  price: number;
+  volume: number;
+  cost: number;
+  fee: number;
+  feeCurrency: string;
+  timestamp: number;
 }
 
 // ============== WebSocket Client Interface ==============

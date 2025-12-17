@@ -139,6 +139,44 @@ export const KrakenAdapterFactory: ExchangeAdapterFactory = {
         return { open };
       },
 
+      async getTradesHistory(options?: { start?: number; end?: number }) {
+        const result = await client.getTradesHistory({
+          start: options?.start ? Math.floor(options.start / 1000) : undefined,
+          end: options?.end ? Math.floor(options.end / 1000) : undefined,
+        });
+
+        // Convert Kraken trade format to standard format
+        const trades: import('../types.js').TradeHistoryRecord[] = [];
+        for (const [tradeId, trade] of Object.entries(result.trades)) {
+          const t = trade as {
+            ordertxid: string;
+            pair: string;
+            type: string;
+            ordertype: string;
+            price: string;
+            vol: string;
+            cost: string;
+            fee: string;
+            time: number;
+          };
+          const { base, quote } = parseKrakenPair(t.pair);
+          trades.push({
+            tradeId,
+            orderId: t.ordertxid,
+            pair: `${base}/${quote}`,
+            side: t.type as 'buy' | 'sell',
+            orderType: t.ordertype,
+            price: parseFloat(t.price),
+            volume: parseFloat(t.vol),
+            cost: parseFloat(t.cost),
+            fee: parseFloat(t.fee),
+            feeCurrency: t.type === 'buy' ? base : quote, // Kraken fees in received asset
+            timestamp: t.time * 1000,
+          });
+        }
+        return trades;
+      },
+
       async getTicker(pairs) {
         return client.getTicker(pairs);
       },
