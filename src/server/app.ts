@@ -66,15 +66,25 @@ let reconcileInterval: ReturnType<typeof setInterval> | null = null;
 
 async function main() {
   appLogger.info('Starting Moby');
+  appLogger.info(
+    {
+      nodeEnv: process.env.NODE_ENV,
+      logLevel: process.env.LOG_LEVEL,
+      mobyDataPath: process.env.MOBY_DATA_PATH,
+      dataDir,
+    },
+    'Boot environment'
+  );
 
   // Register exchange adapters
   registerExchange(KrakenAdapterFactory);
   registerExchange(GeminiAdapterFactory);
   registerExchange(KuCoinAdapterFactory);
   registerExchange(GateAdapterFactory);
-  appLogger.debug('Registered exchange adapters: Kraken, Gemini, KuCoin, Gate.io');
+  appLogger.info('Registered exchange adapters: Kraken, Gemini, KuCoin, Gate.io');
 
   // Initialize encryption (get or generate key)
+  appLogger.info('Initializing encryption');
   const encryptionResult = initEncryption();
   appLogger.info(
     { keyGenerated: encryptionResult.keyGenerated, keySource: encryptionResult.keySource },
@@ -82,9 +92,11 @@ async function main() {
   );
 
   // Initialize database
+  appLogger.info('Initializing database');
   initDb();
 
   // Load configuration (from database; migrates legacy config.yaml once if present)
+  appLogger.info('Loading config');
   config = loadConfig();
 
   // Overlay DB-backed settings (including allowed order types) onto config

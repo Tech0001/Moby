@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, powerMonitor, shell } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, powerMonitor, shell, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -220,6 +220,16 @@ async function initialize() {
     createTray();
     setupPowerMonitor();
   } catch (err) {
+    try {
+      const message = err instanceof Error ? `${err.message}\n${err.stack || ''}` : String(err);
+      const logPath = path.join(userDataPath, 'startup-error.log');
+      fs.writeFileSync(logPath, `[${new Date().toISOString()}] ${message}\n`, { flag: 'a' });
+      // eslint-disable-next-line no-console
+      console.error('Fatal startup error:', message);
+      dialog.showErrorBox('Moby failed to start', `A fatal startup error occurred.\n\n${message}\n\nDetails saved to:\n${logPath}`);
+    } catch {
+      // ignore secondary logging failures
+    }
     app.quit();
   }
 }
