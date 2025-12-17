@@ -20,7 +20,7 @@ type ThemeProviderState = {
 
 const initialState: ThemeProviderState = {
   theme: "system",
-  style: "default",
+  style: "classic",
   setTheme: () => null,
   setStyle: () => null,
 }
@@ -30,10 +30,16 @@ const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 export function ThemeProvider({
   children,
   defaultTheme = "dark",
-  defaultStyle = "cyberpunk",
-  storageKey = "vite-ui-theme",
+  defaultStyle = "classic",
+  storageKey = "moby-ui-theme",
   ...props
 }: ThemeProviderProps) {
+  // Clean up legacy storage keys so defaults apply on upgrade
+  useEffect(() => {
+    localStorage.removeItem("vite-ui-theme")
+    localStorage.removeItem("vite-ui-theme-style")
+  }, [])
+
   const [theme, setTheme] = useState<Theme>(
     () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
   )
