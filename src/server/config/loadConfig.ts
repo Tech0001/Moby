@@ -18,7 +18,7 @@ global:
   perAssetMaxInflight: 1
   schedulerTickMs: 1000
   backoffSeconds: [15, 30, 60, 120, 300, 600]
-  allowedOrderTypes: ["limit", "take_profit", "take_profit_limit"]
+  allowedOrderTypes: ["limit", "take-profit", "take-profit-limit"]
   # keyNamePrefix: "COLD_"  # Optional: only use wallet keys starting with this prefix
 
 polling:
@@ -63,11 +63,8 @@ export function loadConfig(): AppConfig {
 
   const config = result.data;
 
-  // Generate session secret if not provided
-  if (!config.web.sessionSecret) {
-    config.web.sessionSecret = randomBytes(32).toString('hex');
-    logger.info('Generated session secret (not persisted - provide in config for persistence)');
-  }
+  // Session secret will be initialized after database is ready (in app.ts)
+  // This allows us to persist it across restarts
 
   logger.info(
     { enabledOnBoot: config.global.enabledOnBoot, dryRun: config.global.dryRun },

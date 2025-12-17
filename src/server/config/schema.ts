@@ -33,7 +33,7 @@ export const GlobalConfigSchema = z.object({
   perAssetMaxInflight: z.number().int().positive().default(1),
   schedulerTickMs: z.number().int().positive().default(1000),
   backoffSeconds: z.array(z.number().positive()).default([15, 30, 60, 120, 300, 600]),
-  allowedOrderTypes: z.array(z.string()).default(['limit', 'take_profit', 'take_profit_limit']),
+  allowedOrderTypes: z.array(z.string()).default(['limit', 'take-profit', 'take-profit-limit']),
   disabledExchanges: z.array(ExchangeIdSchema).default([]),
   keyNamePrefix: z.string().optional(), // Optional prefix filter for wallet keys
 });
@@ -56,7 +56,7 @@ export const AppConfigSchema = z.object({
     perAssetMaxInflight: 1,
     schedulerTickMs: 1000,
     backoffSeconds: [15, 30, 60, 120, 300, 600],
-    allowedOrderTypes: ['limit', 'take_profit', 'take_profit_limit'],
+    allowedOrderTypes: ['limit', 'take-profit', 'take-profit-limit'],
     disabledExchanges: [],
   }),
   polling: PollingConfigSchema.default({

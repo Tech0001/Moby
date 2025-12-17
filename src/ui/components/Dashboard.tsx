@@ -35,7 +35,10 @@ interface Status {
   enabled: boolean;
   hasApiKeys: boolean;
   assets: Array<{
+    exchange: string;
     asset: string;
+    enabled: boolean;
+    threshold: number;
     pendingAmount: number;
     rrIndex: number;
     lastWithdrawAt: number | null;
@@ -49,7 +52,7 @@ interface Status {
     status: string;
     destKey: string;
     createdAt: number;
-    krakenRef?: string;
+    exchangeRef?: string;
     txid?: string;
   }>;
 }

@@ -1,6 +1,7 @@
 import { generateSignature, generateNonce } from './sign.js';
 import { globalRateLimiter, RateLimiter } from './rateLimiter.js';
 import { createChildLogger } from '../../utils/logger.js';
+import { fetchWithTimeout } from '../../utils/fetchWithTimeout.js';
 import type { WithdrawInfo, KrakenWithdrawStatus } from '../../domain/types.js';
 
 const logger = createChildLogger('kraken-rest');
@@ -54,7 +55,7 @@ export class KrakenRestClient {
 
     const signature = generateSignature(urlPath, postData, nonce, this.apiSecret);
 
-    const response = await fetch(`${KRAKEN_API_URL}${urlPath}`, {
+    const response = await fetchWithTimeout(`${KRAKEN_API_URL}${urlPath}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -62,6 +63,7 @@ export class KrakenRestClient {
         'API-Sign': signature,
       },
       body: postData,
+      timeoutMs: 30000, // 30 second timeout
     });
 
     if (!response.ok) {
@@ -92,7 +94,7 @@ export class KrakenRestClient {
     const queryString = new URLSearchParams(params).toString();
     const url = queryString ? `${KRAKEN_API_URL}${urlPath}?${queryString}` : `${KRAKEN_API_URL}${urlPath}`;
 
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url, { timeoutMs: 30000 });
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);

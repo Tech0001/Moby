@@ -1,4 +1,5 @@
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync, createHash } from 'crypto';
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
+import bcrypt from 'bcrypt';
 import { getWalletSetting, setWalletSetting } from '../db/repositories.js';
 
 const ALGORITHM = 'aes-256-gcm';
@@ -6,15 +7,7 @@ const IV_LENGTH = 16;
 const SALT_LENGTH = 32;
 const KEY_LENGTH = 32;
 const SCRYPT_COST = 16384; // N parameter (2^14) - standard secure value
-
-/**
- * Hash password for storage (verification only, NOT for encryption)
- * Uses SHA-256 with a pepper for simple verification
- */
-function hashPassword(password: string): string {
-  const pepper = 'moby-wallet-pepper-v1';
-  return createHash('sha256').update(password + pepper).digest('hex');
-}
+const BCRYPT_ROUNDS = 12; // Cost factor for bcrypt password hashing
 
 /**
  * Derive encryption key from password using scrypt
@@ -33,9 +26,9 @@ export function hasWalletPassword(): boolean {
 
 /**
  * Set the wallet password (first time setup)
- * Stores only a hash for verification - NOT used for encryption
+ * Stores a bcrypt hash for secure verification - NOT used for encryption
  */
-export function setWalletPassword(password: string): void {
+export async function setWalletPassword(password: string): Promise<void> {
   if (hasWalletPassword()) {
     throw new Error('Wallet password already set');
   }
@@ -44,21 +37,20 @@ export function setWalletPassword(password: string): void {
     throw new Error('Password must be at least 8 characters');
   }
 
-  const hash = hashPassword(password);
+  const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   setWalletSetting('password_hash', hash);
 }
 
 /**
- * Verify the wallet password is correct
+ * Verify the wallet password is correct using bcrypt
  */
-export function verifyWalletPassword(password: string): boolean {
+export async function verifyWalletPassword(password: string): Promise<boolean> {
   const storedHash = getWalletSetting('password_hash');
   if (!storedHash) {
     return false;
   }
 
-  const inputHash = hashPassword(password);
-  return storedHash === inputHash;
+  return bcrypt.compare(password, storedHash);
 }
 
 /**
@@ -126,12 +118,12 @@ export function decryptPrivateKey(
  * Change the wallet password
  * This requires re-encrypting all existing wallets
  */
-export function changeWalletPassword(
+export async function changeWalletPassword(
   oldPassword: string,
   newPassword: string,
   reEncryptCallback: (oldPass: string, newPass: string) => void
-): void {
-  if (!verifyWalletPassword(oldPassword)) {
+): Promise<void> {
+  if (!(await verifyWalletPassword(oldPassword))) {
     throw new Error('Current password is incorrect');
   }
 
@@ -142,7 +134,7 @@ export function changeWalletPassword(
   // Re-encrypt all wallets with new password
   reEncryptCallback(oldPassword, newPassword);
 
-  // Update the password hash
-  const hash = hashPassword(newPassword);
+  // Update the password hash with bcrypt
+  const hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
   setWalletSetting('password_hash', hash);
 }

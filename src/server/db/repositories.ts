@@ -255,6 +255,14 @@ export function getInflightCount(exchange?: ExchangeId, asset?: string): number 
   return row.count;
 }
 
+/**
+ * Update a withdrawal job with partial updates
+ *
+ * Security note: This function builds SQL dynamically but is safe because:
+ * 1. Column names are hardcoded strings (not user input)
+ * 2. All values are parameterized (prevents SQL injection)
+ * 3. TypeScript enforces which fields can be updated via the type system
+ */
 export function updateWithdrawalJob(
   id: string,
   updates: Partial<Pick<WithdrawalJob, 'status' | 'exchangeRef' | 'txid' | 'lastError' | 'pollCount'>>
@@ -262,28 +270,25 @@ export function updateWithdrawalJob(
   const db = getDb();
   const now = Date.now();
 
+  // Type-safe field to column mapping
+  const fieldMap: Record<keyof typeof updates, string> = {
+    status: 'status',
+    exchangeRef: 'exchange_ref',
+    txid: 'txid',
+    lastError: 'last_error',
+    pollCount: 'poll_count',
+  };
+
   const setClauses: string[] = ['updated_at = ?'];
   const values: unknown[] = [now];
 
-  if (updates.status !== undefined) {
-    setClauses.push('status = ?');
-    values.push(updates.status);
-  }
-  if (updates.exchangeRef !== undefined) {
-    setClauses.push('exchange_ref = ?');
-    values.push(updates.exchangeRef);
-  }
-  if (updates.txid !== undefined) {
-    setClauses.push('txid = ?');
-    values.push(updates.txid);
-  }
-  if (updates.lastError !== undefined) {
-    setClauses.push('last_error = ?');
-    values.push(updates.lastError);
-  }
-  if (updates.pollCount !== undefined) {
-    setClauses.push('poll_count = ?');
-    values.push(updates.pollCount);
+  // Build SET clauses from provided updates
+  for (const [field, column] of Object.entries(fieldMap)) {
+    const value = updates[field as keyof typeof updates];
+    if (value !== undefined) {
+      setClauses.push(`${column} = ?`);
+      values.push(value);
+    }
   }
 
   values.push(id);
@@ -352,6 +357,18 @@ export function getFillEventExists(tradeId: string, exchange?: ExchangeId): bool
   }
   const row = db.prepare('SELECT 1 FROM fill_events WHERE id = ?').get(tradeId);
   return !!row;
+}
+
+/**
+ * Clean up old fill events to prevent unbounded database growth
+ * @param olderThanDays Delete records older than this many days (default 90)
+ * @returns Number of records deleted
+ */
+export function cleanupOldFillEvents(olderThanDays: number = 90): number {
+  const db = getDb();
+  const cutoffMs = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+  const result = db.prepare('DELETE FROM fill_events WHERE ts < ?').run(cutoffMs);
+  return result.changes;
 }
 
 // ============== App State Repository ==============
@@ -1432,7 +1449,7 @@ const SETTINGS_DEFAULTS: GlobalSettings = {
   maxInflightWithdrawals: 2,
   perAssetMaxInflight: 1,
   keyNamePrefix: '',
-  allowedOrderTypes: ['limit', 'take_profit', 'take_profit_limit'],
+  allowedOrderTypes: ['limit', 'take-profit', 'take-profit-limit'],
 };
 
 export function getSetting<K extends keyof GlobalSettings>(key: K): GlobalSettings[K] {

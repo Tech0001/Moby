@@ -1,11 +1,12 @@
 import { mkdirSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { randomBytes } from 'crypto';
 import { logger, createChildLogger } from './utils/logger.js';
 import { initEncryption } from './utils/encryption.js';
 import { loadConfig, reloadConfig } from './config/loadConfig.js';
 import { initDb, closeDb } from './db/sqlite.js';
-import { getAllApiKeys, setEnabled, hasAnyApiKeys, migrateApiKeysToEncrypted, getAppStateValue, setAppStateValue } from './db/repositories.js';
+import { getAllApiKeys, setEnabled, hasAnyApiKeys, migrateApiKeysToEncrypted, getAppStateValue, setAppStateValue, cleanupOldFillEvents } from './db/repositories.js';
 import { FillProcessor } from './domain/fillProcessor.js';
 import { Scheduler } from './domain/scheduler.js';
 import { StatusPoller } from './domain/statusPoller.js';
@@ -75,6 +76,16 @@ async function main() {
 
   // Initialize database
   initDb();
+
+  // Initialize session secret (persisted in database for consistency across restarts)
+  const SESSION_SECRET_KEY = 'session_secret';
+  let sessionSecret = getAppStateValue(SESSION_SECRET_KEY);
+  if (!sessionSecret) {
+    sessionSecret = randomBytes(32).toString('hex');
+    setAppStateValue(SESSION_SECRET_KEY, sessionSecret);
+    appLogger.info('Generated new session secret');
+  }
+  config.web.sessionSecret = sessionSecret;
 
   // Migrate existing API keys to encrypted format (idempotent)
   const encryptionMigrated = getAppStateValue('encryption_migrated');
@@ -292,9 +303,39 @@ async function main() {
     appLogger.warn('No API keys configured - scheduler and poller not started');
   }
 
+  // Daily cleanup of old fill events (runs once per day)
+  const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+  setInterval(() => {
+    const deleted = cleanupOldFillEvents(90); // Keep 90 days of history
+    if (deleted > 0) {
+      appLogger.info({ deleted }, 'Cleaned up old fill events');
+    }
+  }, CLEANUP_INTERVAL_MS);
+
+  // Run initial cleanup on startup
+  const initialCleanup = cleanupOldFillEvents(90);
+  if (initialCleanup > 0) {
+    appLogger.info({ deleted: initialCleanup }, 'Initial cleanup of old fill events');
+  }
+
   // Handle shutdown
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
+
+  // Handle process exit (for Electron in-process server)
+  process.on('exit', () => {
+    // Synchronously stop timers with silent=true to prevent logging after pino worker exits
+    scheduler?.stop(true);
+    statusPoller?.stop(true);
+    if (reconcileInterval) {
+      clearInterval(reconcileInterval);
+      reconcileInterval = null;
+    }
+    for (const ws of wsClients.values()) {
+      ws.disconnect();
+    }
+    wsClients.clear();
+  });
 
   // Keep process alive
   setInterval(() => {
@@ -417,6 +458,12 @@ function shutdown() {
 
 // Run
 main().catch((error) => {
-  logger.error({ error }, 'Fatal error');
+  logger.error(
+    {
+      error: error instanceof Error ? error.message : error,
+      stack: error instanceof Error ? error.stack : undefined,
+    },
+    'Fatal error'
+  );
   process.exit(1);
 });

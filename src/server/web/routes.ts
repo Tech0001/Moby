@@ -1,6 +1,57 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { v4 as uuid } from 'uuid';
 import { createChildLogger } from '../utils/logger.js';
+
+/**
+ * Simple in-memory rate limiter for login attempts
+ * Tracks failed attempts by IP address
+ */
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const RATE_LIMIT_MAX_ATTEMPTS = 5;
+
+function loginRateLimiter(req: Request, res: Response, next: NextFunction): void {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+
+  const record = loginAttempts.get(ip);
+
+  // Clean up expired record
+  if (record && now > record.resetAt) {
+    loginAttempts.delete(ip);
+  }
+
+  const current = loginAttempts.get(ip);
+
+  if (current && current.count >= RATE_LIMIT_MAX_ATTEMPTS) {
+    const remainingMs = current.resetAt - now;
+    const remainingMin = Math.ceil(remainingMs / 60000);
+    res.status(429).json({
+      error: `Too many login attempts. Try again in ${remainingMin} minute${remainingMin > 1 ? 's' : ''}.`,
+    });
+    return;
+  }
+
+  next();
+}
+
+function recordFailedLogin(req: Request): void {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+
+  const record = loginAttempts.get(ip);
+
+  if (record && now < record.resetAt) {
+    record.count++;
+  } else {
+    loginAttempts.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+  }
+}
+
+function clearLoginAttempts(req: Request): void {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  loginAttempts.delete(ip);
+}
 import {
   requireAuth,
   checkSetupNeeded,
@@ -117,15 +168,28 @@ export function createRoutes(context: RoutesContext): Router {
       return;
     }
 
-    // Auto-login after setup
-    req.session.userId = result.userId;
-    req.session.username = username;
-
-    res.json({ success: true });
+    // Auto-login after setup - regenerate session to prevent fixation
+    req.session.regenerate((err) => {
+      if (err) {
+        logger.error({ error: err }, 'Session regeneration failed');
+        res.status(500).json({ error: 'Session error' });
+        return;
+      }
+      req.session.userId = result.userId;
+      req.session.username = username;
+      req.session.save((saveErr) => {
+        if (saveErr) {
+          logger.error({ error: saveErr }, 'Session save failed');
+          res.status(500).json({ error: 'Session error' });
+          return;
+        }
+        res.json({ success: true });
+      });
+    });
   });
 
   // Login
-  router.post('/api/auth/login', async (req: Request, res: Response) => {
+  router.post('/api/auth/login', loginRateLimiter, async (req: Request, res: Response) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
@@ -136,14 +200,32 @@ export function createRoutes(context: RoutesContext): Router {
     const result = await authenticateUser(username, password);
 
     if (!result.success) {
+      recordFailedLogin(req);
       res.status(401).json({ error: result.error });
       return;
     }
 
-    req.session.userId = result.userId;
-    req.session.username = username;
+    // Clear rate limit on successful login
+    clearLoginAttempts(req);
 
-    res.json({ success: true });
+    // Regenerate session to prevent session fixation attacks
+    req.session.regenerate((err) => {
+      if (err) {
+        logger.error({ error: err }, 'Session regeneration failed');
+        res.status(500).json({ error: 'Session error' });
+        return;
+      }
+      req.session.userId = result.userId;
+      req.session.username = username;
+      req.session.save((saveErr) => {
+        if (saveErr) {
+          logger.error({ error: saveErr }, 'Session save failed');
+          res.status(500).json({ error: 'Session error' });
+          return;
+        }
+        res.json({ success: true });
+      });
+    });
   });
 
   // Logout
@@ -233,23 +315,39 @@ export function createRoutes(context: RoutesContext): Router {
   router.get('/api/status', requireAuth, (req: Request, res: Response) => {
     const exchange = (req.query.exchange as ExchangeId) || undefined;
     const assetStates = getAllAssetStates(exchange);
+    const assetConfigs = getAllAssetConfigs(exchange);
     const activeJobs = getActiveWithdrawalJobs(exchange);
     const enabled = isEnabled();
     const pool = exchange ? getClientPool(exchange) : null;
+
+    // Merge asset configs with asset states - show all configured assets
+    // even if they don't have runtime state yet (no fills processed)
+    const assetStateMap = new Map(
+      assetStates.map((s) => [`${s.exchange}:${s.asset}`, s])
+    );
+
+    const mergedAssets = assetConfigs.map((config) => {
+      const key = `${config.exchange}:${config.asset}`;
+      const state = assetStateMap.get(key);
+
+      return {
+        exchange: config.exchange,
+        asset: config.asset,
+        enabled: config.enabled,
+        threshold: config.threshold,
+        pendingAmount: state?.pendingAmount ?? 0,
+        rrIndex: state?.rrIndex ?? 0,
+        lastWithdrawAt: state?.lastWithdrawAt ?? null,
+        consecutiveFailures: state?.consecutiveFailures ?? 0,
+        backoffUntil: state?.backoffUntil ?? null,
+      };
+    });
 
     res.json({
       enabled,
       hasApiKeys: hasAnyApiKeys(exchange),
       apiKeysCount: pool?.size ?? 0,
-      assets: assetStates.map((state) => ({
-        exchange: state.exchange,
-        asset: state.asset,
-        pendingAmount: state.pendingAmount,
-        rrIndex: state.rrIndex,
-        lastWithdrawAt: state.lastWithdrawAt,
-        consecutiveFailures: state.consecutiveFailures,
-        backoffUntil: state.backoffUntil,
-      })),
+      assets: mergedAssets,
       activeJobs: activeJobs.map((job) => ({
         id: job.id,
         exchange: job.exchange,
@@ -1421,7 +1519,7 @@ export function createRoutes(context: RoutesContext): Router {
   });
 
   // Set wallet password (first time only)
-  router.post('/api/wallets/password', requireAuth, (req: Request, res: Response) => {
+  router.post('/api/wallets/password', requireAuth, async (req: Request, res: Response) => {
     try {
       const { password } = req.body;
 
@@ -1435,7 +1533,7 @@ export function createRoutes(context: RoutesContext): Router {
         return;
       }
 
-      setWalletPassword(password);
+      await setWalletPassword(password);
       logger.info('Wallet password set');
       res.json({ success: true });
     } catch (error) {
@@ -1445,7 +1543,7 @@ export function createRoutes(context: RoutesContext): Router {
   });
 
   // Verify wallet password
-  router.post('/api/wallets/password/verify', requireAuth, (req: Request, res: Response) => {
+  router.post('/api/wallets/password/verify', requireAuth, async (req: Request, res: Response) => {
     const { password } = req.body;
 
     if (!password || typeof password !== 'string') {
@@ -1453,7 +1551,7 @@ export function createRoutes(context: RoutesContext): Router {
       return;
     }
 
-    const valid = verifyWalletPassword(password);
+    const valid = await verifyWalletPassword(password);
     res.json({ valid });
   });
 
@@ -1486,7 +1584,7 @@ export function createRoutes(context: RoutesContext): Router {
       }
 
       // Verify password first
-      if (!verifyWalletPassword(password)) {
+      if (!(await verifyWalletPassword(password))) {
         res.status(401).json({ error: 'Invalid password' });
         return;
       }
@@ -1538,7 +1636,7 @@ export function createRoutes(context: RoutesContext): Router {
   });
 
   // Unlock/decrypt a wallet's private key
-  router.post('/api/wallets/:id/unlock', requireAuth, (req: Request, res: Response) => {
+  router.post('/api/wallets/:id/unlock', requireAuth, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { password } = req.body;
@@ -1549,7 +1647,7 @@ export function createRoutes(context: RoutesContext): Router {
       }
 
       // Verify password first
-      if (!verifyWalletPassword(password)) {
+      if (!(await verifyWalletPassword(password))) {
         res.status(401).json({ error: 'Invalid password' });
         return;
       }

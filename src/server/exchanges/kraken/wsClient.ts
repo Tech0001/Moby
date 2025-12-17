@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
 import { createChildLogger } from '../../utils/logger.js';
+import { fetchWithTimeout } from '../../utils/fetchWithTimeout.js';
 import type { FillEvent } from '../../domain/types.js';
 
 const logger = createChildLogger('kraken-ws');
@@ -63,6 +64,8 @@ export class KrakenWsClient extends EventEmitter {
   private pingTimer: NodeJS.Timeout | null = null;
   private isConnecting: boolean = false;
   private shouldConnect: boolean = false;
+  private hasReceivedInitialSnapshot: boolean = false;
+  private lastSequence: number = 0;
 
   constructor(options: KrakenWsClientOptions) {
     super();
@@ -94,7 +97,7 @@ export class KrakenWsClient extends EventEmitter {
     const urlPath = '/0/private/GetWebSocketsToken';
     const signature = generateSignature(urlPath, postData, nonce, this.apiSecret);
 
-    const response = await fetch(KRAKEN_WS_AUTH_URL, {
+    const response = await fetchWithTimeout(KRAKEN_WS_AUTH_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -102,6 +105,7 @@ export class KrakenWsClient extends EventEmitter {
         'API-Sign': signature,
       },
       body: postData,
+      timeoutMs: 10000, // 10 second timeout for token request
     });
 
     const data = await response.json() as {
@@ -187,6 +191,8 @@ export class KrakenWsClient extends EventEmitter {
   disconnect(): void {
     this.shouldConnect = false;
     this.clearTimers();
+    this.hasReceivedInitialSnapshot = false;
+    this.lastSequence = 0;
 
     if (this.ws) {
       this.ws.close();
@@ -266,49 +272,73 @@ export class KrakenWsClient extends EventEmitter {
 
   /**
    * Handle ownTrades messages (trade executions)
-   * Initial snapshot format: [[{trade1}, {trade2}, ...], "ownTrades", {sequence: 1}]
-   * Real-time format: [{tradeId: {...}}, "ownTrades", {sequence: n}]
+   * Kraken sends all trades as arrays: [[{tradeId: trade}, ...], "ownTrades", {sequence: n}]
+   * First message after subscription is the historical snapshot, subsequent messages are real-time
    */
   private handleOwnTrades(msg: OwnTradesMessage): void {
     const data = msg[0];
+    const sequence = msg[2]?.sequence;
 
-    // Check if this is the initial snapshot (array of trade objects)
-    if (Array.isArray(data)) {
-      logger.debug({ count: data.length }, 'Received ownTrades snapshot (ignoring historical trades)');
-      // Skip the initial snapshot - we only want real-time fills
+    // Both snapshot and real-time come as arrays
+    if (!Array.isArray(data)) {
+      logger.warn({ data }, 'Unexpected ownTrades format (not an array)');
       return;
     }
 
-    // Real-time trade update - single object with trade(s)
-    const trades = data;
+    // First message after subscription is the historical snapshot - skip it
+    // We use reconciliation to catch historical trades, not the snapshot
+    if (!this.hasReceivedInitialSnapshot) {
+      this.hasReceivedInitialSnapshot = true;
+      this.lastSequence = sequence || 0;
+      logger.debug({ count: data.length, sequence }, 'Received initial ownTrades snapshot (ignoring historical)');
+      return;
+    }
 
-    for (const [tradeId, trade] of Object.entries(trades)) {
-      const fill: FillEvent = {
-        tradeId,
-        orderId: trade.ordertxid,
-        pair: trade.pair,
-        side: trade.type as 'buy' | 'sell',
-        orderType: trade.ordertype,
-        price: parseFloat(trade.price),
-        volume: parseFloat(trade.vol),
-        cost: parseFloat(trade.cost),
-        fee: parseFloat(trade.fee),
-        feeCurrency: this.getFeeAsset(trade.pair, trade.type),
-        timestamp: Math.floor(parseFloat(trade.time) * 1000),
-      };
-
-      logger.info(
-        {
-          tradeId,
-          pair: fill.pair,
-          side: fill.side,
-          volume: fill.volume,
-          price: fill.price,
-        },
-        'Fill received'
+    // Check for sequence gaps (indicates missed messages)
+    if (sequence && this.lastSequence > 0 && sequence > this.lastSequence + 1) {
+      const gap = sequence - this.lastSequence - 1;
+      logger.warn(
+        { lastSequence: this.lastSequence, currentSequence: sequence, gap },
+        'Detected sequence gap in ownTrades - some messages may have been missed'
       );
+      // Emit event so app.ts can trigger reconciliation if needed
+      this.emit('sequenceGap', gap);
+    }
+    this.lastSequence = sequence || this.lastSequence;
 
-      this.emit('fill', fill);
+    // Process real-time trade updates
+    logger.debug({ count: data.length, sequence }, 'Received real-time ownTrades update');
+
+    for (const tradeObj of data) {
+      // Each item is {tradeId: tradeDetails}
+      for (const [tradeId, trade] of Object.entries(tradeObj)) {
+        const fill: FillEvent = {
+          tradeId,
+          orderId: trade.ordertxid,
+          pair: trade.pair,
+          side: trade.type as 'buy' | 'sell',
+          orderType: trade.ordertype,
+          price: parseFloat(trade.price),
+          volume: parseFloat(trade.vol),
+          cost: parseFloat(trade.cost),
+          fee: parseFloat(trade.fee),
+          feeCurrency: this.getFeeAsset(trade.pair, trade.type),
+          timestamp: Math.floor(parseFloat(trade.time) * 1000),
+        };
+
+        logger.info(
+          {
+            tradeId,
+            pair: fill.pair,
+            side: fill.side,
+            volume: fill.volume,
+            price: fill.price,
+          },
+          'Fill received'
+        );
+
+        this.emit('fill', fill);
+      }
     }
   }
 
@@ -333,6 +363,8 @@ export class KrakenWsClient extends EventEmitter {
     this.clearTimers();
     this.ws = null;
     this.isConnecting = false;
+    this.hasReceivedInitialSnapshot = false;
+    this.lastSequence = 0;
 
     this.emit('disconnect');
 

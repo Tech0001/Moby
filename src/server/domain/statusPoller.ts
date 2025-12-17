@@ -83,13 +83,16 @@ export class StatusPoller extends EventEmitter {
 
   /**
    * Stop the status polling loop
+   * @param silent - If true, don't log (used during process exit when logger may be unavailable)
    */
-  stop(): void {
+  stop(silent = false): void {
     if (!this.running) {
       return;
     }
 
-    logger.info('Stopping status poller');
+    if (!silent) {
+      logger.info('Stopping status poller');
+    }
     this.running = false;
 
     if (this.pollTimer) {
@@ -159,6 +162,11 @@ export class StatusPoller extends EventEmitter {
    * Run one poll cycle - fetch all statuses and update jobs
    */
   private async poll(): Promise<void> {
+    // Check if stopped (handles race condition during shutdown)
+    if (!this.running) {
+      return;
+    }
+
     const now = Date.now();
     this.lastPollTime = now;
 

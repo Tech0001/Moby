@@ -29,6 +29,27 @@ import type {
 
 const logger = createChildLogger('client-pool');
 
+/**
+ * Sanitize error messages to remove potential API keys or secrets
+ * Exchange error messages sometimes contain parts of API keys/secrets
+ */
+function sanitizeErrorMessage(error: string): string {
+  // Remove potential API keys (long alphanumeric strings)
+  // Most API keys are 20-64 chars of alphanumeric/symbols
+  let sanitized = error;
+
+  // Remove long hex strings (40+ chars) - potential keys/secrets
+  sanitized = sanitized.replace(/[a-f0-9]{40,}/gi, '[REDACTED]');
+
+  // Remove base64-like strings (32+ chars) - potential secrets
+  sanitized = sanitized.replace(/[A-Za-z0-9+/=]{32,}/g, '[REDACTED]');
+
+  // Remove anything that looks like an API key pattern (mixed case alphanumeric 20+ chars)
+  sanitized = sanitized.replace(/[A-Za-z0-9]{20,}/g, '[REDACTED]');
+
+  return sanitized;
+}
+
 export interface KeySelectionResult {
   keyId: string;
   client: ExchangeRestClient;
@@ -255,6 +276,9 @@ export class ExchangeClientPool {
     const errorMessage = error instanceof Error ? error.message : error;
     const category = this.factory.categorizeError(errorMessage);
 
+    // Sanitize error messages before logging to prevent API key leakage
+    const safeErrorMessage = sanitizeErrorMessage(errorMessage);
+
     switch (category) {
       case 'rate_limit': {
         const limitUntil = Date.now() + 120_000; // Default 2 min
@@ -264,26 +288,27 @@ export class ExchangeClientPool {
       }
 
       case 'auth': {
-        markApiKeyInvalid(keyId, errorMessage);
-        logger.error({ exchangeId: this.exchangeId, keyId, error: errorMessage }, 'API key marked invalid');
+        // Store sanitized error in database too
+        markApiKeyInvalid(keyId, safeErrorMessage);
+        logger.error({ exchangeId: this.exchangeId, keyId, error: safeErrorMessage }, 'API key marked invalid');
         this.clients.delete(keyId);
         return { category, handled: true };
       }
 
       case 'service': {
         // Service errors are transient, don't mark the key
-        logger.warn({ exchangeId: this.exchangeId, keyId, error: errorMessage }, 'Exchange service error');
+        logger.warn({ exchangeId: this.exchangeId, keyId, error: safeErrorMessage }, 'Exchange service error');
         return { category, handled: false };
       }
 
       case 'funding': {
         // Funding errors are account-level, not key-level
-        logger.warn({ exchangeId: this.exchangeId, keyId, error: errorMessage }, 'Funding/order error');
+        logger.warn({ exchangeId: this.exchangeId, keyId, error: safeErrorMessage }, 'Funding/order error');
         return { category, handled: false };
       }
 
       default:
-        logger.error({ exchangeId: this.exchangeId, keyId, error: errorMessage }, 'Unknown exchange error');
+        logger.error({ exchangeId: this.exchangeId, keyId, error: safeErrorMessage }, 'Unknown exchange error');
         return { category, handled: false };
     }
   }

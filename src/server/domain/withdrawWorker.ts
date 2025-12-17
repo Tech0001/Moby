@@ -2,6 +2,7 @@ import { createChildLogger } from '../utils/logger.js';
 import {
   getAssetState,
   subtractPendingAmount,
+  addPendingAmount,
   recordWithdrawalAttempt,
   createWithdrawalJob,
   updateWithdrawalJob,
@@ -41,6 +42,9 @@ export async function startWithdrawal(
   const { exchangeClient, exchange, globalConfig } = options;
   const { destKeys, reserve } = assetConfig;
 
+  // Track if we've reserved funds (for rollback on failure)
+  let reservedAmount = 0;
+
   try {
     // Get current state
     const state = getAssetState(exchange, asset);
@@ -59,6 +63,12 @@ export async function startWithdrawal(
       };
     }
 
+    // IMPORTANT: Reserve the funds immediately to prevent race conditions
+    // If another withdrawal is triggered concurrently, it will see reduced pending amount
+    subtractPendingAmount(exchange, asset, withdrawAmount);
+    reservedAmount = withdrawAmount;
+    logger.debug({ exchange, asset, amount: withdrawAmount }, 'Reserved funds for withdrawal');
+
     // Get destination wallet key using round-robin
     const destKey = getCurrentWalletKey(exchange, asset, destKeys);
 
@@ -69,6 +79,8 @@ export async function startWithdrawal(
           { exchange, asset, destKey, prefix: globalConfig.keyNamePrefix },
           'Wallet key does not match prefix filter'
         );
+        // Restore reserved funds
+        addPendingAmount(exchange, asset, reservedAmount);
         return {
           success: false,
           skipped: true,
@@ -83,6 +95,8 @@ export async function startWithdrawal(
 
     if (!addressRecord) {
       logger.warn({ exchange, asset, destKey }, 'Destination key not found in exchange addresses');
+      // Restore reserved funds
+      addPendingAmount(exchange, asset, reservedAmount);
       return {
         success: false,
         skipped: true,
@@ -100,6 +114,8 @@ export async function startWithdrawal(
           { exchange, asset, amount: withdrawAmount, minimum: cachedMethod.minimum, method },
           'Amount below cached minimum, skipping'
         );
+        // Restore reserved funds
+        addPendingAmount(exchange, asset, reservedAmount);
         return {
           success: false,
           skipped: true,
@@ -125,6 +141,8 @@ export async function startWithdrawal(
         { exchange, asset, limit: withdrawInfo.limit },
         'Withdrawal limit reached, skipping'
       );
+      // Restore reserved funds
+      addPendingAmount(exchange, asset, reservedAmount);
       return {
         success: false,
         skipped: true,
@@ -138,6 +156,8 @@ export async function startWithdrawal(
         { exchange, asset, withdrawAmount, limit: withdrawInfo.limit },
         'Withdrawal amount exceeds current limit, skipping until limit resets'
       );
+      // Restore reserved funds
+      addPendingAmount(exchange, asset, reservedAmount);
       return {
         success: false,
         skipped: true,
@@ -148,6 +168,8 @@ export async function startWithdrawal(
     // Check if amount after fees is positive
     const netAmount = withdrawInfo.amount;
     if (netAmount <= 0) {
+      // Restore reserved funds
+      addPendingAmount(exchange, asset, reservedAmount);
       return {
         success: false,
         skipped: true,
@@ -172,8 +194,8 @@ export async function startWithdrawal(
 
     const result = await exchangeClient.withdraw(asset, destKey, addressRecord.address, withdrawAmount);
 
-    // Success - update state
-    subtractPendingAmount(exchange, asset, withdrawAmount);
+    // Success - funds already reserved, just update other state
+    // (subtractPendingAmount was called earlier to prevent race conditions)
     advanceWalletIndex(exchange, asset, destKeys.length);
     recordWithdrawalAttempt(exchange, asset, true);
 
@@ -211,6 +233,12 @@ export async function startWithdrawal(
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     logger.error({ exchange, asset, error: errorMsg }, 'Withdrawal failed');
+
+    // Restore reserved funds if any were reserved
+    if (reservedAmount > 0) {
+      addPendingAmount(exchange, asset, reservedAmount);
+      logger.debug({ exchange, asset, amount: reservedAmount }, 'Restored reserved funds after failure');
+    }
 
     // Calculate backoff
     const state = getAssetState(exchange, asset);

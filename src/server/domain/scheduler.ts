@@ -55,13 +55,16 @@ export class Scheduler extends EventEmitter {
 
   /**
    * Stop the scheduler loop
+   * @param silent - If true, don't log (used during process exit when logger may be unavailable)
    */
-  stop(): void {
+  stop(silent = false): void {
     if (!this.running) {
       return;
     }
 
-    logger.info('Stopping scheduler');
+    if (!silent) {
+      logger.info('Stopping scheduler');
+    }
     this.running = false;
 
     if (this.tickTimer) {
@@ -107,6 +110,11 @@ export class Scheduler extends EventEmitter {
    * Run one scheduler tick
    */
   private async tick(): Promise<void> {
+    // Check if stopped (handles race condition during shutdown)
+    if (!this.running) {
+      return;
+    }
+
     this.wakeRequested = false;
     this.emit('tick');
 
