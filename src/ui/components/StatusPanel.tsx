@@ -15,6 +15,14 @@ import {
   Hourglass
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/ui/components/ui/table";
 import { Badge } from '@/ui/components/ui/badge';
 import { Button } from '@/ui/components/ui/button';
 import { Progress } from '@/ui/components/ui/progress';
@@ -216,14 +224,6 @@ interface AssetStatusSectionProps {
 }
 
 function AssetStatusSection({ assets, onRefresh, formatAmount, formatTime }: AssetStatusSectionProps) {
-  const [waitingExpanded, setWaitingExpanded] = useState(false);
-
-  // Split assets by state
-  const readyToSweep = assets.filter(a => a.enabled && a.pendingAmount >= a.threshold);
-  const accumulating = assets.filter(a => a.enabled && a.pendingAmount > 0 && a.pendingAmount < a.threshold);
-  const waiting = assets.filter(a => a.enabled && a.pendingAmount === 0);
-  const disabled = assets.filter(a => !a.enabled);
-
   if (assets.length === 0) {
     return (
       <section>
@@ -242,8 +242,22 @@ function AssetStatusSection({ assets, onRefresh, formatAmount, formatTime }: Ass
     );
   }
 
+  const sortedAssets = [...assets].sort((a, b) => {
+    const getScore = (asset: Asset) => {
+      if (!asset.enabled) return 0;
+      if (asset.pendingAmount >= asset.threshold) return 3;
+      if (asset.pendingAmount > 0) return 2;
+      return 1;
+    };
+    // Primary sort: Status score (desc)
+    const scoreDiff = getScore(b) - getScore(a);
+    if (scoreDiff !== 0) return scoreDiff;
+    // Secondary sort: Asset name (asc)
+    return a.asset.localeCompare(b.asset);
+  });
+
   return (
-    <section className="space-y-6">
+    <section className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold flex items-center gap-2">
           <Wallet className="w-5 h-5 text-primary" />
@@ -259,175 +273,74 @@ function AssetStatusSection({ assets, onRefresh, formatAmount, formatTime }: Ass
         </Button>
       </div>
 
-      {/* Ready to Sweep - Most prominent */}
-      {readyToSweep.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-medium flex items-center gap-2 text-green-500">
-            <Zap className="w-4 h-4" />
-            Ready to Sweep ({readyToSweep.length})
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {readyToSweep.map((asset) => (
-              <AssetCard
-                key={`${asset.exchange}:${asset.asset}`}
-                asset={asset}
-                variant="ready"
-                formatAmount={formatAmount}
-                formatTime={formatTime}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="rounded-md border bg-card">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Asset</TableHead>
+              <TableHead>Exchange</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Progress</TableHead>
+              <TableHead>Wallet</TableHead>
+              <TableHead className="text-right">Last Withdrawal</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sortedAssets.map((asset) => {
+              const progress = asset.threshold > 0 ? (asset.pendingAmount / asset.threshold) * 100 : 0;
+              let statusNode;
+              if (!asset.enabled) {
+                 statusNode = <Badge variant="secondary" className="opacity-50">Disabled</Badge>;
+              } else if (asset.pendingAmount >= asset.threshold) {
+                 statusNode = <Badge className="bg-green-500 hover:bg-green-600 text-white"><Zap className="w-3 h-3 mr-1" />Ready</Badge>;
+              } else if (asset.pendingAmount > 0) {
+                 statusNode = <Badge variant="outline" className="text-blue-500 border-blue-500/30">Accumulating</Badge>;
+              } else {
+                 statusNode = <Badge variant="outline" className="text-muted-foreground">Waiting</Badge>;
+              }
 
-      {/* Accumulating - Shows progress */}
-      {accumulating.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-medium flex items-center gap-2 text-blue-500">
-            <TrendingUp className="w-4 h-4" />
-            Accumulating ({accumulating.length})
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {accumulating.map((asset) => (
-              <AssetCard
-                key={`${asset.exchange}:${asset.asset}`}
-                asset={asset}
-                variant="accumulating"
-                formatAmount={formatAmount}
-                formatTime={formatTime}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Waiting - Collapsible */}
-      {waiting.length > 0 && (
-        <div className="space-y-3">
-          <button
-            onClick={() => setWaitingExpanded(!waitingExpanded)}
-            className="text-sm font-medium flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors w-full text-left"
-          >
-            {waitingExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-            <Hourglass className="w-4 h-4" />
-            <span>No Pending Balance ({waiting.length})</span>
-          </button>
-          {waitingExpanded && (
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground pl-8">
-                These assets have no fills to sweep yet. They will appear in "Accumulating" when your limit orders fill.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                {waiting.map((asset) => (
-                  <AssetCardCompact
-                    key={`${asset.exchange}:${asset.asset}`}
-                    asset={asset}
-                    formatAmount={formatAmount}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Disabled - Always collapsed style */}
-      {disabled.length > 0 && (
-        <div className="text-xs text-muted-foreground">
-          {disabled.length} disabled asset{disabled.length > 1 ? 's' : ''}: {disabled.map(a => a.asset).join(', ')}
-        </div>
-      )}
+              return (
+                <TableRow key={`${asset.exchange}:${asset.asset}`}>
+                  <TableCell className="font-medium">
+                     <div className="flex items-center gap-2">
+                        {asset.asset}
+                        {asset.consecutiveFailures > 0 && (
+                          <Badge variant="destructive" className="flex items-center gap-1 text-[10px] h-5 px-1">
+                            <AlertTriangle className="w-3 h-3" />
+                            {asset.consecutiveFailures}
+                          </Badge>
+                        )}
+                        {asset.backoffUntil && asset.backoffUntil > Date.now() && (
+                           <span title={`Paused until ${formatTime(asset.backoffUntil)}`}>
+                           <Timer className="w-4 h-4 text-yellow-500" />
+                        </span>
+                        )}
+                     </div>
+                  </TableCell>
+                  <TableCell>
+                     <Badge variant="secondary" className="font-normal text-xs">{asset.exchange}</Badge>
+                  </TableCell>
+                  <TableCell>{statusNode}</TableCell>
+                  <TableCell>
+                    <div className="w-[120px] space-y-1">
+                      <Progress value={Math.min(progress, 100)} className="h-1.5" />
+                      <div className="flex justify-between text-[10px] text-muted-foreground">
+                        <span>{formatAmount(asset.pendingAmount)}</span>
+                        <span>/ {formatAmount(asset.threshold)}</span>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-xs">#{asset.rrIndex + 1}</TableCell>
+                  <TableCell className="text-right text-muted-foreground text-xs">
+                    {formatTime(asset.lastWithdrawAt)}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
     </section>
   );
 }
 
-interface AssetCardProps {
-  asset: Asset;
-  variant: 'ready' | 'accumulating';
-  formatAmount: (amount: number) => string;
-  formatTime: (timestamp: number | null) => string;
-}
-
-function AssetCard({ asset, variant, formatAmount, formatTime }: AssetCardProps) {
-  const progress = asset.threshold > 0 ? (asset.pendingAmount / asset.threshold) * 100 : 0;
-  const isReady = variant === 'ready';
-
-  return (
-    <Card className={isReady ? 'border-green-500/50 bg-green-500/5' : ''}>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-lg">{asset.asset}</span>
-            <Badge variant="outline" className="text-[10px] uppercase">
-              {asset.exchange}
-            </Badge>
-            {asset.consecutiveFailures > 0 && (
-              <Badge variant="destructive" className="flex items-center gap-1 text-[10px]">
-                <AlertTriangle className="w-3 h-3" />
-                {asset.consecutiveFailures}
-              </Badge>
-            )}
-          </div>
-          {isReady && (
-            <Badge className="bg-green-500 text-white text-[10px]">
-              <Zap className="w-3 h-3 mr-1" />
-              Ready
-            </Badge>
-          )}
-        </div>
-
-        {/* Progress bar */}
-        <div className="space-y-1 mb-3">
-          <div className="flex justify-between text-xs">
-            <span className="font-mono text-primary">{formatAmount(asset.pendingAmount)}</span>
-            <span className="text-muted-foreground">/ {formatAmount(asset.threshold)} {asset.asset}</span>
-          </div>
-          <Progress value={Math.min(progress, 100)} className="h-2" />
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="flex items-center gap-1 text-muted-foreground">
-            <Wallet className="w-3 h-3" />
-            Wallet #{asset.rrIndex + 1}
-          </div>
-          <div className="flex items-center gap-1 text-muted-foreground justify-end">
-            <Timer className="w-3 h-3" />
-            {asset.lastWithdrawAt ? formatTime(asset.lastWithdrawAt) : 'Never'}
-          </div>
-        </div>
-
-        {asset.backoffUntil && asset.backoffUntil > Date.now() && (
-          <div className="mt-2 p-2 rounded bg-yellow-500/10 text-yellow-500 text-xs flex items-center justify-center gap-2 border border-yellow-500/20">
-            <Clock className="w-3 h-3" />
-            Paused until {formatTime(asset.backoffUntil)}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-interface AssetCardCompactProps {
-  asset: Asset;
-  formatAmount: (amount: number) => string;
-}
-
-function AssetCardCompact({ asset, formatAmount }: AssetCardCompactProps) {
-  return (
-    <Card className="border-dashed">
-      <CardContent className="p-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="font-medium">{asset.asset}</span>
-            <Badge variant="outline" className="text-[10px] uppercase">
-              {asset.exchange}
-            </Badge>
-          </div>
-          <span className="text-xs text-muted-foreground">
-            0 / {formatAmount(asset.threshold)}
-          </span>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}

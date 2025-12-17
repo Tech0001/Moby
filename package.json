@@ -27,6 +27,7 @@
     "electron:build:mac": "npm run build && electron-builder --mac --arm64",
     "electron:build:win": "npm run build && electron-builder --win",
     "electron:build:linux": "npm run build && electron-builder --linux",
+    "npm ci": "npm ci",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {

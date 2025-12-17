@@ -6,10 +6,12 @@ import {
   TrendingUp,
   ChevronDown,
   ChevronRight,
+  Coins,
 } from 'lucide-react';
-import { Card, CardContent } from '@/ui/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components/ui/card';
 import { Button } from '@/ui/components/ui/button';
 import { Badge } from '@/ui/components/ui/badge';
+import { cn } from '@/ui/lib/utils';
 
 interface Balance {
   [asset: string]: string;
@@ -20,12 +22,12 @@ interface BalancePanelProps {
 }
 
 // Assets to show prominently (common trading assets)
-const PRIORITY_ASSETS = ['USD', 'ZUSD', 'EUR', 'ZEUR', 'BTC', 'XXBT', 'ETH', 'XETH', 'SOL', 'XRP', 'ADA', 'DOT', 'MATIC', 'AVAX', 'ATOM', 'LINK', 'UNI', 'LTC', 'BCH', 'XLM'];
+const PRIORITY_ASSETS = ['USD', 'ZUSD', 'EUR', 'ZEUR', 'BTC', 'XXBT', 'ETH', 'XETH', 'SOL', 'XRP', 'ADA', 'DOT', 'MATIC', 'AVAX', 'ATOM', 'LINK', 'UNI', 'LTC', 'BCH', 'XLM', 'USDT', 'USDC'];
 
 // Normalize asset names (Kraken uses X/Z prefixes)
 function normalizeAsset(asset: string): string {
   // Remove common Kraken prefixes
-  if (asset.startsWith('X') && asset.length === 4 && !['XETH'].includes(asset)) {
+  if (asset.startsWith('X') && asset.length === 4 && !['XETH', 'XRP', 'XLM', 'LTC', 'BCH'].includes(asset)) {
     return asset.slice(1);
   }
   if (asset.startsWith('Z') && asset.length === 4) {
@@ -41,8 +43,36 @@ function normalizeAsset(asset: string): string {
     'ZUSD': 'USD',
     'ZEUR': 'EUR',
     'ZGBP': 'GBP',
+    'XBT': 'BTC',
   };
   return mappings[asset] || asset;
+}
+
+function getAssetColor(asset: string) {
+  const normalized = normalizeAsset(asset);
+  // Simple deterministic color generation
+  const colors = [
+    'text-blue-500 bg-blue-500/10',
+    'text-orange-500 bg-orange-500/10',
+    'text-green-500 bg-green-500/10',
+    'text-purple-500 bg-purple-500/10',
+    'text-pink-500 bg-pink-500/10',
+    'text-indigo-500 bg-indigo-500/10',
+    'text-yellow-500 bg-yellow-500/10',
+    'text-cyan-500 bg-cyan-500/10',
+  ];
+  
+  // Specific overrides
+  if (['BTC', 'XBT'].includes(normalized)) return 'text-orange-500 bg-orange-500/10';
+  if (['ETH'].includes(normalized)) return 'text-indigo-500 bg-indigo-500/10';
+  if (['USD', 'USDT', 'USDC'].includes(normalized)) return 'text-green-500 bg-green-500/10';
+  if (['SOL'].includes(normalized)) return 'text-purple-500 bg-purple-500/10';
+  
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i++) {
+    hash = normalized.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
 }
 
 export function BalancePanel({ exchange = 'kraken' }: BalancePanelProps) {
@@ -106,26 +136,37 @@ export function BalancePanel({ exchange = 'kraken' }: BalancePanelProps) {
   const visibleRegular = showAll ? regularBalances : regularBalances.slice(0, 8);
   const hasMoreRegular = regularBalances.length > 8;
 
-  function formatAmount(amount: string): string {
+  function formatAmount(amount: string): React.ReactNode {
     const num = parseFloat(amount);
-    if (num >= 1000000) return num.toLocaleString(undefined, { maximumFractionDigits: 0 });
-    if (num >= 1000) return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
-    if (num >= 1) return num.toLocaleString(undefined, { maximumFractionDigits: 4 });
-    if (num >= 0.001) return num.toLocaleString(undefined, { maximumFractionDigits: 6 });
-    return num.toLocaleString(undefined, { maximumFractionDigits: 8 });
+    let formatted = '';
+    
+    if (num >= 1000000) formatted = num.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    else if (num >= 1000) formatted = num.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    else if (num >= 1) formatted = num.toLocaleString(undefined, { maximumFractionDigits: 4 });
+    else if (num >= 0.001) formatted = num.toLocaleString(undefined, { maximumFractionDigits: 6 });
+    else formatted = num.toLocaleString(undefined, { maximumFractionDigits: 8 });
+
+    // Split for styling decimals differently if desired, currently just returning text
+    return formatted;
   }
 
   if (error) {
     return (
-      <Card className="border-destructive/50">
-        <CardContent className="p-4">
+      <Card className="border-destructive/50 shadow-sm">
+        <CardContent className="p-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-destructive">
-              <AlertCircle className="w-4 h-4" />
-              <span className="text-sm">{error}</span>
+            <div className="flex items-center gap-3 text-destructive">
+              <div className="p-2 bg-destructive/10 rounded-full">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <p className="font-semibold">Unable to fetch balance</p>
+                <p className="text-sm opacity-90">{error}</p>
+              </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={fetchBalance}>
+            <Button variant="outline" size="sm" onClick={fetchBalance} className="gap-2">
               <RefreshCw className="w-4 h-4" />
+              Retry
             </Button>
           </div>
         </CardContent>
@@ -134,15 +175,22 @@ export function BalancePanel({ exchange = 'kraken' }: BalancePanelProps) {
   }
 
   return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <Wallet className="w-5 h-5 text-primary" />
-          Account Balance
-        </h2>
-        <div className="flex items-center gap-2">
+    <Card className="shadow-sm border-muted transition-all duration-200 hover:shadow-md">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-primary/10 rounded-lg">
+            <Wallet className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <CardTitle className="text-lg font-bold">Account Balance</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+               {exchange.charAt(0).toUpperCase() + exchange.slice(1)} Portfolio
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
           {lastUpdated && (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-muted-foreground hidden sm:inline-block">
               Updated {lastUpdated.toLocaleTimeString()}
             </span>
           )}
@@ -152,95 +200,105 @@ export function BalancePanel({ exchange = 'kraken' }: BalancePanelProps) {
             onClick={fetchBalance}
             disabled={loading}
             title="Refresh Balance"
+            className="h-8 w-8"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={cn("w-4 h-4 text-muted-foreground", loading && "animate-spin")} />
           </Button>
         </div>
-      </div>
+      </CardHeader>
 
-      {loading && !balance ? (
-        <Card>
-          <CardContent className="p-6 text-center text-muted-foreground">
-            <RefreshCw className="w-6 h-6 mx-auto mb-2 animate-spin" />
-            Loading balances...
-          </CardContent>
-        </Card>
-      ) : nonZeroBalances.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="p-6 text-center text-muted-foreground">
-            No balances found
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {/* Regular balances */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                {visibleRegular.map(([asset, amount]) => (
-                  <div
-                    key={asset}
-                    className="flex items-center justify-between p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                        {normalizeAsset(asset).slice(0, 3)}
+      <CardContent className="space-y-6">
+        {loading && !balance ? (
+          <div className="py-8 flex flex-col items-center justify-center text-muted-foreground gap-3">
+            <RefreshCw className="w-8 h-8 animate-spin text-primary/50" />
+            <p className="text-sm">Syncing balances...</p>
+          </div>
+        ) : nonZeroBalances.length === 0 ? (
+          <div className="py-8 text-center text-muted-foreground border-2 border-dashed rounded-lg bg-muted/20">
+            <Coins className="w-10 h-10 mx-auto mb-2 opacity-50" />
+            <p className="font-medium">No active balances</p>
+            <p className="text-xs mt-1">Your portfolio is currently empty</p>
+          </div>
+        ) : (
+          <>
+            {/* Regular balances */}
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {visibleRegular.map(([asset, amount]) => {
+                  const normalized = normalizeAsset(asset);
+                  const colorClass = getAssetColor(asset);
+                  
+                  return (
+                    <div
+                      key={asset}
+                      className="group flex flex-col p-3 rounded-xl border bg-card hover:bg-muted/30 hover:border-primary/20 transition-all duration-200"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={cn("w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ring-1 ring-inset ring-black/5 dark:ring-white/10", colorClass)}>
+                          {normalized.slice(0, 3)}
+                        </div>
+                        <span className="font-semibold text-sm truncate">{normalized}</span>
                       </div>
-                      <span className="font-medium text-sm">{normalizeAsset(asset)}</span>
+                      <div className="mt-auto">
+                        <span className="font-mono text-lg font-medium tracking-tight tabular-nums block truncate" title={amount}>
+                          {formatAmount(amount)}
+                        </span>
+                        <div className="h-1 w-0 group-hover:w-full bg-primary/20 rounded-full transition-all duration-300 mt-2" />
+                      </div>
                     </div>
-                    <span className="font-mono text-sm text-right">{formatAmount(amount)}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {hasMoreRegular && (
-                <button
+                <Button
+                  variant="ghost"
                   onClick={() => setShowAll(!showAll)}
-                  className="mt-3 w-full flex items-center justify-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors py-2"
+                  className="w-full text-muted-foreground hover:text-primary transition-colors h-9"
                 >
                   {showAll ? (
                     <>
-                      <ChevronDown className="w-4 h-4" />
+                      <ChevronDown className="w-4 h-4 mr-2" />
                       Show less
                     </>
                   ) : (
                     <>
-                      <ChevronRight className="w-4 h-4" />
+                      <ChevronRight className="w-4 h-4 mr-2" />
                       Show {regularBalances.length - 8} more assets
                     </>
                   )}
-                </button>
+                </Button>
               )}
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* Staked/Locked balances */}
-          {stakedBalances.length > 0 && (
-            <Card className="border-dashed">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <TrendingUp className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm font-medium text-muted-foreground">Staked & Earning</span>
-                  <Badge variant="outline" className="text-[10px]">
+            {/* Staked/Locked balances */}
+            {stakedBalances.length > 0 && (
+              <div className="pt-2">
+                <div className="flex items-center gap-2 mb-3 px-1">
+                  <div className="p-1 rounded bg-secondary text-secondary-foreground">
+                    <TrendingUp className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="text-sm font-medium text-foreground/80">Staked & Earning</span>
+                  <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
                     {stakedBalances.length}
                   </Badge>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                   {stakedBalances.map(([asset, amount]) => (
                     <div
                       key={asset}
-                      className="flex items-center justify-between p-2 rounded-lg bg-muted/30"
+                      className="flex items-center justify-between p-2.5 rounded-lg border bg-muted/10 hover:bg-muted/30 transition-colors"
                     >
-                      <span className="text-xs text-muted-foreground">{asset}</span>
-                      <span className="font-mono text-xs">{formatAmount(amount)}</span>
+                      <span className="text-xs font-medium text-muted-foreground">{asset}</span>
+                      <span className="font-mono text-xs tabular-nums font-medium">{formatAmount(amount)}</span>
                     </div>
                   ))}
                 </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
-    </section>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }

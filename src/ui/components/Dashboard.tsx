@@ -23,6 +23,7 @@ import { OrdersPanel } from './OrdersPanel';
 import { ManagementPanel } from './ManagementPanel';
 import { BalancePanel } from './BalancePanel';
 import { LogsPanel } from './LogsPanel';
+import { SetupGuide } from './SetupGuide';
 
 import { ModeToggle } from './ModeToggle';
 import { ThemeSelector } from './ThemeSelector';
@@ -175,6 +176,14 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
 
       {/* Main content */}
       <main className="max-w-6xl mx-auto px-4 py-8">
+        <SetupGuide
+          hasApiKeys={status?.hasApiKeys ?? false}
+          hasConfiguredAssets={(status?.assets?.length ?? 0) > 0}
+          isSweeperEnabled={status?.enabled ?? false}
+          onNavigate={setActiveTab}
+          onToggleSweeper={toggleEnabled}
+        />
+
         {/* Control bar */}
         <Card className="mb-8 bg-gradient-to-br from-card to-card/50">
           <CardContent className="p-6 flex items-center justify-between">
