@@ -33,6 +33,12 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Install Linux build deps
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libarchive-tools rpm
+
       - name: Install dependencies (per-arch)
         shell: bash
         run: |
