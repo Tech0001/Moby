@@ -798,7 +798,7 @@ export function upsertExchangeAddress(
 export function deleteRemovedAddresses(exchange: ExchangeId, currentKeys: Array<{ asset: string; key: string }>): number {
   const db = getDb();
 
-  // Build a set of current asset+key combinations
+  // Build a set of all current asset+key combinations
   const currentSet = new Set(currentKeys.map((k) => `${k.asset}:${k.key}`));
 
   // Get all addresses for this exchange
@@ -816,7 +816,54 @@ export function deleteRemovedAddresses(exchange: ExchangeId, currentKeys: Array<
     }
   }
 
+  // Clean up all asset configs - remove any destKeys that don't have corresponding addresses
+  cleanupStaleDestKeys(exchange);
+
   return deletedCount;
+}
+
+/**
+ * Clean up asset configs by removing destKeys that reference non-existent addresses
+ */
+export function cleanupStaleDestKeys(exchange: ExchangeId): number {
+  const db = getDb();
+
+  // Get all valid keys for this exchange, grouped by asset
+  const validAddresses = db
+    .prepare('SELECT asset, key FROM exchange_addresses WHERE exchange = ?')
+    .all(exchange) as Array<{ asset: string; key: string }>;
+
+  const validKeysByAsset = new Map<string, Set<string>>();
+  for (const addr of validAddresses) {
+    if (!validKeysByAsset.has(addr.asset)) {
+      validKeysByAsset.set(addr.asset, new Set());
+    }
+    validKeysByAsset.get(addr.asset)!.add(addr.key);
+  }
+
+  // Get all asset configs for this exchange
+  const configs = db
+    .prepare('SELECT asset, dest_keys FROM asset_configs WHERE exchange = ?')
+    .all(exchange) as Array<{ asset: string; dest_keys: string }>;
+
+  let cleanedCount = 0;
+
+  for (const config of configs) {
+    const destKeys: string[] = JSON.parse(config.dest_keys);
+    const validKeys = validKeysByAsset.get(config.asset) || new Set<string>();
+
+    // Filter to only keys that exist in exchange_addresses
+    const filteredKeys = destKeys.filter((k) => validKeys.has(k));
+
+    if (filteredKeys.length !== destKeys.length) {
+      // Update the config with cleaned destKeys
+      db.prepare('UPDATE asset_configs SET dest_keys = ?, updated_at = ? WHERE exchange = ? AND asset = ?')
+        .run(JSON.stringify(filteredKeys), Date.now(), exchange, config.asset);
+      cleanedCount++;
+    }
+  }
+
+  return cleanedCount;
 }
 
 export function hasAnyExchangeAddresses(exchange?: ExchangeId): boolean {
@@ -920,6 +967,8 @@ export interface AssetConfigRecord {
   cooldownSeconds: number;
   method: string | null;
   chunkAmount: number | null;
+  chunkMode: string;
+  chunkMax: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -936,6 +985,8 @@ function mapAssetConfigRow(row: Record<string, unknown>): AssetConfigRecord {
     cooldownSeconds: (row.cooldown_seconds as number) ?? 60,
     method: row.method as string | null,
     chunkAmount: row.chunk_amount as number | null,
+    chunkMode: (row.chunk_mode as string) ?? 'fixedCoin',
+    chunkMax: row.chunk_max as number | null,
     createdAt: row.created_at as number,
     updatedAt: row.updated_at as number,
   };
@@ -988,6 +1039,8 @@ export interface AssetConfigInput {
   cooldownSeconds?: number;
   method?: string | null;
   chunkAmount?: number | null;
+  chunkMode?: string;
+  chunkMax?: number | null;
 }
 
 export function upsertAssetConfig(
@@ -1003,10 +1056,12 @@ export function upsertAssetConfig(
   const cooldownSeconds = config.cooldownSeconds ?? 60;
   const method = config.method ?? null;
   const chunkAmount = config.chunkAmount ?? null;
+  const chunkMode = config.chunkMode ?? 'fixedCoin';
+  const chunkMax = config.chunkMax ?? null;
 
   db.prepare(
-    `INSERT INTO asset_configs (exchange, asset, enabled, threshold, reserve, dest_keys, priority, cooldown_seconds, method, chunk_amount, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO asset_configs (exchange, asset, enabled, threshold, reserve, dest_keys, priority, cooldown_seconds, method, chunk_amount, chunk_mode, chunk_max, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(exchange, asset) DO UPDATE SET
        enabled = excluded.enabled,
        threshold = excluded.threshold,
@@ -1016,6 +1071,8 @@ export function upsertAssetConfig(
        cooldown_seconds = excluded.cooldown_seconds,
        method = excluded.method,
        chunk_amount = excluded.chunk_amount,
+       chunk_mode = excluded.chunk_mode,
+        chunk_max = excluded.chunk_max,
        updated_at = excluded.updated_at`
   ).run(
     exchange,
@@ -1028,6 +1085,8 @@ export function upsertAssetConfig(
     cooldownSeconds,
     method,
     chunkAmount,
+    chunkMode,
+    chunkMax,
     now,
     now
   );

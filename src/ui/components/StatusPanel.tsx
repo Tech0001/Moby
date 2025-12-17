@@ -306,21 +306,26 @@ function AssetStatusSection({ assets, onRefresh, formatAmount, formatTime }: Ass
         <div className="space-y-3">
           <button
             onClick={() => setWaitingExpanded(!waitingExpanded)}
-            className="text-sm font-medium flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors w-full"
+            className="text-sm font-medium flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors w-full text-left"
           >
             {waitingExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             <Hourglass className="w-4 h-4" />
-            Waiting for Fills ({waiting.length})
+            <span>No Pending Balance ({waiting.length})</span>
           </button>
           {waitingExpanded && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-              {waiting.map((asset) => (
-                <AssetCardCompact
-                  key={`${asset.exchange}:${asset.asset}`}
-                  asset={asset}
-                  formatAmount={formatAmount}
-                />
-              ))}
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground pl-8">
+                These assets have no fills to sweep yet. They will appear in "Accumulating" when your limit orders fill.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                {waiting.map((asset) => (
+                  <AssetCardCompact
+                    key={`${asset.exchange}:${asset.asset}`}
+                    asset={asset}
+                    formatAmount={formatAmount}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </div>

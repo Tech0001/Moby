@@ -52,8 +52,16 @@ export async function startWithdrawal(
       return { success: false, skipped: true, skipReason: 'No asset state' };
     }
 
-    // Calculate withdrawal amount (pendingAmount - reserve)
-    const withdrawAmount = Math.max(0, state.pendingAmount - reserve);
+    // Calculate withdrawal amount (pendingAmount - reserve), then apply chunking if configured
+    const available = Math.max(0, state.pendingAmount - reserve);
+    let withdrawAmount = available;
+
+    if (assetConfig.chunkAmount && assetConfig.chunkAmount > 0) {
+      withdrawAmount = Math.min(available, assetConfig.chunkAmount);
+      if (assetConfig.chunkMax && assetConfig.chunkMax > 0) {
+        withdrawAmount = Math.min(withdrawAmount, assetConfig.chunkMax);
+      }
+    }
 
     if (withdrawAmount <= 0) {
       return {
@@ -255,6 +263,8 @@ export async function startWithdrawal(
 
 // Default cooldown between withdrawals (60 seconds)
 const DEFAULT_COOLDOWN_SECONDS = 60;
+const COOLDOWN_JITTER_MIN = 0.01; // 1%
+const COOLDOWN_JITTER_MAX = 0.10; // 10%
 
 /**
  * Check if an asset is eligible for withdrawal attempt
@@ -283,9 +293,12 @@ export function isEligibleForWithdrawal(
     };
   }
 
-  // Check cooldown (use asset config or default)
-  const cooldownSeconds = assetConfig.cooldownSeconds ?? DEFAULT_COOLDOWN_SECONDS;
-  const cooldownMs = cooldownSeconds * 1000;
+  // Check cooldown (use asset config or default) with slight jitter to avoid fixed cadence
+  const baseCooldownSeconds = assetConfig.cooldownSeconds ?? DEFAULT_COOLDOWN_SECONDS;
+  const jitterPercent = COOLDOWN_JITTER_MIN + Math.random() * (COOLDOWN_JITTER_MAX - COOLDOWN_JITTER_MIN);
+  const jitterDirection = Math.random() < 0.5 ? -1 : 1;
+  const cooldownSeconds = baseCooldownSeconds * (1 + jitterDirection * jitterPercent);
+  const cooldownMs = Math.max(0, cooldownSeconds * 1000);
   if (state.lastWithdrawAt) {
     const elapsed = now - state.lastWithdrawAt;
     if (elapsed < cooldownMs) {

@@ -8,7 +8,7 @@ import { Switch } from "@/ui/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/ui/components/ui/dialog";
 import { Alert, AlertDescription } from "@/ui/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/components/ui/select";
-import { Trash2, Plus, RefreshCw } from 'lucide-react';
+import { Trash2, Plus, RefreshCw, Pencil } from 'lucide-react';
 
 // New simplified asset config (stored in database)
 interface AssetConfig {
@@ -95,7 +95,7 @@ export function ConfigPanel() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [addAssetFor, setAddAssetFor] = useState<{ exchange: string; asset: string } | null>(null);
+  const [addAssetFor, setAddAssetFor] = useState<{ exchange: string; asset: string; editingConfig?: AssetConfig } | null>(null);
   const [addManualAddressFor, setAddManualAddressFor] = useState<string | null>(null);
   const [sweeperStatus, setSweeperStatus] = useState<SweeperStatus | null>(null);
   const [toggling, setToggling] = useState(false);
@@ -339,6 +339,7 @@ export function ConfigPanel() {
       if (res.ok) {
         const data = await res.json();
         await fetchAddresses();
+        await fetchAssetConfigs(); // Refresh configs in case destKeys were cleaned up
         await fetchWithdrawalMethods(); // Also refresh withdrawal methods (minimums, fees)
         const parts: string[] = [];
         parts.push(`${data.stats.fromExchange || data.stats.fromKraken || 0} from ${exchangeName}`);
@@ -651,7 +652,7 @@ export function ConfigPanel() {
                 <div className="space-y-1">
                   <Label className="text-xs">Allowed Order Types</Label>
                   <div className="flex flex-wrap gap-2">
-                    {['limit', 'take_profit', 'take_profit_limit', 'market', 'stop_loss', 'stop_loss_limit'].map((orderType) => (
+                    {['limit', 'market', 'stop-loss', 'stop-loss-limit', 'take-profit', 'take-profit-limit', 'trailing-stop', 'trailing-stop-limit'].map((orderType) => (
                       <Button
                         key={orderType}
                         type="button"
@@ -743,6 +744,7 @@ export function ConfigPanel() {
                 isSyncing={syncingExchange === exchange.id}
                 loadingAddresses={loadingAddresses}
                 onAddAsset={(asset) => setAddAssetFor({ exchange: exchange.id, asset })}
+                onEditAsset={(asset, config) => setAddAssetFor({ exchange: exchange.id, asset, editingConfig: config })}
                 onDeleteConfig={(asset) => deleteAssetConfig(exchange.id, asset)}
                 supportsSync={exchangeSyncSupport[exchange.id]?.supportsSync ?? true}
                 onAddManualAddress={() => setAddManualAddressFor(exchange.id)}
@@ -755,16 +757,17 @@ export function ConfigPanel() {
         </div>
       )}
 
-      {/* Add Asset Modal */}
+      {/* Add/Edit Asset Modal */}
       <AddAssetDialog
         open={addAssetFor !== null}
         onOpenChange={(open) => !open && setAddAssetFor(null)}
         exchange={addAssetFor?.exchange}
         initialAsset={addAssetFor?.asset}
+        editingConfig={addAssetFor?.editingConfig}
         existingAssets={Object.keys(configsByExchange[addAssetFor?.exchange || ''] || {})}
         addressesByAsset={addAssetFor ? (addressesByExchange[addAssetFor.exchange] || {}) : {}}
         withdrawalMethods={addAssetFor ? withdrawalMethods.filter(m => m.exchange === addAssetFor.exchange) : []}
-        onAdd={async (asset, configData) => {
+        onSave={async (asset, configData) => {
           if (!addAssetFor) return;
           const success = await saveAssetConfig(addAssetFor.exchange, asset, configData);
           if (success) setAddAssetFor(null);
@@ -794,10 +797,11 @@ interface AddAssetDialogProps {
   onOpenChange: (open: boolean) => void;
   exchange?: string;
   initialAsset?: string;
+  editingConfig?: AssetConfig;
   existingAssets: string[];
   addressesByAsset: Record<string, { method: string; keys: string[] }>;
   withdrawalMethods: WithdrawalMethod[];
-  onAdd: (asset: string, config: {
+  onSave: (asset: string, config: {
     threshold: number;
     reserve: number;
     destKeys: string[];
@@ -808,9 +812,11 @@ interface AddAssetDialogProps {
   saving: boolean;
 }
 
-function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAssets, addressesByAsset, withdrawalMethods, onAdd, saving }: AddAssetDialogProps) {
+function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingConfig, existingAssets, addressesByAsset, withdrawalMethods, onSave, saving }: AddAssetDialogProps) {
+  const isEditing = !!editingConfig;
+  // When editing, include the current asset; otherwise filter out existing
   const availableAssets = Object.keys(addressesByAsset).filter(
-    (a) => !existingAssets.includes(a) && addressesByAsset[a].keys.length > 0
+    (a) => (isEditing && a === initialAsset) || (!existingAssets.includes(a) && addressesByAsset[a].keys.length > 0)
   );
   const defaultAsset = initialAsset && availableAssets.includes(initialAsset) ? initialAsset : availableAssets[0] || '';
   const [selectedAsset, setSelectedAsset] = useState(defaultAsset);
@@ -832,17 +838,32 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
     if (open) {
       const newDefault = initialAsset && availableAssets.includes(initialAsset) ? initialAsset : availableAssets[0] || '';
       setSelectedAsset(newDefault);
-      setReserve(0);
-      setPriority(10);
-      setCooldownSeconds(60);
-      setChunkAmount(0.01);
-      // Threshold will be set by the next useEffect when selectedAsset changes
-    }
-  }, [open, initialAsset]);
 
-  // When asset changes, set threshold to minimum
+      if (editingConfig) {
+        // Pre-fill with existing config values
+        setSelectedKeys(editingConfig.destKeys);
+        setThreshold(editingConfig.threshold);
+        setReserve(editingConfig.reserve);
+        setPriority(10); // Not stored in AssetConfig type shown
+        setCooldownSeconds(60); // Not stored in AssetConfig type shown
+        setChunkAmount(editingConfig.threshold); // Default to threshold
+      } else {
+        setReserve(0);
+        setPriority(10);
+        setCooldownSeconds(60);
+        setChunkAmount(0.01);
+        // Threshold will be set by the next useEffect when selectedAsset changes
+      }
+    }
+  }, [open, initialAsset, editingConfig]);
+
+  // When asset changes, set threshold to minimum (skip if editing and asset hasn't changed)
   useEffect(() => {
     if (selectedAsset && addressesByAsset[selectedAsset]) {
+      // When editing, don't override keys/threshold if it's the same asset
+      if (editingConfig && selectedAsset === initialAsset) {
+        return;
+      }
       setSelectedKeys(addressesByAsset[selectedAsset].keys);
       // Set threshold to minimum withdrawal amount
       const info = addressesByAsset[selectedAsset];
@@ -855,7 +876,7 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
         setChunkAmount(0.01);
       }
     }
-  }, [selectedAsset, addressesByAsset, withdrawalMethods]);
+  }, [selectedAsset, addressesByAsset, withdrawalMethods, editingConfig, initialAsset]);
 
   function toggleKey(key: string) {
     setSelectedKeys((prev) =>
@@ -863,9 +884,9 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
     );
   }
 
-  function handleAdd() {
+  function handleSave() {
     if (!selectedAsset || selectedKeys.length === 0) return;
-    onAdd(selectedAsset, {
+    onSave(selectedAsset, {
       threshold,
       reserve,
       destKeys: selectedKeys,
@@ -879,7 +900,7 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Add Asset to Sweep{exchange ? ` - ${exchange.charAt(0).toUpperCase() + exchange.slice(1)}` : ''}</DialogTitle>
+          <DialogTitle>{isEditing ? 'Edit' : 'Add'} Asset to Sweep{exchange ? ` - ${exchange.charAt(0).toUpperCase() + exchange.slice(1)}` : ''}</DialogTitle>
           <DialogDescription>Configure a new asset for automatic withdrawals{exchange ? ` on ${exchange}` : ''}.</DialogDescription>
         </DialogHeader>
 
@@ -967,10 +988,10 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
                         type="number"
                         step="any"
                         min={minimum}
-                        value={threshold}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          setThreshold(val < minimum ? minimum : val);
+                        value={threshold || ''}
+                        onChange={(e) => setThreshold(parseFloat(e.target.value) || 0)}
+                        onBlur={() => {
+                          if (threshold < minimum) setThreshold(minimum);
                         }}
                         placeholder="Min amount to trigger sweep"
                       />
@@ -983,7 +1004,7 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
                       <Input
                         type="number"
                         step="any"
-                        value={reserve}
+                        value={reserve || ''}
                         onChange={(e) => setReserve(parseFloat(e.target.value) || 0)}
                         placeholder="Amount to keep on exchange"
                       />
@@ -1022,10 +1043,11 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
                       type="number"
                       step="any"
                       min={minimum}
-                      value={chunkAmount}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value) || 0;
-                        setChunkAmount(val < minimum ? minimum : val);
+                      value={chunkAmount || ''}
+                      onChange={(e) => setChunkAmount(parseFloat(e.target.value) || 0)}
+                      onBlur={() => {
+                        // Clamp to minimum on blur
+                        if (chunkAmount < minimum) setChunkAmount(minimum);
                       }}
                     />
                     {minimum > 0 && (
@@ -1057,8 +1079,8 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, existingAs
             Cancel
           </Button>
           {availableAssets.length > 0 && (
-            <Button onClick={handleAdd} disabled={saving || !selectedAsset || selectedKeys.length === 0}>
-              {saving ? 'Adding...' : 'Add Asset'}
+            <Button onClick={handleSave} disabled={saving || !selectedAsset || selectedKeys.length === 0}>
+              {saving ? 'Saving...' : isEditing ? 'Save Changes' : 'Add Asset'}
             </Button>
           )}
         </DialogFooter>
@@ -1291,6 +1313,7 @@ interface ExchangeWalletManagerProps {
   isSyncing: boolean;
   loadingAddresses: boolean;
   onAddAsset: (asset: string) => void;
+  onEditAsset: (asset: string, config: AssetConfig) => void;
   onDeleteConfig: (asset: string) => void;
   supportsSync: boolean;
   onAddManualAddress: () => void;
@@ -1307,6 +1330,7 @@ function ExchangeWalletManager({
   isSyncing,
   loadingAddresses,
   onAddAsset,
+  onEditAsset,
   onDeleteConfig,
   supportsSync,
   onAddManualAddress,
@@ -1452,7 +1476,7 @@ function ExchangeWalletManager({
                       )}
 
                       <div className="flex justify-end gap-2">
-                         {isConfigured ? (
+                         {isConfigured && config ? (
                            <>
                              <Button
                                variant="ghost"
@@ -1462,9 +1486,18 @@ function ExchangeWalletManager({
                              >
                                <Trash2 size={14} />
                              </Button>
-                             <span className="text-xs text-green-600 font-medium flex items-center gap-1">
-                               Configured
-                             </span>
+                             <Button
+                               variant="outline"
+                               size="sm"
+                               className="h-7 text-xs"
+                               onClick={() => {
+                                 setOpen(false);
+                                 onEditAsset(asset, config);
+                               }}
+                             >
+                               <Pencil size={14} className="mr-1" />
+                               Edit
+                             </Button>
                            </>
                          ) : (
                            <Button

@@ -175,7 +175,7 @@ No problem - on restart, Moby automatically reconciles trade history and picks u
 **Important files:**
 - `moby.db` - Database (balances, jobs, settings)
 - `.env` - Encryption key (backup this!)
-- `config.yaml` - Configuration file
+- Configuration is stored in the application database (no `config.yaml`). A legacy file will be migrated automatically if present on first run.
 
 ---
 

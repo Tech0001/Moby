@@ -233,6 +233,18 @@ const MIGRATIONS = [
       );
     `,
   },
+  {
+    version: 2,
+    name: 'app_config_table',
+    sql: `
+      -- App configuration stored in the database (replaces config.yaml)
+      CREATE TABLE IF NOT EXISTS app_config (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `,
+  },
 ];
 
 function runMigrations(database: Database.Database): void {

@@ -10,7 +10,8 @@
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "tsx watch src/server/app.ts",
+    "dev": "npm rebuild better-sqlite3 bcrypt && tsx watch src/server/app.ts",
+    "dev:fast": "tsx watch src/server/app.ts",
     "dev:ui": "vite",
     "build": "tsc && tsc -p tsconfig.server.json && vite build",
     "build:server": "tsc -p tsconfig.server.json",

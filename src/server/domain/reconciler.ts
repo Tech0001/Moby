@@ -13,7 +13,7 @@ import type { ExchangeRestClient, TradeHistoryRecord } from '../exchanges/types.
 import type { ExchangeId, FillEvent } from './types.js';
 import { parsePair, normalizeAsset } from './types.js';
 import type { AppConfig } from '../config/schema.js';
-import { getExchangeAssets } from '../config/schema.js';
+import { getAssetConfig } from '../db/repositories.js';
 
 const logger = createChildLogger('reconciler');
 
@@ -144,8 +144,8 @@ export class Reconciler {
     }
 
     // Check if asset is configured for sweeping
-    const exchangeAssets = getExchangeAssets(this.config, exchange);
-    if (!exchangeAssets[received.asset]) {
+    const assetConfig = getAssetConfig(exchange, received.asset);
+    if (!assetConfig || !assetConfig.enabled) {
       // Still save for audit
       saveFillEvent(exchange, fill, received.asset, received.amount);
       return null;

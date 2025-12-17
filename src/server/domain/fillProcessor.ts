@@ -4,11 +4,11 @@ import {
   saveFillEvent,
   getFillEventExists,
   getAppStateValue,
+  getAssetConfig,
 } from '../db/repositories.js';
 import type { FillEvent, ReceivedAsset, ExchangeId } from './types.js';
 import { parsePair, normalizeAsset } from './types.js';
 import type { AppConfig } from '../config/schema.js';
-import { getExchangeAssets } from '../config/schema.js';
 
 const logger = createChildLogger('fill-processor');
 
@@ -39,10 +39,12 @@ export class FillProcessor {
 
     // Check if order type is allowed
     if (!this.isAllowedOrderType(fill.orderType)) {
-      logger.debug(
-        { exchange, tradeId: fill.tradeId, orderType: fill.orderType },
-        'Order type not in allowlist, skipping'
-      );
+      // Save for audit even if we don't act on it
+      const received = this.computeReceivedAsset(fill);
+      if (received) {
+        saveFillEvent(exchange, fill, received.asset, received.amount);
+      }
+      logger.debug({ exchange, tradeId: fill.tradeId, orderType: fill.orderType }, 'Order type not in allowlist');
       return null;
     }
 
@@ -55,8 +57,8 @@ export class FillProcessor {
     }
 
     // Check if we're configured to sweep this asset for this exchange
-    const exchangeAssets = getExchangeAssets(this.config, exchange);
-    if (!exchangeAssets[received.asset]) {
+    const assetConfig = getAssetConfig(exchange, received.asset);
+    if (!assetConfig || !assetConfig.enabled) {
       logger.debug(
         { exchange, asset: received.asset },
         'Asset not configured for sweeping, skipping'

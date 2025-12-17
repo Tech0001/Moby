@@ -109,7 +109,7 @@ App uses:
 
 ### Components (modules)
 1. Config Loader
-   - reads config.yaml
+   - reads config from SQLite (migrates legacy config.yaml once)
    - validates schema (zod)
 
 2. Kraken Clients

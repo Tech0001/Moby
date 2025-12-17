@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { v4 as uuid } from 'uuid';
 import { createChildLogger } from '../utils/logger.js';
+import { logBuffer } from '../utils/logBuffer.js';
 
 /**
  * Simple in-memory rate limiter for login attempts
@@ -112,6 +113,7 @@ import { generateWallet, isChainSupported } from '../utils/walletGenerator.js';
 import { getClientPool } from '../exchanges/clientPool.js';
 import { getExchangeRegistry } from '../exchanges/registry.js';
 import type { AppConfig } from '../config/schema.js';
+import { applySettingsToConfig } from '../config/applySettings.js';
 import type { ExchangeId } from '../domain/types.js';
 import { saveConfig } from '../config/loadConfig.js';
 
@@ -359,6 +361,26 @@ export function createRoutes(context: RoutesContext): Router {
         exchangeRef: job.exchangeRef,
         txid: job.txid,
       })),
+    });
+  });
+
+  // Get application logs (from in-memory buffer)
+  router.get('/api/logs', requireAuth, (req: Request, res: Response) => {
+    const minLevel = req.query.level ? parseInt(req.query.level as string) : undefined;
+    const sinceId = req.query.sinceId ? parseInt(req.query.sinceId as string) : undefined;
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 200;
+    const module = req.query.module as string | undefined;
+
+    const logs = logBuffer.getLogs({
+      minLevel,
+      sinceId,
+      limit,
+      module,
+    });
+
+    res.json({
+      logs,
+      stats: logBuffer.getStats(),
     });
   });
 
@@ -782,8 +804,11 @@ export function createRoutes(context: RoutesContext): Router {
     setAllSettings(updates);
     logger.info({ updates }, 'Global settings updated');
 
-    // Return the updated settings
+    // Refresh in-memory config so live components use updated settings
     const settings = getAllSettings();
+    const newConfig = applySettingsToConfig(context.config, settings);
+    context.updateConfig(newConfig);
+
     res.json({ success: true, settings });
   });
 
@@ -822,6 +847,8 @@ export function createRoutes(context: RoutesContext): Router {
         cooldownSeconds,
         method,
         chunkAmount,
+        chunkMode,
+        chunkMax,
       } = req.body;
 
       // Basic validation
@@ -857,9 +884,14 @@ export function createRoutes(context: RoutesContext): Router {
         cooldownSeconds: cooldownSeconds ?? 60,
         method: method ?? null,
         chunkAmount: chunkAmount ?? null,
+        chunkMode: chunkMode ?? 'fixedCoin',
+        chunkMax: chunkMax ?? null,
       });
 
-      logger.info({ exchange, asset, threshold, priority, cooldownSeconds, chunkAmount }, 'Asset config saved');
+      logger.info(
+        { exchange, asset, threshold, priority, cooldownSeconds, chunkAmount, chunkMode, chunkMax },
+        'Asset config saved'
+      );
       res.json({ success: true });
     }
   );

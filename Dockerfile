@@ -43,7 +43,6 @@ USER sweeper
 ENV NODE_ENV=production
 ENV DATA_DIR=/app/data
 ENV DB_PATH=/app/data/sweeper.db
-ENV CONFIG_PATH=/app/data/config.yaml
 
 EXPOSE 3000
 

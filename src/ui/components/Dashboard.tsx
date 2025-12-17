@@ -12,7 +12,8 @@ import {
   Square,
   Waves,
   AlertCircle,
-  Wallet
+  Wallet,
+  ScrollText
 } from 'lucide-react';
 import { WhaleIcon } from '@/ui/components/ui/WhaleIcon';
 import { ApiKeysPanel } from './ApiKeysPanel';
@@ -20,6 +21,8 @@ import { StatusPanel } from './StatusPanel';
 import { ConfigPanel } from './ConfigPanel';
 import { OrdersPanel } from './OrdersPanel';
 import { ManagementPanel } from './ManagementPanel';
+import { BalancePanel } from './BalancePanel';
+import { LogsPanel } from './LogsPanel';
 
 import { ModeToggle } from './ModeToggle';
 import { ThemeSelector } from './ThemeSelector';
@@ -64,7 +67,7 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
   const [toggling, setToggling] = useState(false);
   const [activeTab, setActiveTab] = useState(() => {
     const saved = localStorage.getItem('activeTab');
-    return ['status', 'orders', 'api-keys', 'config', 'management'].includes(saved || '') ? saved! : 'status';
+    return ['status', 'orders', 'api-keys', 'config', 'management', 'logs'].includes(saved || '') ? saved! : 'status';
   });
 
   useEffect(() => {
@@ -246,9 +249,14 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
               <Wallet size={16} />
               Management
             </TabsTrigger>
+            <TabsTrigger value="logs" className="gap-2">
+              <ScrollText size={16} />
+              Logs
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="status">
+          <TabsContent value="status" className="space-y-6">
+            <BalancePanel />
             <StatusPanel status={status} onRefresh={fetchStatus} />
           </TabsContent>
 
@@ -266,6 +274,10 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
 
           <TabsContent value="management">
             <ManagementPanel />
+          </TabsContent>
+
+          <TabsContent value="logs">
+            <LogsPanel />
           </TabsContent>
         </Tabs>
       </main>

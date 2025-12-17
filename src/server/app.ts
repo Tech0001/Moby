@@ -6,7 +6,17 @@ import { logger, createChildLogger } from './utils/logger.js';
 import { initEncryption } from './utils/encryption.js';
 import { loadConfig, reloadConfig } from './config/loadConfig.js';
 import { initDb, closeDb } from './db/sqlite.js';
-import { getAllApiKeys, setEnabled, hasAnyApiKeys, migrateApiKeysToEncrypted, getAppStateValue, setAppStateValue, cleanupOldFillEvents } from './db/repositories.js';
+import {
+  getAllApiKeys,
+  setEnabled,
+  hasAnyApiKeys,
+  migrateApiKeysToEncrypted,
+  getAppStateValue,
+  setAppStateValue,
+  cleanupOldFillEvents,
+  getAllSettings,
+} from './db/repositories.js';
+import { applySettingsToConfig } from './config/applySettings.js';
 import { FillProcessor } from './domain/fillProcessor.js';
 import { Scheduler } from './domain/scheduler.js';
 import { StatusPoller } from './domain/statusPoller.js';
@@ -64,9 +74,6 @@ async function main() {
   registerExchange(GateAdapterFactory);
   appLogger.debug('Registered exchange adapters: Kraken, Gemini, KuCoin, Gate.io');
 
-  // Load configuration
-  config = loadConfig();
-
   // Initialize encryption (get or generate key)
   const encryptionResult = initEncryption();
   appLogger.info(
@@ -76,6 +83,22 @@ async function main() {
 
   // Initialize database
   initDb();
+
+  // Load configuration (from database; migrates legacy config.yaml once if present)
+  config = loadConfig();
+
+  // Overlay DB-backed settings (including allowed order types) onto config
+  const settings = getAllSettings();
+  config = applySettingsToConfig(config, settings);
+  appLogger.info(
+    {
+      allowedOrderTypes: config.global.allowedOrderTypes,
+      maxInflight: config.global.maxInflightWithdrawals,
+      perAssetMax: config.global.perAssetMaxInflight,
+      dryRun: config.global.dryRun,
+    },
+    'Applied settings from database'
+  );
 
   // Initialize session secret (persisted in database for consistency across restarts)
   const SESSION_SECRET_KEY = 'session_secret';
@@ -181,6 +204,7 @@ async function main() {
     config,
     reloadConfig: async () => {
       config = reloadConfig();
+      config = applySettingsToConfig(config, getAllSettings());
       fillProcessor.updateConfig(config);
       scheduler.updateConfig(config);
       reconciler.updateConfig(config);
@@ -281,13 +305,16 @@ async function main() {
       }
     }
 
-    // Start periodic reconciliation (balance check every 5 minutes)
+    // Start periodic reconciliation (trade sync + balance check every 5 minutes)
     reconcileInterval = setInterval(async () => {
       for (const exchangeId of getEnabledExchanges()) {
         const pool = getClientPool(exchangeId);
         if (pool.hasAvailableClients()) {
           try {
             await pool.execute(async (client) => {
+              // Sync trade history to catch any missed fills
+              await reconciler.syncTradeHistory(exchangeId, client);
+              // Then reconcile balances
               await reconciler.reconcileBalances(exchangeId, client);
             });
           } catch (err) {
