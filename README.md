@@ -16,3 +16,20 @@ Moby is a self-hosted daemon with an Electron shell that monitors exchange activ
 - `npm run build` — build server and UI.
 - `npm run electron:dev` — build and run Electron locally.
 - `npm run electron:build:mac` — build a macOS app bundle.
+
+
+
+ 1. For x64 build (under Rosetta):
+
+     rm -rf node_modules
+     arch -x86_64 npm ci
+     arch -x86_64 npm run build
+     arch -x86_64 npm run electron:build:mac -- --x64
+     Grab release/Moby-<version>-x64.dmg.
+  2. To go back to Apple Silicon builds:
+
+     rm -rf node_modules
+     npm ci
+     npm run build
+     npm run electron:build:mac -- --arm64
+     Grab the arm64 dmg.
