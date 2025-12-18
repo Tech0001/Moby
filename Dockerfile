@@ -3,16 +3,22 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Install build dependencies for native modules
+RUN apk add --no-cache python3 make g++
+
 # Install dependencies
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
+
+# Rebuild native modules (better-sqlite3)
+RUN npm rebuild better-sqlite3
 
 # Copy source
 COPY tsconfig*.json ./
 COPY src ./src
 COPY index.html ./
 COPY vite.config.ts ./
-COPY postcss.config.js ./
+COPY postcss.config.mjs ./
 
 # Build
 RUN npm run build
@@ -26,9 +32,17 @@ WORKDIR /app
 RUN addgroup -g 1001 sweeper && \
     adduser -u 1001 -G sweeper -s /bin/sh -D sweeper
 
+# Install build dependencies for native modules
+RUN apk add --no-cache python3 make g++
+
 # Install production dependencies only
 COPY package*.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev --ignore-scripts && \
+    npm rebuild better-sqlite3 && \
+    npm cache clean --force
+
+# Remove build dependencies to reduce image size
+RUN apk del python3 make g++
 
 # Copy built files
 COPY --from=builder /app/dist ./dist

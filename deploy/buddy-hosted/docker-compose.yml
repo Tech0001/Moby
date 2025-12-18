@@ -1,0 +1,28 @@
+# Buddy-hosted Moby instances
+# Each service runs on a unique port (3010, 3011, 3012, ...)
+# Nginx handles reverse proxy and SSL
+
+version: '3.8'
+
+services:
+  # Template for adding new instances:
+  # moby-USERNAME:
+  #   build: ../..
+  #   container_name: moby-USERNAME
+  #   restart: unless-stopped
+  #   ports:
+  #     - "PORT:3000"
+  #   volumes:
+  #     - moby-USERNAME-data:/app/data
+  #   environment:
+  #     - NODE_ENV=production
+  #     - LOG_LEVEL=info
+  #   healthcheck:
+  #     test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/setup/status"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 10s
+
+# Volumes are added dynamically by manage.sh
+volumes: {}

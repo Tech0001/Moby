@@ -1,67 +1,70 @@
-# Buddy-Hosted Deployment
+# Buddy-Hosted Deployment (Nginx)
 
-Run multiple isolated Moby instances on a single server, each with its own subdomain.
+Run multiple isolated Moby instances on a single VPS with Nginx reverse proxy.
 
 ## Architecture
 
-```text
+```
                          ┌──────────────┐
-    alice.domain.com ───►│              │───► Container: moby-alice
-      bob.domain.com ───►│    Caddy     │───► Container: moby-bob
-  charlie.domain.com ───►│              │───► Container: moby-charlie
+  moby1.domain.com ─────►│              │───► Container: moby-moby1 (:3010)
+  moby2.domain.com ─────►│    Nginx     │───► Container: moby-moby2 (:3011)
+  moby3.domain.com ─────►│              │───► Container: moby-moby3 (:3012)
                          └──────────────┘
-                          Single wildcard
-                          SSL certificate
+                          SSL via certbot
 ```
 
 ## Prerequisites
 
-- Docker and Docker Compose
-- A domain with wildcard DNS pointing to your server
-- Port 80 and 443 open
+- VPS with Docker and Docker Compose
+- Nginx installed and running
+- Certbot installed (`apt install certbot python3-certbot-nginx`)
+- Domain with DNS A records pointing to your VPS
 
-## DNS Setup
+## DNS Setup (Cloudflare or other)
 
-Point a wildcard A record to your server:
+Add A records for each instance:
 
-```text
-*.moby.yourdomain.com  →  YOUR_SERVER_IP
-```
-
-## SSL Certificates
-
-**One wildcard certificate covers all users.** Caddy automatically obtains and renews a single `*.yourdomain.com` certificate from Let's Encrypt. No per-user SSL configuration needed.
+| Type | Name  | Content        | Proxy    |
+|------|-------|----------------|----------|
+| A    | moby1 | YOUR_VPS_IP    | DNS only |
+| A    | moby2 | YOUR_VPS_IP    | DNS only |
+| A    | moby3 | YOUR_VPS_IP    | DNS only |
 
 ## Quick Start
 
 ```bash
-cd deploy/buddy-hosted
+# 1. Clone the repo to your VPS
+git clone <repo> ~/moby
+cd ~/moby/deploy/buddy-hosted
 
-# 1. Configure your domain
+# 2. Configure
 cp .env.example .env
-nano .env  # Set DOMAIN and ACME_EMAIL
+nano .env  # Set DOMAIN=freedombridge.xyz
 
-# 2. Start the reverse proxy (one time)
-./manage.sh infra-up
+# 3. Create instances
+./manage.sh create moby1
+./manage.sh create moby2
+./manage.sh create moby3
 
-# 3. Create user instances
-./manage.sh create alice
-./manage.sh create bob
-./manage.sh create charlie
+# 4. Enable HTTPS for each
+./manage.sh ssl moby1
+./manage.sh ssl moby2
+./manage.sh ssl moby3
 ```
 
-Each user gets `https://<username>.<DOMAIN>` with automatic SSL.
+Each user gets `https://moby1.freedombridge.xyz`, etc.
 
 ## Management Commands
 
 ```bash
-./manage.sh create <user>    # Create new instance
-./manage.sh delete <user>    # Remove instance and data
-./manage.sh list             # Show all instances with status
-./manage.sh logs <user>      # View container logs
-./manage.sh restart <user>   # Restart a user's instance
-./manage.sh infra-up         # Start Caddy proxy
-./manage.sh infra-down       # Stop Caddy proxy
+./manage.sh create <name>   # Create new instance
+./manage.sh delete <name>   # Remove instance and data
+./manage.sh list            # Show all instances with status
+./manage.sh logs <name>     # View container logs
+./manage.sh restart <name>  # Restart an instance
+./manage.sh stop <name>     # Stop an instance
+./manage.sh start <name>    # Start an instance
+./manage.sh ssl <name>      # Get/renew SSL certificate
 ```
 
 ## What Each User Gets
@@ -72,57 +75,66 @@ Each user gets `https://<username>.<DOMAIN>` with automatic SSL.
 - First login creates their account
 - They add their own Kraken API keys
 
+## Port Allocation
+
+Instances are assigned ports starting at 3010:
+- moby1 → :3010
+- moby2 → :3011
+- moby3 → :3012
+- etc.
+
 ## Resource Usage
 
 | Instances | RAM (approx) | CPU |
 |-----------|--------------|-----|
-| 1         | 50-100 MB    | Minimal (idle most of time) |
-| 15        | 1-2 GB       | Still minimal |
-| 50        | 3-5 GB       | Low |
+| 1         | 50-100 MB    | Minimal |
+| 5         | 250-500 MB   | Minimal |
+| 15        | 1-2 GB       | Low |
 
 Moby is lightweight - it mostly sleeps between poll intervals.
 
-## Directory Structure
+## File Structure
 
-```text
+```
 deploy/buddy-hosted/
-├── docker-compose.infra.yml   # Caddy reverse proxy
-├── docker-compose.template.yml # Template for user instances
-├── manage.sh                  # Management script
-├── .env                       # Your config (DOMAIN, ACME_EMAIL)
-└── users/                     # Generated compose files per user
-    ├── alice.yml
-    ├── bob.yml
-    └── ...
+├── docker-compose.yml        # All moby services
+├── manage.sh                 # Management script
+├── .env                      # Your config (DOMAIN)
+└── nginx/
+    └── moby.conf.template    # Nginx server block template
 ```
 
 ## Backup
 
-User data is stored in Docker volumes named `moby-<username>-data`. To backup:
+User data is stored in Docker volumes. To backup:
 
 ```bash
-# Backup all user volumes
-for user in users/*.yml; do
-  name=$(basename "$user" .yml)
-  docker run --rm -v moby-${name}-data:/data -v $(pwd)/backups:/backup \
-    alpine tar czf /backup/${name}-$(date +%Y%m%d).tar.gz -C /data .
-done
+# Backup a specific user
+docker run --rm \
+  -v buddy-hosted_moby-moby1-data:/data \
+  -v $(pwd)/backups:/backup \
+  alpine tar czf /backup/moby1-$(date +%Y%m%d).tar.gz -C /data .
 ```
 
 ## Troubleshooting
 
-**SSL not working:**
-
-- Ensure wildcard DNS is configured correctly
-- Check Caddy logs: `docker logs caddy`
-- Let's Encrypt needs ports 80/443 open
-
 **Container not starting:**
+```bash
+./manage.sh logs moby1
+docker ps -a | grep moby
+```
 
-- Check logs: `./manage.sh logs <username>`
-- Verify the image built: `docker images | grep moby`
+**SSL not working:**
+```bash
+# Check certbot logs
+cat /var/log/letsencrypt/letsencrypt.log
 
-**User can't access their instance:**
+# Verify DNS resolves
+dig moby1.freedombridge.xyz
+```
 
-- Verify DNS resolves: `dig <username>.<domain>`
-- Check container is running: `./manage.sh list`
+**Nginx errors:**
+```bash
+nginx -t
+systemctl status nginx
+```
