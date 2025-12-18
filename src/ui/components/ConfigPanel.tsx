@@ -18,6 +18,9 @@ interface AssetConfig {
   threshold: number;
   reserve: number;
   destKeys: string[];
+  priority: number;
+  cooldownSeconds: number;
+  chunkAmount: number | null;
 }
 
 interface GlobalConfig {
@@ -844,9 +847,9 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
         setSelectedKeys(editingConfig.destKeys);
         setThreshold(editingConfig.threshold);
         setReserve(editingConfig.reserve);
-        setPriority(10); // Not stored in AssetConfig type shown
-        setCooldownSeconds(60); // Not stored in AssetConfig type shown
-        setChunkAmount(editingConfig.threshold); // Default to threshold
+        setPriority(editingConfig.priority ?? 10);
+        setCooldownSeconds(editingConfig.cooldownSeconds ?? 60);
+        setChunkAmount(editingConfig.chunkAmount ?? editingConfig.threshold);
       } else {
         setReserve(0);
         setPriority(10);
