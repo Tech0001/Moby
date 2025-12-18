@@ -14,8 +14,67 @@ import { advanceWalletIndex, getCurrentWalletKey } from './rrSelector.js';
 import type { ExchangeRestClient } from '../exchanges/types.js';
 import type { GlobalConfig } from '../config/schema.js';
 import type { WithdrawalJob, ExchangeId } from './types.js';
+import { computeChunkAmount, type PriceProvider } from './chunking.js';
+import { toKuCoinPair } from '../exchanges/kucoin/index.js';
+import { toGeminiPair } from '../exchanges/gemini/index.js';
+import { toGatePair } from '../exchanges/gateio/index.js';
+import { toKrakenAsset } from '../exchanges/kraken/index.js';
 
 const logger = createChildLogger('withdraw-worker');
+
+const USD_QUOTES = ['USD', 'USDT', 'USDC'];
+
+function buildPricePairs(exchange: ExchangeId, asset: string, quote: string): string[] {
+  switch (exchange) {
+    case 'kucoin':
+      return [toKuCoinPair(asset, quote)];
+    case 'gemini':
+      return [toGeminiPair(asset, quote)];
+    case 'gateio':
+      return [toGatePair(asset, quote)];
+    case 'kraken': {
+      const base = toKrakenAsset(asset);
+      const krakenQuote = toKrakenAsset(quote);
+      // Kraken accepts both concatenated and slash-delimited pairs
+      return [`${base}${krakenQuote}`, `${base}/${krakenQuote}`];
+    }
+    default:
+      return [`${asset}/${quote}`];
+  }
+}
+
+function createPriceProvider(exchange: ExchangeId, client: ExchangeRestClient): PriceProvider {
+  return {
+    async getUsdPrice(asset: string): Promise<number | null> {
+      const pairs: string[] = [];
+      for (const quote of USD_QUOTES) {
+        pairs.push(...buildPricePairs(exchange, asset, quote));
+      }
+
+      let ticker: Record<string, { c: [string, string] }> = {};
+      try {
+        ticker = await client.getTicker(pairs);
+      } catch (err) {
+        logger.debug({ exchange, asset, err }, 'Failed to fetch ticker for USD price');
+        return null;
+      }
+
+      // Honor quote priority order: USD > USDT > USDC
+      for (const quote of USD_QUOTES) {
+        const candidates = buildPricePairs(exchange, asset, quote);
+        for (const pair of candidates) {
+          const priceStr = ticker[pair]?.c?.[0];
+          const price = priceStr ? parseFloat(priceStr) : NaN;
+          if (price > 0) {
+            return price;
+          }
+        }
+      }
+
+      return null;
+    },
+  };
+}
 
 export interface WithdrawWorkerOptions {
   exchangeClient: ExchangeRestClient;
@@ -52,16 +111,35 @@ export async function startWithdrawal(
       return { success: false, skipped: true, skipReason: 'No asset state' };
     }
 
-    // Calculate withdrawal amount (pendingAmount - reserve), then apply chunking if configured
-    const available = Math.max(0, state.pendingAmount - reserve);
-    let withdrawAmount = available;
+    // Calculate withdrawal amount using chunking logic (supports coin or USD targets)
+    const chunkConfig =
+      assetConfig.chunkAmount && assetConfig.chunkAmount > 0
+        ? assetConfig.chunkMode === 'fixedUsd'
+          ? {
+              mode: 'fixedUsd' as const,
+              targetUsd: assetConfig.chunkAmount,
+              maxUsd: assetConfig.chunkMax ?? undefined,
+            }
+          : {
+              mode: 'fixedCoin' as const,
+              amount: assetConfig.chunkAmount,
+              max: assetConfig.chunkMax ?? undefined,
+            }
+        : undefined;
 
-    if (assetConfig.chunkAmount && assetConfig.chunkAmount > 0) {
-      withdrawAmount = Math.min(available, assetConfig.chunkAmount);
-      if (assetConfig.chunkMax && assetConfig.chunkMax > 0) {
-        withdrawAmount = Math.min(withdrawAmount, assetConfig.chunkMax);
-      }
-    }
+    const withdrawAmount = await computeChunkAmount(
+      asset,
+      state.pendingAmount,
+      {
+        enabled: assetConfig.enabled,
+        threshold: assetConfig.threshold,
+        reserve: assetConfig.reserve,
+        destKeys,
+        reserveCoin: assetConfig.reserve,
+        chunk: chunkConfig,
+      },
+      chunkConfig?.mode === 'fixedUsd' ? createPriceProvider(exchange, exchangeClient) : undefined
+    );
 
     if (withdrawAmount <= 0) {
       return {

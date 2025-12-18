@@ -876,6 +876,12 @@ export function createRoutes(context: RoutesContext): Router {
         return;
       }
 
+      // Validate chunking mode
+      if (chunkMode && chunkMode !== 'fixedCoin' && chunkMode !== 'fixedUsd') {
+        res.status(400).json({ error: 'chunkMode must be fixedCoin or fixedUsd' });
+        return;
+      }
+
       // Save to database
       upsertAssetConfig(exchange as ExchangeId, asset, {
         enabled: enabled !== false,

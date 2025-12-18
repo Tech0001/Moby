@@ -22,6 +22,8 @@ interface AssetConfig {
   priority: number;
   cooldownSeconds: number;
   chunkAmount: number | null;
+  chunkMode?: 'fixedCoin' | 'fixedUsd';
+  chunkMax?: number | null;
 }
 
 interface GlobalConfig {
@@ -479,6 +481,7 @@ export function ConfigPanel() {
     priority?: number;
     cooldownSeconds?: number;
     chunkAmount?: number;
+    chunkMode?: 'fixedCoin' | 'fixedUsd';
   }) {
     setSaving(true);
     setError('');
@@ -865,6 +868,7 @@ interface AddAssetDialogProps {
     priority?: number;
     cooldownSeconds?: number;
     chunkAmount?: number;
+    chunkMode?: 'fixedCoin' | 'fixedUsd';
   }) => void;
   saving: boolean;
 }
@@ -883,6 +887,7 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
   const [priority, setPriority] = useState(10);
   const [cooldownSeconds, setCooldownSeconds] = useState(60);
   const [chunkAmount, setChunkAmount] = useState(0.01);
+  const [chunkMode, setChunkMode] = useState<'fixedCoin' | 'fixedUsd'>('fixedCoin');
   const [userEditedValues, setUserEditedValues] = useState(false);
 
   // Get withdrawal method info for the selected asset (minimum, fee)
@@ -891,6 +896,7 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
     ? withdrawalMethods.find(m => m.asset === selectedAsset && m.method === assetInfo.method)
     : null;
   const minimum = methodInfo?.minimum ?? 0;
+  const isUsdChunk = chunkMode === 'fixedUsd';
 
   useEffect(() => {
     if (open) {
@@ -908,6 +914,7 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
         setPriority(editingConfig.priority ?? 10);
         setCooldownSeconds(editingConfig.cooldownSeconds ?? 60);
         setChunkAmount(editingConfig.chunkAmount ?? editingConfig.threshold);
+        setChunkMode(editingConfig.chunkMode ?? 'fixedCoin');
         // Mark as edited so useEffect doesn't overwrite
         setUserEditedValues(true);
       } else {
@@ -915,6 +922,7 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
         setPriority(10);
         setCooldownSeconds(60);
         setChunkAmount(0.01);
+        setChunkMode('fixedCoin');
         // Threshold will be set by the next useEffect when selectedAsset changes
       }
     }
@@ -960,6 +968,7 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
       priority,
       cooldownSeconds,
       chunkAmount,
+      chunkMode,
     });
   }
 
@@ -1112,19 +1121,43 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
 
                   {/* Chunk Size */}
                   <div className="space-y-1">
-                    <Label className="text-xs">Chunk Size ({selectedAsset})</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Chunking Mode</Label>
+                      <Select
+                        value={chunkMode}
+                        onValueChange={(value) => {
+                          const mode = value as 'fixedCoin' | 'fixedUsd';
+                          setChunkMode(mode);
+                          if (mode === 'fixedUsd' && chunkAmount < 1) {
+                            setChunkAmount(100);
+                          }
+                          setUserEditedValues(true);
+                        }}
+                      >
+                        <SelectTrigger className="h-8 w-36 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="fixedCoin">By coin amount</SelectItem>
+                          <SelectItem value="fixedUsd">By USD value</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Label className="text-xs">
+                      {isUsdChunk ? 'Chunk Size (USD)' : `Chunk Size (${selectedAsset})`}
+                    </Label>
                     <Input
                       type="number"
                       step="any"
-                      min={minimum}
+                      min={isUsdChunk ? 0 : minimum}
                       value={chunkAmount || ''}
                       onChange={(e) => {
                         setChunkAmount(parseFloat(e.target.value) || 0);
                         setUserEditedValues(true);
                       }}
-                      className={chunkAmount > 0 && chunkAmount < minimum ? 'border-yellow-500' : ''}
+                      className={!isUsdChunk && chunkAmount > 0 && chunkAmount < minimum ? 'border-yellow-500' : ''}
                     />
-                    {minimum > 0 && (
+                    {!isUsdChunk && minimum > 0 && (
                       <div className="flex gap-1 flex-wrap">
                         {[1, 2, 5, 10].map((mult) => (
                           <Button
@@ -1143,12 +1176,14 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
                         ))}
                       </div>
                     )}
-                    {chunkAmount > 0 && chunkAmount < minimum ? (
+                    {!isUsdChunk && chunkAmount > 0 && chunkAmount < minimum ? (
                       <p className="text-xs text-yellow-500">
                         Warning: Below exchange minimum ({minimum} {selectedAsset})
                       </p>
                     ) : (
-                      <p className="text-xs text-muted-foreground">Amount per withdrawal</p>
+                      <p className="text-xs text-muted-foreground">
+                        {isUsdChunk ? 'Target USD value per withdrawal' : 'Amount per withdrawal'}
+                      </p>
                     )}
                   </div>
                 </div>

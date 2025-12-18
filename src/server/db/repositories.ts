@@ -967,7 +967,7 @@ export interface AssetConfigRecord {
   cooldownSeconds: number;
   method: string | null;
   chunkAmount: number | null;
-  chunkMode: string;
+  chunkMode: 'fixedCoin' | 'fixedUsd';
   chunkMax: number | null;
   createdAt: number;
   updatedAt: number;
@@ -985,7 +985,7 @@ function mapAssetConfigRow(row: Record<string, unknown>): AssetConfigRecord {
     cooldownSeconds: (row.cooldown_seconds as number) ?? 60,
     method: row.method as string | null,
     chunkAmount: row.chunk_amount as number | null,
-    chunkMode: (row.chunk_mode as string) ?? 'fixedCoin',
+    chunkMode: ((row.chunk_mode as string) ?? 'fixedCoin') as 'fixedCoin' | 'fixedUsd',
     chunkMax: row.chunk_max as number | null,
     createdAt: row.created_at as number,
     updatedAt: row.updated_at as number,
@@ -1039,7 +1039,7 @@ export interface AssetConfigInput {
   cooldownSeconds?: number;
   method?: string | null;
   chunkAmount?: number | null;
-  chunkMode?: string;
+  chunkMode?: 'fixedCoin' | 'fixedUsd';
   chunkMax?: number | null;
 }
 
