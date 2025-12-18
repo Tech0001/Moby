@@ -7,6 +7,11 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Ensure production defaults for packaged builds (important for server logging behavior)
+if (app.isPackaged) {
+  process.env.NODE_ENV ||= 'production';
+}
+
 // Keep references to prevent garbage collection
 let mainWindow = null;
 let tray = null;
@@ -178,8 +183,30 @@ async function startServer() {
   const serverUrl = `file://${serverPath}`;
   await import(serverUrl);
 
-  // Give it a moment to start listening
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  // Wait for the server to actually be reachable, otherwise Electron init appears to "hang"
+  await waitForServerReady(30_000);
+}
+
+async function waitForServerReady(timeoutMs) {
+  const start = Date.now();
+  const statusUrl = `${SERVER_URL}/api/setup/status`;
+
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 1500);
+      const res = await fetch(statusUrl, { signal: controller.signal });
+      clearTimeout(timer);
+
+      if (res.ok) return;
+    } catch {
+      // ignore until timeout
+    }
+
+    await new Promise((r) => setTimeout(r, 250));
+  }
+
+  throw new Error(`Server did not become ready within ${Math.round(timeoutMs / 1000)}s (${statusUrl})`);
 }
 
 // Keep process alive - Electron sometimes quits if it thinks there's nothing to do
