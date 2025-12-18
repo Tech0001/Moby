@@ -117,6 +117,7 @@ export async function startWithdrawal(
         ? assetConfig.chunkMode === 'fixedUsd'
           ? {
               mode: 'fixedUsd' as const,
+              amount: 0, // Not used in fixedUsd mode, but required by interface
               targetUsd: assetConfig.chunkAmount,
               maxUsd: assetConfig.chunkMax ?? undefined,
             }
