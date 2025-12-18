@@ -829,6 +829,7 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
   const [priority, setPriority] = useState(10);
   const [cooldownSeconds, setCooldownSeconds] = useState(60);
   const [chunkAmount, setChunkAmount] = useState(0.01);
+  const [userEditedValues, setUserEditedValues] = useState(false);
 
   // Get withdrawal method info for the selected asset (minimum, fee)
   const assetInfo = selectedAsset ? addressesByAsset[selectedAsset] : null;
@@ -842,6 +843,9 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
       const newDefault = initialAsset && availableAssets.includes(initialAsset) ? initialAsset : availableAssets[0] || '';
       setSelectedAsset(newDefault);
 
+      // Reset user-edited flag when dialog opens
+      setUserEditedValues(false);
+
       if (editingConfig) {
         // Pre-fill with existing config values
         setSelectedKeys(editingConfig.destKeys);
@@ -850,6 +854,8 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
         setPriority(editingConfig.priority ?? 10);
         setCooldownSeconds(editingConfig.cooldownSeconds ?? 60);
         setChunkAmount(editingConfig.chunkAmount ?? editingConfig.threshold);
+        // Mark as edited so useEffect doesn't overwrite
+        setUserEditedValues(true);
       } else {
         setReserve(0);
         setPriority(10);
@@ -860,11 +866,15 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
     }
   }, [open, initialAsset, editingConfig]);
 
-  // When asset changes, set threshold to minimum (skip if editing and asset hasn't changed)
+  // When asset changes, set threshold to minimum (skip if editing or user has made changes)
   useEffect(() => {
     if (selectedAsset && addressesByAsset[selectedAsset]) {
-      // When editing, don't override keys/threshold if it's the same asset
+      // When editing, don't override if it's the same asset
       if (editingConfig && selectedAsset === initialAsset) {
+        return;
+      }
+      // Don't override if user has manually edited values
+      if (userEditedValues) {
         return;
       }
       setSelectedKeys(addressesByAsset[selectedAsset].keys);
@@ -879,7 +889,7 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
         setChunkAmount(0.01);
       }
     }
-  }, [selectedAsset, addressesByAsset, withdrawalMethods, editingConfig, initialAsset]);
+  }, [selectedAsset, addressesByAsset, withdrawalMethods, editingConfig, initialAsset, userEditedValues]);
 
   function toggleKey(key: string) {
     setSelectedKeys((prev) =>
@@ -992,15 +1002,22 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
                         step="any"
                         min={minimum}
                         value={threshold || ''}
-                        onChange={(e) => setThreshold(parseFloat(e.target.value) || 0)}
-                        onBlur={() => {
-                          if (threshold < minimum) setThreshold(minimum);
+                        onChange={(e) => {
+                          setThreshold(parseFloat(e.target.value) || 0);
+                          setUserEditedValues(true);
                         }}
                         placeholder="Min amount to trigger sweep"
+                        className={threshold > 0 && threshold < minimum ? 'border-yellow-500' : ''}
                       />
-                      <p className="text-xs text-muted-foreground">
-                        {minimum > 0 ? `Must be at least ${minimum} ${selectedAsset}` : 'Minimum balance to trigger withdrawal'}
-                      </p>
+                      {threshold > 0 && threshold < minimum ? (
+                        <p className="text-xs text-yellow-500">
+                          Warning: Below exchange minimum ({minimum} {selectedAsset})
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          {minimum > 0 ? `Exchange minimum: ${minimum} ${selectedAsset}` : 'Minimum balance to trigger withdrawal'}
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">Reserve ({selectedAsset})</Label>
@@ -1047,11 +1064,11 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
                       step="any"
                       min={minimum}
                       value={chunkAmount || ''}
-                      onChange={(e) => setChunkAmount(parseFloat(e.target.value) || 0)}
-                      onBlur={() => {
-                        // Clamp to minimum on blur
-                        if (chunkAmount < minimum) setChunkAmount(minimum);
+                      onChange={(e) => {
+                        setChunkAmount(parseFloat(e.target.value) || 0);
+                        setUserEditedValues(true);
                       }}
+                      className={chunkAmount > 0 && chunkAmount < minimum ? 'border-yellow-500' : ''}
                     />
                     {minimum > 0 && (
                       <div className="flex gap-1 flex-wrap">
@@ -1062,14 +1079,23 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
                             variant={chunkAmount === minimum * mult ? "default" : "outline"}
                             size="sm"
                             className="h-6 px-2 text-xs"
-                            onClick={() => setChunkAmount(minimum * mult)}
+                            onClick={() => {
+                              setChunkAmount(minimum * mult);
+                              setUserEditedValues(true);
+                            }}
                           >
                             {mult}x
                           </Button>
                         ))}
                       </div>
                     )}
-                    <p className="text-xs text-muted-foreground">Amount per withdrawal</p>
+                    {chunkAmount > 0 && chunkAmount < minimum ? (
+                      <p className="text-xs text-yellow-500">
+                        Warning: Below exchange minimum ({minimum} {selectedAsset})
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Amount per withdrawal</p>
+                    )}
                   </div>
                 </div>
               )}

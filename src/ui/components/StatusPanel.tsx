@@ -259,10 +259,15 @@ function AssetStatusSection({ assets, onRefresh, formatAmount, formatTime }: Ass
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <Wallet className="w-5 h-5 text-primary" />
-          Asset Status
-        </h2>
+        <div>
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Wallet className="w-5 h-5 text-primary" />
+            Sweep Monitor
+          </h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Configured assets accumulating toward automatic withdrawal
+          </p>
+        </div>
         <Button
           variant="ghost"
           size="icon"
@@ -280,9 +285,9 @@ function AssetStatusSection({ assets, onRefresh, formatAmount, formatTime }: Ass
               <TableHead>Asset</TableHead>
               <TableHead>Exchange</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Progress</TableHead>
-              <TableHead>Wallet</TableHead>
-              <TableHead className="text-right">Last Withdrawal</TableHead>
+              <TableHead>Accumulated</TableHead>
+              <TableHead>Next Wallet</TableHead>
+              <TableHead className="text-right">Last Sweep</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
