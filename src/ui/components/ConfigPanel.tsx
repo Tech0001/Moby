@@ -8,7 +8,8 @@ import { Switch } from "@/ui/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/ui/components/ui/dialog";
 import { Alert, AlertDescription } from "@/ui/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/components/ui/select";
-import { Trash2, Plus, RefreshCw, Pencil } from 'lucide-react';
+import { Trash2, Plus, RefreshCw, Pencil, Activity, AlertCircle } from 'lucide-react';
+import { parsePair } from '../../server/domain/types';
 
 // New simplified asset config (stored in database)
 interface AssetConfig {
@@ -93,6 +94,7 @@ export function ConfigPanel() {
   const [withdrawalMethods, setWithdrawalMethods] = useState<WithdrawalMethod[]>([]);
   const [exchanges, setExchanges] = useState<AvailableExchange[]>([]);
   const [exchangeSyncSupport, setExchangeSyncSupport] = useState<Record<string, ExchangeSyncSupport>>({});
+  const [activeAssets, setActiveAssets] = useState<Record<string, Set<string>>>({});
   const [loading, setLoading] = useState(true);
   const [loadingAddresses, setLoadingAddresses] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -119,6 +121,7 @@ export function ConfigPanel() {
     fetchAddresses();
     fetchWithdrawalMethods();
     fetchSettings();
+    fetchActiveAssets();
   }, []);
 
   async function fetchExchangeSyncSupport() {
@@ -201,6 +204,56 @@ export function ConfigPanel() {
       }
     } catch (err) {
       console.error('Failed to fetch exchanges:', err);
+    }
+  }
+
+  async function fetchActiveAssets() {
+    try {
+      const res = await fetch('/api/orders?exchange=all');
+      if (res.ok) {
+        const data = await res.json();
+        const orders = data.orders || [];
+        
+        const activeMap: Record<string, Set<string>> = {};
+        
+        for (const order of orders) {
+          if (!activeMap[order.exchange]) {
+            activeMap[order.exchange] = new Set();
+          }
+          
+          try {
+            // Parse pair to get base and quote assets
+            // We use the helper from domain types if available, or simple split
+            // The server response should ideally provide base/quote but we parse pair here
+            // Assuming pairs are like XBT/USD, ETH-USDT, etc.
+            // Using a simple heuristic if parsePair isn't imported or available
+            let base, quote;
+            if (typeof parsePair === 'function') {
+               const parsed = parsePair(order.pair);
+               base = parsed.base;
+               quote = parsed.quote;
+            } else {
+               // Fallback basic parsing
+               const parts = order.pair.split(/[-/]/);
+               if (parts.length === 2) {
+                 base = parts[0];
+                 quote = parts[1];
+               } else {
+                 base = order.pair; // Fallback
+               }
+            }
+            
+            if (base) activeMap[order.exchange].add(base);
+            if (quote) activeMap[order.exchange].add(quote);
+          } catch (e) {
+            console.warn('Failed to parse pair:', order.pair);
+          }
+        }
+        
+        setActiveAssets(activeMap);
+      }
+    } catch (err) {
+      console.error('Failed to fetch active orders:', err);
     }
   }
 
@@ -742,6 +795,7 @@ export function ConfigPanel() {
                 key={exchange.id}
                 exchange={exchange}
                 addresses={addressesByExchange[exchange.id] || {}}
+                activeAssets={activeAssets[exchange.id] || new Set()}
                 configuredAssets={configsByExchange[exchange.id] || {}}
                 onSync={() => syncAddresses(exchange.id, exchange.name)}
                 isSyncing={syncingExchange === exchange.id}
@@ -1337,6 +1391,7 @@ function ManualAddressDialog({ open, onOpenChange, exchange, exchangeName, onAdd
 interface ExchangeWalletManagerProps {
   exchange: AvailableExchange;
   addresses: Record<string, { method: string; keys: string[] }>;
+  activeAssets: Set<string>;
   configuredAssets: Record<string, AssetConfig>;
   onSync: () => void;
   isSyncing: boolean;
@@ -1354,6 +1409,7 @@ interface ExchangeWalletManagerProps {
 function ExchangeWalletManager({
   exchange,
   addresses,
+  activeAssets,
   configuredAssets,
   onSync,
   isSyncing,
@@ -1370,6 +1426,24 @@ function ExchangeWalletManager({
   const [open, setOpen] = useState(false);
   const assetCount = Object.keys(addresses).length;
   const configuredCount = Object.keys(configuredAssets).length;
+  const activeCount = activeAssets.size;
+
+  // Combine assets from addresses and activeAssets
+  const allAssets = Array.from(new Set([...Object.keys(addresses), ...Array.from(activeAssets)]));
+  
+  // Sort assets: configured first, then active with no config, then others
+  allAssets.sort((a, b) => {
+    const aConfig = !!configuredAssets[a];
+    const bConfig = !!configuredAssets[b];
+    const aActive = activeAssets.has(a);
+    const bActive = activeAssets.has(b);
+    
+    if (aConfig && !bConfig) return -1;
+    if (!aConfig && bConfig) return 1;
+    if (aActive && !bActive) return -1;
+    if (!aActive && bActive) return 1;
+    return a.localeCompare(b);
+  });
 
   return (
     <>
@@ -1384,11 +1458,17 @@ function ExchangeWalletManager({
                  className="scale-75" 
                />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Badge variant="secondary">{assetCount} assets</Badge>
               {configuredCount > 0 && (
                 <Badge variant="outline" className="text-green-500 border-green-500">
                   {configuredCount} configured
+                </Badge>
+              )}
+              {activeCount > 0 && (
+                <Badge variant="outline" className="text-blue-500 border-blue-500 gap-1">
+                  <Activity size={10} />
+                  {activeCount} active
                 </Badge>
               )}
               {!supportsSync && (
@@ -1442,7 +1522,7 @@ function ExchangeWalletManager({
               <div className="p-8 text-center text-muted-foreground">
                 Loading addresses...
               </div>
-            ) : assetCount === 0 ? (
+            ) : allAssets.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground">
                 {supportsSync
                   ? 'No withdrawal addresses found. Sync from exchange to fetch them.'
@@ -1450,49 +1530,79 @@ function ExchangeWalletManager({
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
-                {Object.entries(addresses).map(([asset, { method, keys }]) => {
+                {allAssets.map((asset) => {
+                  const data = addresses[asset];
+                  const method = data?.method;
+                  const keys = data?.keys || [];
                   const config = configuredAssets[asset];
                   const isConfigured = !!config;
+                  const isActive = activeAssets.has(asset);
+                  const isMissingAddress = keys.length === 0;
+
                   return (
                     <div
                       key={asset}
                       className={`relative rounded-lg border p-3 transition-colors ${
                         isConfigured
                           ? 'bg-green-500/5 border-green-500/30'
-                          : 'bg-card hover:bg-accent/50'
+                          : isActive
+                            ? 'bg-blue-500/5 border-blue-500/30'
+                            : 'bg-card hover:bg-accent/50'
                       }`}
                     >
                       {isConfigured && (
-                        <div className="absolute top-3 right-3 w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                        <div className="absolute top-3 right-3 w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" title="Configured" />
+                      )}
+                      
+                      {!isConfigured && isActive && (
+                        <div className="absolute top-3 right-3 flex items-center gap-1">
+                          <Activity size={12} className="text-blue-500 animate-pulse" />
+                        </div>
                       )}
 
-                      <div className="flex items-center justify-between mb-2 pr-4">
-                        <span className="font-semibold text-lg">{asset}</span>
-                        <Badge variant="outline" className="text-[10px] uppercase">{method}</Badge>
+                      <div className="flex items-center justify-between mb-2 pr-6">
+                        <span className="font-semibold text-lg flex items-center gap-2">
+                          {asset}
+                          {isActive && (
+                            <Badge variant="outline" className="text-[10px] px-1 h-4 text-blue-500 border-blue-500">
+                              Active
+                            </Badge>
+                          )}
+                        </span>
+                        {method && <Badge variant="outline" className="text-[10px] uppercase">{method}</Badge>}
                       </div>
 
                       <div className="flex flex-wrap gap-1 mb-3">
-                        {keys.slice(0, supportsSync ? 3 : keys.length).map((key) => (
-                          <span
-                            key={key}
-                            className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-muted text-muted-foreground truncate max-w-[100px] flex items-center gap-1"
-                          >
-                            {key}
-                            {!supportsSync && (
-                              <button
-                                onClick={() => onDeleteAddress(asset, key)}
-                                className="text-destructive hover:text-destructive/80 ml-1"
-                                title="Delete address"
+                        {isMissingAddress ? (
+                          <div className="flex items-center gap-1 text-xs text-yellow-500">
+                            <AlertCircle size={12} />
+                            No withdrawal address
+                          </div>
+                        ) : (
+                          <>
+                            {keys.slice(0, supportsSync ? 3 : keys.length).map((key) => (
+                              <span
+                                key={key}
+                                className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-muted text-muted-foreground truncate max-w-[100px] flex items-center gap-1"
                               >
-                                ×
-                              </button>
+                                {key}
+                                {!supportsSync && (
+                                  <button
+                                    onClick={() => onDeleteAddress(asset, key)}
+                                    className="text-destructive hover:text-destructive/80 ml-1"
+                                    title="Delete address"
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </span>
+                            ))}
+                            {supportsSync && keys.length > 3 && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-muted text-muted-foreground">
+                                +{keys.length - 3}
+                              </span>
                             )}
-                          </span>
-                        ))}
-                        {supportsSync && keys.length > 3 && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-muted text-muted-foreground">
-                            +{keys.length - 3}
-                          </span>
+                          </>
                         )}
                       </div>
 
@@ -1530,15 +1640,24 @@ function ExchangeWalletManager({
                            </>
                          ) : (
                            <Button
-                             variant="secondary"
+                             variant={isActive && isMissingAddress ? "default" : "secondary"}
                              size="sm"
-                             className="h-7 text-xs"
+                             className={`h-7 text-xs ${isActive && isMissingAddress ? "bg-yellow-500 hover:bg-yellow-600 text-white" : ""}`}
                              onClick={() => {
-                               setOpen(false);
-                               onAddAsset(asset);
+                               if (isMissingAddress) {
+                                 setOpen(false);
+                                 if (supportsSync) {
+                                   onSync();
+                                 } else {
+                                   onAddManualAddress();
+                                 }
+                               } else {
+                                 setOpen(false);
+                                 onAddAsset(asset);
+                               }
                              }}
                            >
-                             Configure
+                             {isMissingAddress ? (supportsSync ? "Sync Addr" : "Add Addr") : "Configure"}
                            </Button>
                          )}
                       </div>

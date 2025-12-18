@@ -235,6 +235,7 @@ async function main() {
       const newEnabledExchanges = getEnabledExchanges();
       statusPoller.updateEnabledExchanges(newEnabledExchanges);
     },
+    wakeScheduler: () => scheduler.wake(),
     runReconciliation: async (exchangeFilter?: ExchangeId) => {
       const exchanges = exchangeFilter ? [exchangeFilter] : getEnabledExchanges();
       const results: Array<{

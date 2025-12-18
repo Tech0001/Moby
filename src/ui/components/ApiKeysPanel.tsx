@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/ui/components/ui/switch";
 import { Alert, AlertDescription, AlertTitle } from "@/ui/components/ui/alert";
 import { AlertTriangle, Info, ChevronDown, ChevronRight } from 'lucide-react';
+import { useDocumentVisibility } from '@/ui/lib/useDocumentVisibility';
 
 interface ApiKeysPanelProps {
   hasKeys: boolean;
@@ -49,6 +50,7 @@ const DEFAULT_TIER_INFO: Record<string, { maxCounter: number; decayRate: number;
 };
 
 export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
+  const isVisible = useDocumentVisibility();
   const [keys, setKeys] = useState<ApiKeyInfo[]>([]);
   const [exchanges, setExchanges] = useState<ExchangeInfo[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -60,10 +62,27 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
   useEffect(() => {
     fetchKeys(); // Initial load - no auto-expand
     fetchExchanges();
-    // Refresh every 5 seconds to update counter estimates
-    const interval = setInterval(() => fetchKeys(false), 5000);
-    return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!isVisible) return;
+
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const tick = async () => {
+      if (stopped) return;
+      await fetchKeys(false);
+      if (stopped) return;
+      timer = setTimeout(tick, 10000);
+    };
+
+    timer = setTimeout(tick, 10000);
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [isVisible]);
 
   async function fetchKeys(autoExpand: boolean = false) {
     try {

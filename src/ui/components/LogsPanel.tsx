@@ -16,6 +16,7 @@ import {
   Pause,
   Play,
 } from 'lucide-react';
+import { useDocumentVisibility } from '@/ui/lib/useDocumentVisibility';
 
 interface LogEntry {
   id: number;
@@ -54,6 +55,7 @@ const LEVEL_VALUES: Record<string, number> = {
 };
 
 export function LogsPanel() {
+  const isVisible = useDocumentVisibility();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -100,19 +102,20 @@ export function LogsPanel() {
 
   // Polling for new logs
   useEffect(() => {
-    if (paused) return;
+    if (paused || !isVisible) return;
 
     const interval = setInterval(() => {
       fetchLogs(latestIdRef.current);
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [paused, minLevel]);
+  }, [paused, minLevel, isVisible]);
 
   // Auto-scroll to bottom
   useEffect(() => {
     if (autoScroll && logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      // Avoid smooth scrolling on every update; it can keep the GPU process busy.
+      logsEndRef.current.scrollIntoView({ behavior: 'auto' });
     }
   }, [logs, autoScroll]);
 

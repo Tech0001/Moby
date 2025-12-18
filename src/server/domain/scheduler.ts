@@ -33,6 +33,7 @@ export class Scheduler extends EventEmitter {
   private tickTimer: NodeJS.Timeout | null = null;
   private running = false;
   private wakeRequested = false;
+  private readonly disabledTickMs = 10_000;
 
   constructor(options: SchedulerOptions) {
     super();
@@ -97,12 +98,12 @@ export class Scheduler extends EventEmitter {
   /**
    * Schedule the next tick
    */
-  private scheduleTick(): void {
+  private scheduleTick(delayMs?: number): void {
     if (!this.running) return;
 
     this.tickTimer = setTimeout(
       () => this.tick(),
-      this.config.global.schedulerTickMs
+      delayMs ?? this.config.global.schedulerTickMs
     );
   }
 
@@ -122,7 +123,7 @@ export class Scheduler extends EventEmitter {
       // Check if enabled
       if (!isEnabled()) {
         logger.debug('Scheduler disabled, skipping tick');
-        this.scheduleTick();
+        this.scheduleTick(Math.max(this.config.global.schedulerTickMs, this.disabledTickMs));
         return;
       }
 

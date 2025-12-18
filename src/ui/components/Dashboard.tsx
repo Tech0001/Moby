@@ -29,6 +29,7 @@ import { ModeToggle } from './ModeToggle';
 import { ThemeSelector } from './ThemeSelector';
 import { useTheme } from '@/ui/components/ThemeProvider';
 import { externalPalettes } from '@/ui/themes/registry';
+import { useDocumentVisibility } from '@/ui/lib/useDocumentVisibility';
 
 interface DashboardProps {
   user: { userId: string; username: string };
@@ -63,6 +64,7 @@ interface Status {
 
 export function Dashboard({ user, onLogout }: DashboardProps) {
   const { style, setStyle } = useTheme();
+  const isVisible = useDocumentVisibility();
   const [status, setStatus] = useState<Status | null>(null);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
@@ -91,10 +93,38 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
   }, [style, setStyle]);
 
   useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let inFlight = false;
+
+    const scheduleNext = () => {
+      if (stopped) return;
+      const delayMs = isVisible ? 5000 : 30000;
+      timer = setTimeout(tick, delayMs);
+    };
+
+    const tick = async () => {
+      if (stopped || inFlight) {
+        scheduleNext();
+        return;
+      }
+
+      inFlight = true;
+      try {
+        await fetchStatus();
+      } finally {
+        inFlight = false;
+        scheduleNext();
+      }
+    };
+
+    tick();
+
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [isVisible]);
 
   async function fetchStatus() {
     try {
@@ -142,7 +172,7 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
   return (
     <div className="min-h-screen bg-background text-foreground font-sans selection:bg-primary/30">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-md">
+      <header className="sticky top-0 z-50 border-b bg-background">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <WhaleIcon className="h-8 w-auto text-primary" />
@@ -265,28 +295,34 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
           </TabsList>
 
           <TabsContent value="status" className="space-y-6">
-            <BalancePanel />
-            <StatusPanel status={status} onRefresh={fetchStatus} />
+            {activeTab === 'status' ? (
+              <>
+                <BalancePanel />
+                <StatusPanel status={status} onRefresh={fetchStatus} />
+              </>
+            ) : null}
           </TabsContent>
 
           <TabsContent value="orders">
-            <OrdersPanel />
+            {activeTab === 'orders' ? <OrdersPanel /> : null}
           </TabsContent>
 
           <TabsContent value="api-keys">
-            <ApiKeysPanel hasKeys={status?.hasApiKeys ?? false} onUpdate={fetchStatus} />
+            {activeTab === 'api-keys' ? (
+              <ApiKeysPanel hasKeys={status?.hasApiKeys ?? false} onUpdate={fetchStatus} />
+            ) : null}
           </TabsContent>
 
           <TabsContent value="config">
-            <ConfigPanel />
+            {activeTab === 'config' ? <ConfigPanel /> : null}
           </TabsContent>
 
           <TabsContent value="management">
-            <ManagementPanel />
+            {activeTab === 'management' ? <ManagementPanel /> : null}
           </TabsContent>
 
           <TabsContent value="logs">
-            <LogsPanel />
+            {activeTab === 'logs' ? <LogsPanel /> : null}
           </TabsContent>
         </Tabs>
       </main>

@@ -88,6 +88,12 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Electron: disabling backdrop filters reduces "Helper (GPU)" CPU usage on some machines. */
+  body.is-electron * {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
 }
 
 @layer components {

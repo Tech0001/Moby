@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components/ui/car
 import { Button } from '@/ui/components/ui/button';
 import { Badge } from '@/ui/components/ui/badge';
 import { cn } from '@/ui/lib/utils';
+import { useDocumentVisibility } from '@/ui/lib/useDocumentVisibility';
 
 interface Balance {
   [asset: string]: string;
@@ -76,6 +77,7 @@ function getAssetColor(asset: string) {
 }
 
 export function BalancePanel({ exchange = 'kraken' }: BalancePanelProps) {
+  const isVisible = useDocumentVisibility();
   const [balance, setBalance] = useState<Balance | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,10 +105,13 @@ export function BalancePanel({ exchange = 'kraken' }: BalancePanelProps) {
 
   useEffect(() => {
     fetchBalance();
-    // Refresh balance every 60 seconds
+  }, [exchange]);
+
+  useEffect(() => {
+    if (!isVisible) return;
     const interval = setInterval(fetchBalance, 60000);
     return () => clearInterval(interval);
-  }, [exchange]);
+  }, [exchange, isVisible]);
 
   // Filter out zero/dust balances and sort
   const nonZeroBalances = balance

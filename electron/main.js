@@ -39,6 +39,8 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
+      // Ensure timers are throttled when the window is hidden/minimized.
+      backgroundThrottling: true,
     },
     show: false, // Don't show until ready
     titleBarStyle: 'default',

@@ -134,6 +134,7 @@ export interface RoutesContext {
   reloadConfig: () => Promise<void>;
   updateConfig: (newConfig: AppConfig) => void;
   runReconciliation?: (exchange?: ExchangeId) => Promise<ReconcileResult[]>;
+  wakeScheduler?: () => void;
 }
 
 export function createRoutes(context: RoutesContext): Router {
@@ -387,6 +388,7 @@ export function createRoutes(context: RoutesContext): Router {
   // Start/Stop toggle
   router.post('/api/control/start', requireAuth, (req: Request, res: Response) => {
     setEnabled(true);
+    context.wakeScheduler?.();
     logger.info('Sweeper enabled via UI');
     res.json({ enabled: true });
   });
