@@ -117,7 +117,7 @@ export async function startWithdrawal(
         ? assetConfig.chunkMode === 'fixedUsd'
           ? {
               mode: 'fixedUsd' as const,
-              amount: 0, // Not used in fixedUsd mode, but required by interface
+              amount: assetConfig.chunkAmount, // unused in fixedUsd, satisfies interface
               targetUsd: assetConfig.chunkAmount,
               maxUsd: assetConfig.chunkMax ?? undefined,
             }
@@ -128,7 +128,7 @@ export async function startWithdrawal(
             }
         : undefined;
 
-    const withdrawAmount = await computeChunkAmount(
+    let withdrawAmount = await computeChunkAmount(
       asset,
       state.pendingAmount,
       {
@@ -215,12 +215,34 @@ export async function startWithdrawal(
       );
     }
 
-    // Get withdrawal info from exchange (validates amount, gets current fees)
-    const withdrawInfo = await exchangeClient.getWithdrawInfo(
-      asset,
-      destKey,
-      withdrawAmount
-    );
+    // Cap amount to stay below 80k×fee (to avoid manual review) using Kraken's fee response
+    const MAX_FEE_MULTIPLE = 80000;
+
+    async function getInfoWithFeeCap(
+      requested: number
+    ): Promise<{ amount: number; info: Awaited<ReturnType<ExchangeRestClient['getWithdrawInfo']>> }> {
+      let info = await exchangeClient.getWithdrawInfo(asset, destKey, requested);
+
+      if (info.fee > 0) {
+        const safeMax = info.fee * MAX_FEE_MULTIPLE;
+        if (requested > safeMax) {
+          const adjusted = safeMax;
+          const delta = requested - adjusted;
+          if (delta > 0) {
+            addPendingAmount(exchange, asset, delta);
+            reservedAmount -= delta;
+          }
+          info = await exchangeClient.getWithdrawInfo(asset, destKey, adjusted);
+          requested = adjusted;
+        }
+      }
+
+      return { amount: requested, info };
+    }
+
+    // Get withdrawal info from exchange (validates amount, gets current fees), with fee-based cap
+    const { amount: cappedAmount, info: withdrawInfo } = await getInfoWithFeeCap(withdrawAmount);
+    withdrawAmount = cappedAmount;
 
     // Check if withdrawal limit has been reached
     if (withdrawInfo.limit <= 0) {
