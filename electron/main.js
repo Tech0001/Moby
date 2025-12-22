@@ -29,9 +29,19 @@ function electronLog(msg) {
   const timestamp = new Date().toISOString();
   const line = `[${timestamp}] ELECTRON: ${msg}\n`;
   try {
+    // Ensure directory exists
+    if (!fs.existsSync(userDataPath)) {
+      fs.mkdirSync(userDataPath, { recursive: true });
+    }
     fs.appendFileSync(path.join(userDataPath, 'moby.log'), line);
-  } catch { /* ignore */ }
+  } catch (err) {
+    // Log to console as fallback
+    console.error(`electronLog failed: ${err.message}, path: ${userDataPath}`);
+  }
 }
+
+// Log the userData path on startup for debugging
+console.log(`Moby userData path: ${userDataPath}`);
 
 /**
  * Create the main application window
