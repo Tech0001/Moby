@@ -181,14 +181,22 @@ setInterval(() => {}, 1000 * 60 * 60);
  * Stop the server - handles both subprocess (dev) and in-process (production) modes
  */
 function stopServer() {
+  electronLog('stopServer called');
   if (serverProcess) {
     // Dev mode: kill the subprocess
+    electronLog('Killing dev server subprocess');
     serverProcess.kill('SIGTERM');
     serverProcess = null;
   } else if (serverStarted) {
     // Production mode: server runs in-process, trigger shutdown via signal event
     // The server's app.ts listens for SIGTERM/SIGINT and runs shutdown()
+    electronLog('Emitting SIGTERM to in-process server');
     process.emit('SIGTERM');
+    // Force exit after a short delay if SIGTERM doesn't work (Linux workaround)
+    setTimeout(() => {
+      electronLog('Force exiting after timeout');
+      process.exit(0);
+    }, 2000);
   }
 }
 
