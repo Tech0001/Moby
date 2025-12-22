@@ -23,11 +23,30 @@ export function initDb(): Database.Database {
 
   logger.info({ path: DB_PATH }, 'Initializing SQLite database');
 
-  db = new Database(DB_PATH);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
+  try {
+    db = new Database(DB_PATH);
+    logger.info('Database file opened');
+  } catch (err) {
+    logger.error({ error: err instanceof Error ? err.message : String(err) }, 'Failed to open database file');
+    throw err;
+  }
 
-  runMigrations(db);
+  try {
+    db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
+    logger.info('Database pragmas set');
+  } catch (err) {
+    logger.error({ error: err instanceof Error ? err.message : String(err) }, 'Failed to set pragmas');
+    throw err;
+  }
+
+  try {
+    runMigrations(db);
+    logger.info('Migrations complete');
+  } catch (err) {
+    logger.error({ error: err instanceof Error ? err.message : String(err) }, 'Migration failed');
+    throw err;
+  }
 
   return db;
 }
