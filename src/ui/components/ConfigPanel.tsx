@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Alert, AlertDescription } from "@/ui/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/components/ui/select";
 import { Trash2, Plus, RefreshCw, Pencil, Activity, AlertCircle } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/components/ui/tabs";
 import { parsePair } from '../../server/domain/types';
 
 // New simplified asset config (stored in database)
@@ -66,6 +67,7 @@ interface AvailableExchange {
   id: string;
   name: string;
   hasKeys: boolean;
+  enabled?: boolean;
 }
 
 interface SweeperStatus {
@@ -196,10 +198,11 @@ export function ConfigPanel() {
 
         const exchangesWithKeys = new Set(keysData.keys.map((k: { exchange: string }) => k.exchange));
 
-        const mapped = exchangesData.exchanges.map((ex: { id: string; name: string }) => ({
+        const mapped = exchangesData.exchanges.map((ex: { id: string; name: string; enabled?: boolean }) => ({
           id: ex.id,
           name: ex.name,
-          hasKeys: exchangesWithKeys.has(ex.id)
+          hasKeys: exchangesWithKeys.has(ex.id),
+          enabled: ex.enabled,
         }));
 
         setExchanges(mapped);
@@ -534,15 +537,14 @@ export function ConfigPanel() {
 
   async function toggleExchangeEnabled(exchange: string, enabled: boolean) {
     try {
-      const res = await fetch(`/api/config/exchanges/${exchange}/enable`, {
+      const res = await fetch(`/api/exchanges/${exchange}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled }),
       });
 
       if (res.ok) {
-        const data = await res.json();
-        await fetchConfig();
+        await Promise.all([fetchExchanges(), fetchConfig()]);
         if (enabled) {
           setSuccess(`Enabled ${exchange}`);
         } else {
@@ -562,12 +564,13 @@ export function ConfigPanel() {
     if (!acc[exchange]) {
       acc[exchange] = {};
     }
-    if (!acc[exchange][addr.asset]) {
-      acc[exchange][addr.asset] = { method: addr.method, keys: [] };
+    const assetKey = addr.asset.split(/[-/]/)[0] || addr.asset;
+    if (!acc[exchange][assetKey]) {
+      acc[exchange][assetKey] = { method: addr.method, entries: [] as Array<{ key: string; address: string }> };
     }
-    acc[exchange][addr.asset].keys.push(addr.key);
+    acc[exchange][assetKey].entries.push({ key: addr.key, address: addr.address });
     return acc;
-  }, {} as Record<string, Record<string, { method: string; keys: string[] }>>);
+  }, {} as Record<string, Record<string, { method: string; entries: Array<{ key: string; address: string }> }>>);
 
   // Group asset configs by exchange
   const configsByExchange = assetConfigs.reduce((acc, cfg) => {
@@ -591,231 +594,247 @@ export function ConfigPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* System Control */}
-        <Card className="h-full">
-          <CardHeader className="py-4 border-b">
-            <CardTitle>System Control</CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-3 h-3 rounded-full ${
-                    sweeperStatus?.enabled ? 'bg-green-500' : 'bg-gray-500'
-                  }`}
-                />
-                <div className="space-y-0.5">
-                  <div className="font-medium">
-                    {sweeperStatus?.enabled ? 'Sweeper Running' : 'Sweeper Stopped'}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {!sweeperStatus?.hasApiKeys ? 'Configure API keys to enable' : sweeperStatus?.enabled ? 'System is active' : 'System is paused'}
-                  </div>
-                </div>
-              </div>
-              <Button
-                onClick={toggleSweeper}
-                disabled={toggling || !sweeperStatus?.hasApiKeys}
-                variant={sweeperStatus?.enabled ? 'destructive' : 'default'}
-                size="sm"
-              >
-                {toggling ? 'Working...' : sweeperStatus?.enabled ? 'Stop' : 'Start'}
-              </Button>
-            </div>
-
-            <div className="flex items-center justify-between border-t pt-6">
-               <div className="space-y-0.5">
-                  <div className="font-medium">Reconciliation</div>
-                  <div className="text-xs text-muted-foreground">Sync trades & balances from exchanges</div>
-               </div>
-               <Button
-                onClick={runReconcile}
-                disabled={reconciling || !sweeperStatus?.hasApiKeys}
-                variant="outline"
-                size="sm"
-                className="gap-2"
-              >
-                <RefreshCw className={`h-4 w-4 ${reconciling ? 'animate-spin' : ''}`} />
-                {reconciling ? 'Reconciling...' : 'Reconcile'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Global Settings (Editable) */}
-        <Card className="h-full">
-          <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
-            <CardTitle>Global Settings</CardTitle>
-            {!editingSettings && settings && (
-              <Button variant="outline" size="sm" onClick={startEditingSettings}>
-                Edit
-              </Button>
-            )}
-          </CardHeader>
-          <CardContent className="p-4">
-            {editingSettings && settingsForm ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <Label>Dry Run Mode</Label>
-                    <p className="text-xs text-muted-foreground">Simulate withdrawals without executing</p>
-                  </div>
-                  <Switch
-                    checked={settingsForm.dryRun}
-                    onCheckedChange={(checked) => setSettingsForm({ ...settingsForm, dryRun: checked })}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Max Inflight Withdrawals</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      max="10"
-                      value={settingsForm.maxInflightWithdrawals}
-                      onChange={(e) => setSettingsForm({
-                        ...settingsForm,
-                        maxInflightWithdrawals: parseInt(e.target.value) || 1
-                      })}
-                    />
-                    <p className="text-xs text-muted-foreground">Total active withdrawals across all assets</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Per-Asset Max Inflight</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      max="5"
-                      value={settingsForm.perAssetMaxInflight}
-                      onChange={(e) => setSettingsForm({
-                        ...settingsForm,
-                        perAssetMaxInflight: parseInt(e.target.value) || 1
-                      })}
-                    />
-                    <p className="text-xs text-muted-foreground">Max active withdrawals per asset</p>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <Label className="text-xs">Key Name Prefix</Label>
-                  <Input
-                    value={settingsForm.keyNamePrefix}
-                    onChange={(e) => setSettingsForm({ ...settingsForm, keyNamePrefix: e.target.value })}
-                    placeholder="Filter addresses by prefix (optional)"
-                  />
-                  <p className="text-xs text-muted-foreground">Only use addresses starting with this prefix</p>
-                </div>
-
-                <div className="space-y-1">
-                  <Label className="text-xs">Allowed Order Types</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {['limit', 'market', 'stop-loss', 'stop-loss-limit', 'take-profit', 'take-profit-limit', 'trailing-stop', 'trailing-stop-limit'].map((orderType) => (
-                      <Button
-                        key={orderType}
-                        type="button"
-                        variant={settingsForm.allowedOrderTypes.includes(orderType) ? "default" : "outline"}
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => {
-                          const current = settingsForm.allowedOrderTypes;
-                          const newTypes = current.includes(orderType)
-                            ? current.filter(t => t !== orderType)
-                            : [...current, orderType];
-                          setSettingsForm({ ...settingsForm, allowedOrderTypes: newTypes });
-                        }}
-                      >
-                        {orderType}
-                      </Button>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground">Order types that trigger sweep accumulation</p>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button variant="ghost" onClick={cancelEditingSettings} disabled={savingSettings}>
-                    Cancel
-                  </Button>
-                  <Button onClick={saveSettings} disabled={savingSettings}>
-                    {savingSettings ? 'Saving...' : 'Save Settings'}
-                  </Button>
-                </div>
-              </div>
-            ) : settings ? (
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Dry Run:</span>
-                  <Badge variant={settings.dryRun ? "outline" : "secondary"} className={settings.dryRun ? "text-yellow-500 border-yellow-500" : ""}>
-                    {settings.dryRun ? 'ON' : 'OFF'}
-                  </Badge>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Max Inflight:</span>
-                  <span className="ml-2">{settings.maxInflightWithdrawals}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Per-Asset Max:</span>
-                  <span className="ml-2">{settings.perAssetMaxInflight}</span>
-                </div>
-                {settings.keyNamePrefix && (
-                  <div>
-                    <span className="text-muted-foreground">Key Prefix:</span>
-                    <span className="ml-2 font-mono">{settings.keyNamePrefix}</span>
-                  </div>
-                )}
-                <div className="col-span-2">
-                  <span className="text-muted-foreground">Order Types:</span>
-                  <span className="ml-2">{settings.allowedOrderTypes.join(', ')}</span>
-                </div>
-              </div>
-            ) : (
-              <div className="text-muted-foreground">Loading settings...</div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-      {success && <Alert className="text-green-500 border-green-500"><AlertDescription>{success}</AlertDescription></Alert>}
-
-      {/* Withdrawal Addresses Per Exchange */}
-      {exchangesWithKeys.length === 0 ? (
-        <Card>
-          <CardHeader className="py-4 border-b">
-            <CardTitle>Withdrawal Addresses</CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 text-muted-foreground text-center">
-            Configure API keys first to sync withdrawal addresses.
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          <h3 className="text-lg font-medium px-1">Exchange Wallets</h3>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {exchangesWithKeys.map((exchange) => (
-              <ExchangeWalletManager
-                key={exchange.id}
-                exchange={exchange}
-                addresses={addressesByExchange[exchange.id] || {}}
-                activeAssets={activeAssets[exchange.id] || new Set()}
-                configuredAssets={configsByExchange[exchange.id] || {}}
-                onSync={() => syncAddresses(exchange.id, exchange.name)}
-                isSyncing={syncingExchange === exchange.id}
-                loadingAddresses={loadingAddresses}
-                onAddAsset={(asset) => setAddAssetFor({ exchange: exchange.id, asset })}
-                onEditAsset={(asset, config) => setAddAssetFor({ exchange: exchange.id, asset, editingConfig: config })}
-                onDeleteConfig={(asset) => deleteAssetConfig(exchange.id, asset)}
-                supportsSync={exchangeSyncSupport[exchange.id]?.supportsSync ?? true}
-                onAddManualAddress={() => setAddManualAddressFor(exchange.id)}
-                onDeleteAddress={(asset, key) => deleteManualAddress(exchange.id, asset, key)}
-                isEnabled={!config.global.disabledExchanges?.includes(exchange.id)}
-                onToggleEnabled={(enabled) => toggleExchangeEnabled(exchange.id, enabled)}
-              />
-            ))}
-          </div>
+      <Tabs defaultValue="exchanges" className="w-full">
+        <div className="flex items-center justify-between mb-4">
+          <TabsList>
+            <TabsTrigger value="exchanges">Exchanges & Wallets</TabsTrigger>
+            <TabsTrigger value="system">System & Settings</TabsTrigger>
+          </TabsList>
         </div>
-      )}
+
+        {error && <Alert variant="destructive" className="mb-4"><AlertDescription>{error}</AlertDescription></Alert>}
+        {success && <Alert className="text-green-500 border-green-500 mb-4"><AlertDescription>{success}</AlertDescription></Alert>}
+
+        <TabsContent value="system" className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* System Control */}
+            <Card className="h-full">
+              <CardHeader className="py-4 border-b">
+                <CardTitle>System Control</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-3 h-3 rounded-full ${
+                        sweeperStatus?.enabled ? 'bg-green-500' : 'bg-gray-500'
+                      }`}
+                    />
+                    <div className="space-y-0.5">
+                      <div className="font-medium">
+                        {sweeperStatus?.enabled ? 'Sweeper Running' : 'Sweeper Stopped'}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {!sweeperStatus?.hasApiKeys ? 'Configure API keys to enable' : sweeperStatus?.enabled ? 'System is active' : 'System is paused'}
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={toggleSweeper}
+                    disabled={toggling || !sweeperStatus?.hasApiKeys}
+                    variant={sweeperStatus?.enabled ? 'destructive' : 'default'}
+                    size="sm"
+                  >
+                    {toggling ? 'Working...' : sweeperStatus?.enabled ? 'Stop' : 'Start'}
+                  </Button>
+                </div>
+
+                <div className="flex items-center justify-between border-t pt-6">
+                   <div className="space-y-0.5">
+                      <div className="font-medium">Reconciliation</div>
+                      <div className="text-xs text-muted-foreground">Sync trades & balances from exchanges</div>
+                   </div>
+                   <Button
+                    onClick={runReconcile}
+                    disabled={reconciling || !sweeperStatus?.hasApiKeys}
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${reconciling ? 'animate-spin' : ''}`} />
+                    {reconciling ? 'Reconciling...' : 'Reconcile'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Global Settings (Editable) */}
+            <Card className="h-full">
+              <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
+                <CardTitle>Global Settings</CardTitle>
+                {!editingSettings && settings && (
+                  <Button variant="outline" size="sm" onClick={startEditingSettings}>
+                    Edit
+                  </Button>
+                )}
+              </CardHeader>
+              <CardContent className="p-4">
+                {editingSettings && settingsForm ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <Label>Dry Run Mode</Label>
+                        <p className="text-xs text-muted-foreground">Simulate withdrawals without executing</p>
+                      </div>
+                      <Switch
+                        checked={settingsForm.dryRun}
+                        onCheckedChange={(checked) => setSettingsForm({ ...settingsForm, dryRun: checked })}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Max Inflight Withdrawals</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="10"
+                          value={settingsForm.maxInflightWithdrawals}
+                          onChange={(e) => setSettingsForm({
+                            ...settingsForm,
+                            maxInflightWithdrawals: parseInt(e.target.value) || 1
+                          })}
+                        />
+                        <p className="text-xs text-muted-foreground">Total active withdrawals across all assets</p>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Per-Asset Max Inflight</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="5"
+                          value={settingsForm.perAssetMaxInflight}
+                          onChange={(e) => setSettingsForm({
+                            ...settingsForm,
+                            perAssetMaxInflight: parseInt(e.target.value) || 1
+                          })}
+                        />
+                        <p className="text-xs text-muted-foreground">Max active withdrawals per asset</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs">Key Name Prefix</Label>
+                      <Input
+                        value={settingsForm.keyNamePrefix}
+                        onChange={(e) => setSettingsForm({ ...settingsForm, keyNamePrefix: e.target.value })}
+                        placeholder="Filter addresses by prefix (optional)"
+                      />
+                      <p className="text-xs text-muted-foreground">Only use addresses starting with this prefix</p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs">Allowed Order Types</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {['limit', 'market', 'stop-loss', 'stop-loss-limit', 'take-profit', 'take-profit-limit', 'trailing-stop', 'trailing-stop-limit'].map((orderType) => (
+                          <Button
+                            key={orderType}
+                            type="button"
+                            variant={settingsForm.allowedOrderTypes.includes(orderType) ? "default" : "outline"}
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => {
+                              const current = settingsForm.allowedOrderTypes;
+                              const newTypes = current.includes(orderType)
+                                ? current.filter(t => t !== orderType)
+                                : [...current, orderType];
+                              setSettingsForm({ ...settingsForm, allowedOrderTypes: newTypes });
+                            }}
+                          >
+                            {orderType}
+                          </Button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground">Order types that trigger sweep accumulation</p>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2">
+                      <Button variant="ghost" onClick={cancelEditingSettings} disabled={savingSettings}>
+                        Cancel
+                      </Button>
+                      <Button onClick={saveSettings} disabled={savingSettings}>
+                        {savingSettings ? 'Saving...' : 'Save Settings'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : settings ? (
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Dry Run:</span>
+                      <Badge variant={settings.dryRun ? "outline" : "secondary"} className={settings.dryRun ? "text-yellow-500 border-yellow-500" : ""}>
+                        {settings.dryRun ? 'ON' : 'OFF'}
+                      </Badge>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Max Inflight:</span>
+                      <span className="ml-2">{settings.maxInflightWithdrawals}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Per-Asset Max:</span>
+                      <span className="ml-2">{settings.perAssetMaxInflight}</span>
+                    </div>
+                    {settings.keyNamePrefix && (
+                      <div>
+                        <span className="text-muted-foreground">Key Prefix:</span>
+                        <span className="ml-2 font-mono">{settings.keyNamePrefix}</span>
+                      </div>
+                    )}
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Order Types:</span>
+                      <span className="ml-2">{settings.allowedOrderTypes.join(', ')}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-muted-foreground">Loading settings...</div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="exchanges" className="space-y-6">
+          {/* Withdrawal Addresses Per Exchange */}
+          {exchangesWithKeys.length === 0 ? (
+            <Card>
+              <CardHeader className="py-4 border-b">
+                <CardTitle>Withdrawal Addresses</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 text-muted-foreground text-center">
+                Configure API keys first to sync withdrawal addresses.
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                 <h3 className="text-lg font-medium px-1">Exchange Wallets</h3>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {exchangesWithKeys.map((exchange) => (
+                  <ExchangeWalletManager
+                    key={exchange.id}
+                    exchange={exchange}
+                    addresses={addressesByExchange[exchange.id] || {}}
+                    activeAssets={activeAssets[exchange.id] || new Set()}
+                    configuredAssets={configsByExchange[exchange.id] || {}}
+                    onSync={() => syncAddresses(exchange.id, exchange.name)}
+                    isSyncing={syncingExchange === exchange.id}
+                    loadingAddresses={loadingAddresses}
+                    onAddAsset={(asset) => setAddAssetFor({ exchange: exchange.id, asset })}
+                    onEditAsset={(asset, config) => setAddAssetFor({ exchange: exchange.id, asset, editingConfig: config })}
+                    onDeleteConfig={(asset) => deleteAssetConfig(exchange.id, asset)}
+                    supportsSync={exchangeSyncSupport[exchange.id]?.supportsSync ?? true}
+                    requiresManualEntry={exchangeSyncSupport[exchange.id]?.requiresManualEntry ?? false}
+                    onAddManualAddress={() => setAddManualAddressFor(exchange.id)}
+                    onDeleteAddress={(asset, key) => deleteManualAddress(exchange.id, asset, key)}
+                    isEnabled={exchange.enabled !== false}
+                    onToggleEnabled={(enabled) => toggleExchangeEnabled(exchange.id, enabled)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
 
       {/* Add/Edit Asset Modal */}
       <AddAssetDialog
@@ -841,6 +860,7 @@ export function ConfigPanel() {
         onOpenChange={(open) => !open && setAddManualAddressFor(null)}
         exchange={addManualAddressFor || ''}
         exchangeName={exchanges.find(e => e.id === addManualAddressFor)?.name || ''}
+        withdrawalMethods={addManualAddressFor ? withdrawalMethods.filter(m => m.exchange === addManualAddressFor) : []}
         onAdd={async (data) => {
           if (!addManualAddressFor) return;
           const success = await addManualAddress(addManualAddressFor, data);
@@ -859,7 +879,7 @@ interface AddAssetDialogProps {
   initialAsset?: string;
   editingConfig?: AssetConfig;
   existingAssets: string[];
-  addressesByAsset: Record<string, { method: string; keys: string[] }>;
+  addressesByAsset: Record<string, { method: string; entries: Array<{ key: string; address: string }> }>;
   withdrawalMethods: WithdrawalMethod[];
   onSave: (asset: string, config: {
     threshold: number;
@@ -877,7 +897,10 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
   const isEditing = !!editingConfig;
   // When editing, include the current asset; otherwise filter out existing
   const availableAssets = Object.keys(addressesByAsset).filter(
-    (a) => (isEditing && a === initialAsset) || (!existingAssets.includes(a) && addressesByAsset[a].keys.length > 0)
+    (a) => {
+      const hasEntries = !!addressesByAsset[a]?.entries && addressesByAsset[a].entries.length > 0;
+      return (isEditing && a === initialAsset) || (!existingAssets.includes(a) && hasEntries);
+    }
   );
   const defaultAsset = initialAsset && availableAssets.includes(initialAsset) ? initialAsset : availableAssets[0] || '';
   const [selectedAsset, setSelectedAsset] = useState(defaultAsset);
@@ -892,8 +915,11 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
 
   // Get withdrawal method info for the selected asset (minimum, fee)
   const assetInfo = selectedAsset ? addressesByAsset[selectedAsset] : null;
+  // Try exact match first, then case-insensitive, then just by asset (if only one method exists)
   const methodInfo = selectedAsset && assetInfo
     ? withdrawalMethods.find(m => m.asset === selectedAsset && m.method === assetInfo.method)
+      ?? withdrawalMethods.find(m => m.asset === selectedAsset && m.method.toLowerCase() === assetInfo.method.toLowerCase())
+      ?? withdrawalMethods.find(m => m.asset === selectedAsset) // fallback: any method for this asset
     : null;
   const minimum = methodInfo?.minimum ?? 0;
   const isUsdChunk = chunkMode === 'fixedUsd';
@@ -939,10 +965,13 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
       if (userEditedValues) {
         return;
       }
-      setSelectedKeys(addressesByAsset[selectedAsset].keys);
+      setSelectedKeys(addressesByAsset[selectedAsset]?.entries?.map((e) => e.key) || []);
       // Set threshold to minimum withdrawal amount
       const info = addressesByAsset[selectedAsset];
-      const method = withdrawalMethods.find(m => m.asset === selectedAsset && m.method === info.method);
+      // Try exact match first, then case-insensitive, then just by asset
+      const method = withdrawalMethods.find(m => m.asset === selectedAsset && m.method === info.method)
+        ?? withdrawalMethods.find(m => m.asset === selectedAsset && m.method.toLowerCase() === info.method.toLowerCase())
+        ?? withdrawalMethods.find(m => m.asset === selectedAsset);
       if (method?.minimum) {
         setThreshold(method.minimum);
         setChunkAmount(method.minimum); // Also set chunk size to minimum
@@ -1019,15 +1048,16 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
                     <div className="space-y-2">
                       <Label>Select Wallet Keys ({selectedKeys.length} selected)</Label>
                       <div className="flex flex-wrap gap-2">
-                        {assetInfo.keys.map((key) => (
+                        {(assetInfo.entries || []).map((entry) => (
                           <Button
-                            key={key}
-                            variant={selectedKeys.includes(key) ? "default" : "outline"}
+                            key={entry.key}
+                            variant={selectedKeys.includes(entry.key) ? "default" : "outline"}
                             size="sm"
-                            onClick={() => toggleKey(key)}
+                            onClick={() => toggleKey(entry.key)}
                             className="font-mono"
+                            title={entry.address}
                           >
-                            {key}
+                            {entry.key}
                           </Button>
                         ))}
                       </div>
@@ -1212,6 +1242,7 @@ interface ManualAddressDialogProps {
   onOpenChange: (open: boolean) => void;
   exchange: string;
   exchangeName: string;
+  withdrawalMethods: WithdrawalMethod[];
   onAdd: (data: {
     asset: string;
     address: string;
@@ -1223,7 +1254,7 @@ interface ManualAddressDialogProps {
   saving: boolean;
 }
 
-function ManualAddressDialog({ open, onOpenChange, exchange, exchangeName, onAdd, saving }: ManualAddressDialogProps) {
+function ManualAddressDialog({ open, onOpenChange, exchange, exchangeName, withdrawalMethods, onAdd, saving }: ManualAddressDialogProps) {
   const [tradeableCoins, setTradeableCoins] = useState<string[]>([]);
   const [loadingCoins, setLoadingCoins] = useState(false);
   const [asset, setAsset] = useState('');
@@ -1233,6 +1264,11 @@ function ManualAddressDialog({ open, onOpenChange, exchange, exchangeName, onAdd
   const [key, setKey] = useState('');
   const [memo, setMemo] = useState('');
   const [error, setError] = useState('');
+
+  // Get available methods for selected asset
+  const availableMethods = asset
+    ? withdrawalMethods.filter(m => m.asset === asset)
+    : [];
 
   useEffect(() => {
     if (open && exchange) {
@@ -1247,6 +1283,11 @@ function ManualAddressDialog({ open, onOpenChange, exchange, exchangeName, onAdd
       setError('');
     }
   }, [open, exchange]);
+
+  // Reset method when asset changes
+  useEffect(() => {
+    setMethod('');
+  }, [asset]);
 
   async function fetchTradeableCoins() {
     setLoadingCoins(true);
@@ -1349,11 +1390,28 @@ function ManualAddressDialog({ open, onOpenChange, exchange, exchangeName, onAdd
 
           <div className="space-y-2">
             <Label>Network / Chain *</Label>
-            <Input
-              value={method}
-              onChange={(e) => setMethod(e.target.value)}
-              placeholder="e.g., ERC20, TRC20, Native"
-            />
+            {!asset ? (
+              <p className="text-sm text-muted-foreground">Select a coin first</p>
+            ) : availableMethods.length === 0 ? (
+              <Alert>
+                <AlertDescription>
+                  No withdrawal methods found for {asset}. Click "Fetch Minimums" to load available networks.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Select value={method} onValueChange={setMethod}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select network" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableMethods.map((m) => (
+                    <SelectItem key={m.method} value={m.method}>
+                      {m.method} {m.minimum ? `(min: ${m.minimum} ${asset})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <p className="text-xs text-muted-foreground">
               The blockchain network for this address (must match your wallet)
             </p>
@@ -1425,7 +1483,7 @@ function ManualAddressDialog({ open, onOpenChange, exchange, exchangeName, onAdd
 
 interface ExchangeWalletManagerProps {
   exchange: AvailableExchange;
-  addresses: Record<string, { method: string; keys: string[] }>;
+  addresses: Record<string, { method: string; entries: { key: string; address: string }[] }>;
   activeAssets: Set<string>;
   configuredAssets: Record<string, AssetConfig>;
   onSync: () => void;
@@ -1435,6 +1493,7 @@ interface ExchangeWalletManagerProps {
   onEditAsset: (asset: string, config: AssetConfig) => void;
   onDeleteConfig: (asset: string) => void;
   supportsSync: boolean;
+  requiresManualEntry: boolean;
   onAddManualAddress: () => void;
   onDeleteAddress: (asset: string, key: string) => void;
   isEnabled: boolean;
@@ -1453,6 +1512,7 @@ function ExchangeWalletManager({
   onEditAsset,
   onDeleteConfig,
   supportsSync,
+  requiresManualEntry,
   onAddManualAddress,
   onDeleteAddress,
   isEnabled,
@@ -1506,7 +1566,7 @@ function ExchangeWalletManager({
                   {activeCount} active
                 </Badge>
               )}
-              {!supportsSync && (
+              {requiresManualEntry && (
                 <Badge variant="outline" className="text-yellow-500 border-yellow-500">
                   Manual
                 </Badge>
@@ -1518,7 +1578,7 @@ function ExchangeWalletManager({
           <Button onClick={() => setOpen(true)} variant="default" className="w-full" disabled={!isEnabled}>
             Manage Wallets
           </Button>
-          {supportsSync ? (
+          {supportsSync && (
             <Button
               onClick={onSync}
               disabled={isSyncing || !isEnabled}
@@ -1526,9 +1586,10 @@ function ExchangeWalletManager({
               size="sm"
               className="w-full"
             >
-              {isSyncing ? 'Syncing...' : 'Sync Addresses'}
+              {isSyncing ? 'Syncing...' : requiresManualEntry ? 'Fetch Minimums' : 'Sync Addresses'}
             </Button>
-          ) : (
+          )}
+          {requiresManualEntry && (
             <Button
               onClick={onAddManualAddress}
               variant="outline"
@@ -1559,16 +1620,17 @@ function ExchangeWalletManager({
               </div>
             ) : allAssets.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground">
-                {supportsSync
-                  ? 'No withdrawal addresses found. Sync from exchange to fetch them.'
-                  : 'No withdrawal addresses added. Add addresses manually for coins you are trading.'}
+                {requiresManualEntry
+                  ? 'No withdrawal addresses added. Add addresses manually for coins you are trading.'
+                  : 'No withdrawal addresses found. Sync from exchange to fetch them.'}
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 {allAssets.map((asset) => {
                   const data = addresses[asset];
                   const method = data?.method;
-                  const keys = data?.keys || [];
+                  const entries = data?.entries || [];
+                  const keys = entries.map((e) => e.key);
                   const config = configuredAssets[asset];
                   const isConfigured = !!config;
                   const isActive = activeAssets.has(asset);
@@ -1615,15 +1677,16 @@ function ExchangeWalletManager({
                           </div>
                         ) : (
                           <>
-                            {keys.slice(0, supportsSync ? 3 : keys.length).map((key) => (
+                            {entries.slice(0, requiresManualEntry ? entries.length : 3).map((entry) => (
                               <span
-                                key={key}
-                                className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-muted text-muted-foreground truncate max-w-[100px] flex items-center gap-1"
+                                key={entry.key}
+                                className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-muted text-muted-foreground truncate max-w-[180px] flex items-center gap-1"
                               >
-                                {key}
-                                {!supportsSync && (
+                                <span className="truncate max-w-[90px]" title={entry.key}>{entry.key}</span>
+                                <span className="text-[8px] text-muted-foreground truncate max-w-[140px]" title={entry.address}>{entry.address}</span>
+                                {requiresManualEntry && (
                                   <button
-                                    onClick={() => onDeleteAddress(asset, key)}
+                                    onClick={() => onDeleteAddress(asset, entry.key)}
                                     className="text-destructive hover:text-destructive/80 ml-1"
                                     title="Delete address"
                                   >
@@ -1632,7 +1695,7 @@ function ExchangeWalletManager({
                                 )}
                               </span>
                             ))}
-                            {supportsSync && keys.length > 3 && (
+                            {!requiresManualEntry && keys.length > 3 && (
                               <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-muted text-muted-foreground">
                                 +{keys.length - 3}
                               </span>
@@ -1681,10 +1744,10 @@ function ExchangeWalletManager({
                              onClick={() => {
                                if (isMissingAddress) {
                                  setOpen(false);
-                                 if (supportsSync) {
-                                   onSync();
-                                 } else {
+                                 if (requiresManualEntry) {
                                    onAddManualAddress();
+                                 } else {
+                                   onSync();
                                  }
                                } else {
                                  setOpen(false);
@@ -1692,7 +1755,7 @@ function ExchangeWalletManager({
                                }
                              }}
                            >
-                             {isMissingAddress ? (supportsSync ? "Sync Addr" : "Add Addr") : "Configure"}
+                             {isMissingAddress ? (requiresManualEntry ? "Add Addr" : "Sync Addr") : "Configure"}
                            </Button>
                          )}
                       </div>

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, powerMonitor, shell, dialog } from 'electron';
+import { app, BrowserWindow, powerMonitor, shell, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -14,9 +14,8 @@ if (app.isPackaged) {
 
 // Keep references to prevent garbage collection
 let mainWindow = null;
-let tray = null;
 let serverProcess = null;
-let isQuitting = false;
+let serverStarted = false;
 
 const SERVER_PORT = 3000;
 const SERVER_URL = `http://localhost:${SERVER_PORT}`;
@@ -24,6 +23,15 @@ const SERVER_URL = `http://localhost:${SERVER_PORT}`;
 // Set userData path for the app data (db, config, logs)
 const userDataPath = app.getPath('userData');
 process.env.MOBY_DATA_PATH = userDataPath;
+
+// Simple file logger for Electron main process debugging
+function electronLog(msg) {
+  const timestamp = new Date().toISOString();
+  const line = `[${timestamp}] ELECTRON: ${msg}\n`;
+  try {
+    fs.appendFileSync(path.join(userDataPath, 'moby.log'), line);
+  } catch { /* ignore */ }
+}
 
 /**
  * Create the main application window
@@ -53,14 +61,6 @@ function createWindow() {
 
   // Load the server URL
   mainWindow.loadURL(SERVER_URL);
-
-  // Handle window close - minimize to tray instead of quitting
-  mainWindow.on('close', (event) => {
-    if (!isQuitting) {
-      event.preventDefault();
-      mainWindow.hide();
-    }
-  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -93,70 +93,18 @@ function getIconPath() {
 }
 
 /**
- * Create the system tray icon and menu
- */
-function createTray() {
-  const trayIconPath = path.join(__dirname, '..', 'assets', 'icon.png');
-
-  // Create a smaller icon for the tray (16x16 or 22x22)
-  let trayIcon;
-  try {
-    trayIcon = nativeImage.createFromPath(trayIconPath);
-    // Resize for tray
-    trayIcon = trayIcon.resize({ width: 16, height: 16 });
-  } catch {
-    // Use a default empty icon if not found
-    trayIcon = nativeImage.createEmpty();
-  }
-
-  tray = new Tray(trayIcon);
-  tray.setToolTip('Moby - Crypto Auto-Sweeper');
-
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: 'Show Moby',
-      click: () => {
-        if (mainWindow) {
-          mainWindow.show();
-          mainWindow.focus();
-        }
-      },
-    },
-    { type: 'separator' },
-    {
-      label: 'Quit Moby',
-      click: () => {
-        isQuitting = true;
-        app.quit();
-      },
-    },
-  ]);
-
-  tray.setContextMenu(contextMenu);
-
-  // Click on tray icon to show/hide window
-  tray.on('click', () => {
-    if (mainWindow) {
-      if (mainWindow.isVisible()) {
-        mainWindow.hide();
-      } else {
-        mainWindow.show();
-        mainWindow.focus();
-      }
-    }
-  });
-}
-
-/**
  * Start the Express server in-process
  */
 async function startServer() {
+  electronLog('startServer called');
   const serverPath = path.join(__dirname, '..', 'dist', 'server', 'app.js');
 
   // Check if compiled server exists
   try {
     fs.accessSync(serverPath);
+    electronLog(`Server file found: ${serverPath}`);
   } catch {
+    electronLog('Server file not found, checking dev mode');
     if (!app.isPackaged) {
       // Fall back to tsx for development only
       const { spawn } = await import('child_process');
@@ -182,11 +130,16 @@ async function startServer() {
   }
 
   // Import the compiled server directly (runs in same process)
+  electronLog('Importing server module');
   const serverUrl = `file://${serverPath}`;
   await import(serverUrl);
+  electronLog('Server module imported');
 
   // Wait for the server to actually be reachable, otherwise Electron init appears to "hang"
+  electronLog('Waiting for server to be ready');
   await waitForServerReady(30_000);
+  electronLog('Server is ready');
+  serverStarted = true;
 }
 
 async function waitForServerReady(timeoutMs) {
@@ -215,12 +168,17 @@ async function waitForServerReady(timeoutMs) {
 setInterval(() => {}, 1000 * 60 * 60);
 
 /**
- * Stop the server process (only used in dev mode with subprocess)
+ * Stop the server - handles both subprocess (dev) and in-process (production) modes
  */
 function stopServer() {
   if (serverProcess) {
+    // Dev mode: kill the subprocess
     serverProcess.kill('SIGTERM');
     serverProcess = null;
+  } else if (serverStarted) {
+    // Production mode: server runs in-process, trigger shutdown via signal event
+    // The server's app.ts listens for SIGTERM/SIGINT and runs shutdown()
+    process.emit('SIGTERM');
   }
 }
 
@@ -238,6 +196,8 @@ function setupPowerMonitor() {
  * Initialize the application
  */
 async function initialize() {
+  electronLog('initialize called');
+
   // Create data directory if it doesn't exist
   if (!fs.existsSync(userDataPath)) {
     fs.mkdirSync(userDataPath, { recursive: true });
@@ -245,9 +205,10 @@ async function initialize() {
 
   try {
     await startServer();
+    electronLog('Server started, creating window');
     createWindow();
-    createTray();
     setupPowerMonitor();
+    electronLog('Initialization complete');
   } catch (err) {
     try {
       const message = err instanceof Error ? `${err.message}\n${err.stack || ''}` : String(err);
@@ -263,25 +224,17 @@ async function initialize() {
   }
 }
 
-// Prevent app from quitting unexpectedly
-app.on('will-quit', (event) => {
-  if (!isQuitting) {
-    event.preventDefault();
-  }
-});
-
 // App ready
 app.whenReady().then(initialize);
 
-// Quit when all windows are closed (except on macOS)
+// Quit when all windows are closed
 app.on('window-all-closed', () => {
-  // On macOS, keep the app running in the tray
-  if (process.platform !== 'darwin') {
-    // On Windows/Linux, app stays in tray
-  }
+  electronLog('window-all-closed event');
+  app.quit();
 });
 
 app.on('activate', () => {
+  electronLog('activate event');
   // On macOS, re-create window when dock icon is clicked
   if (mainWindow === null) {
     createWindow();
@@ -292,14 +245,16 @@ app.on('activate', () => {
 
 // Clean up before quitting
 app.on('before-quit', () => {
-  isQuitting = true;
+  electronLog('before-quit event');
   stopServer();
 });
 
 // Handle second instance (single instance lock)
 const gotTheLock = app.requestSingleInstanceLock();
+electronLog(`Single instance lock: ${gotTheLock ? 'obtained' : 'failed (another instance running)'}`);
 
 if (!gotTheLock) {
+  electronLog('Quitting because another instance is running');
   app.quit();
 } else {
   app.on('second-instance', () => {

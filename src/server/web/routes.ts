@@ -135,6 +135,8 @@ export interface RoutesContext {
   updateConfig: (newConfig: AppConfig) => void;
   runReconciliation?: (exchange?: ExchangeId) => Promise<ReconcileResult[]>;
   wakeScheduler?: () => void;
+  disconnectExchangeWs?: (exchange: ExchangeId) => void;
+  connectExchangeWs?: (exchange: ExchangeId) => Promise<void>;
 }
 
 export function createRoutes(context: RoutesContext): Router {
@@ -300,7 +302,7 @@ export function createRoutes(context: RoutesContext): Router {
   });
 
   // Toggle exchange enabled/disabled
-  router.post('/api/exchanges/:exchange/settings', requireAuth, (req: Request, res: Response) => {
+  router.post('/api/exchanges/:exchange/settings', requireAuth, async (req: Request, res: Response) => {
     const exchange = req.params.exchange as ExchangeId;
     const { enabled } = req.body;
 
@@ -311,6 +313,26 @@ export function createRoutes(context: RoutesContext): Router {
 
     setExchangeEnabled(exchange, enabled);
     logger.info({ exchange, enabled }, 'Exchange enabled state changed');
+
+    // Disconnect or reconnect WebSocket based on enabled state
+    if (enabled) {
+      // Re-enable: connect WebSocket
+      if (context.connectExchangeWs) {
+        try {
+          await context.connectExchangeWs(exchange);
+          logger.info({ exchange }, 'WebSocket reconnected after enabling exchange');
+        } catch (err) {
+          logger.error({ exchange, error: err instanceof Error ? err.message : 'Unknown' }, 'Failed to reconnect WebSocket');
+        }
+      }
+    } else {
+      // Disable: disconnect WebSocket to stop all connection attempts
+      if (context.disconnectExchangeWs) {
+        context.disconnectExchangeWs(exchange);
+        logger.info({ exchange }, 'WebSocket disconnected after disabling exchange');
+      }
+    }
+
     res.json({ success: true, exchange, enabled });
   });
 
@@ -998,25 +1020,63 @@ export function createRoutes(context: RoutesContext): Router {
     const exchange = (req.query.exchange as ExchangeId) || undefined;
     const asset = req.query.asset as string | undefined;
 
-    let methods;
-    if (exchange && asset) {
-      methods = getWithdrawalMethodsForAsset(exchange, asset);
-    } else {
-      methods = getAllWithdrawalMethods(exchange);
+    const doRespond = (methods: ReturnType<typeof getAllWithdrawalMethods>) => {
+      res.json(
+        methods.map((m) => ({
+          exchange: m.exchange,
+          asset: m.asset,
+          method: m.method,
+          network: m.network,
+          minimum: m.minimum,
+          maximum: m.maximum,
+          fee: m.fee,
+          lastSyncedAt: m.lastSyncedAt,
+        }))
+      );
+    };
+
+    const loadCached = (): ReturnType<typeof getAllWithdrawalMethods> => {
+      if (exchange && asset) {
+        return getWithdrawalMethodsForAsset(exchange, asset);
+      }
+      return getAllWithdrawalMethods(exchange);
+    };
+
+    let methods = loadCached();
+
+    // Lazy-fetch if missing and exchange supports it (helps KuCoin when no addresses are synced)
+    if (exchange && methods.length === 0) {
+      const pool = getClientPool(exchange);
+      if (pool.hasAvailableClients()) {
+        pool
+          .execute(async (client) => {
+            if (client.getWithdrawMethods) {
+              return client.getWithdrawMethods();
+            }
+            return [] as import('../exchanges/types.js').WithdrawalMethod[];
+          })
+          .then((fetched) => {
+            for (const method of fetched) {
+              upsertWithdrawalMethod(exchange, method.asset, method.method, {
+                network: method.network,
+                minimum: method.minimum,
+                maximum: method.maximum,
+                fee: method.fee,
+                genAddress: method.genAddress,
+              });
+            }
+            methods = loadCached();
+            doRespond(methods);
+          })
+          .catch((err) => {
+            logger.warn({ exchange, err }, 'Failed to fetch withdrawal methods lazily');
+            doRespond(methods);
+          });
+        return;
+      }
     }
 
-    res.json(
-      methods.map((m) => ({
-        exchange: m.exchange,
-        asset: m.asset,
-        method: m.method,
-        network: m.network,
-        minimum: m.minimum,
-        maximum: m.maximum,
-        fee: m.fee,
-        lastSyncedAt: m.lastSyncedAt,
-      }))
-    );
+    doRespond(methods);
   });
 
   // Legacy route for Kraken addresses
@@ -1077,7 +1137,8 @@ export function createRoutes(context: RoutesContext): Router {
       }
 
       // Delete addresses that no longer exist on the exchange
-      const deletedCount = deleteRemovedAddresses(exchange, currentKeys);
+      // BUT only if the exchange actually returned addresses (don't delete manual addresses for exchanges like KuCoin)
+      const deletedCount = exchangeAddresses.length > 0 ? deleteRemovedAddresses(exchange, currentKeys) : 0;
 
       // Also fetch and cache withdrawal methods (minimums, fees)
       let methodsCount = 0;
@@ -1244,7 +1305,7 @@ export function createRoutes(context: RoutesContext): Router {
     }
   });
 
-  // Get tradeable coins (coins with open limit orders) for an exchange
+  // Get tradeable coins (bases of open limit orders) for an exchange
   router.get('/api/exchanges/:exchange/tradeable-coins', requireAuth, async (req: Request, res: Response) => {
     const exchange = req.params.exchange as ExchangeId;
     const pool = getClientPool(exchange);
@@ -1258,7 +1319,7 @@ export function createRoutes(context: RoutesContext): Router {
       const result = await pool.execute((client) => client.getOpenOrders());
       const orders = result.open || {};
 
-      // Extract unique coins from order pairs
+      // Extract unique base coins from order pairs
       const coins = new Set<string>();
       const registry = getExchangeRegistry();
       const adapter = registry.get(exchange);
@@ -1268,7 +1329,7 @@ export function createRoutes(context: RoutesContext): Router {
           // Parse pair to get base and quote currencies
           const { base, quote } = adapter?.parsePair(order.pair) || { base: '', quote: '' };
           if (base) coins.add(base);
-          if (quote) coins.add(quote);
+          // Only return base assets for withdrawal address selection
         }
       }
 
@@ -1338,11 +1399,18 @@ export function createRoutes(context: RoutesContext): Router {
     }
 
     try {
+      // Normalize asset (use base if user pasted pair)
+      const normalizedAsset = asset.split(/[-/]/)[0]?.trim().toUpperCase();
+      if (!normalizedAsset) {
+        res.status(400).json({ error: 'Invalid asset symbol' });
+        return;
+      }
+
       // Store the address
-      const result = upsertExchangeAddress(exchange, asset.toUpperCase(), method, key, address);
+      const result = upsertExchangeAddress(exchange, normalizedAsset, method, key, address);
 
       logger.info(
-        { exchange, asset, key, method, isNew: result.isNew },
+        { exchange, asset: normalizedAsset, key, method, isNew: result.isNew },
         'Manual address added'
       );
 
@@ -1351,7 +1419,7 @@ export function createRoutes(context: RoutesContext): Router {
         isNew: result.isNew,
         address: {
           exchange,
-          asset: asset.toUpperCase(),
+          asset: normalizedAsset,
           method,
           key,
           address,
@@ -1401,12 +1469,14 @@ export function createRoutes(context: RoutesContext): Router {
     const exchange = req.params.exchange as ExchangeId;
 
     // Exchanges that support syncing addresses from their API
-    const syncSupportedExchanges: ExchangeId[] = ['kraken', 'gemini', 'gateio'];
+    const addressSyncExchanges: ExchangeId[] = ['kraken', 'gemini', 'gateio'];
+    // Exchanges that support fetching withdrawal methods (minimums/fees) - includes address sync + others
+    const methodSyncExchanges: ExchangeId[] = ['kraken', 'gemini', 'gateio', 'kucoin'];
 
     res.json({
       exchange,
-      supportsSync: syncSupportedExchanges.includes(exchange),
-      requiresManualEntry: !syncSupportedExchanges.includes(exchange),
+      supportsSync: methodSyncExchanges.includes(exchange),
+      requiresManualEntry: !addressSyncExchanges.includes(exchange),
     });
   });
 

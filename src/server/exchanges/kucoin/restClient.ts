@@ -69,6 +69,19 @@ interface KuCoinWithdrawalAddress {
   contractAddress: string;
 }
 
+// KuCoin currency info (for min withdrawal)
+interface KuCoinCurrencyChain {
+  chainId: string;
+  withdrawalMinSize: string;
+  withdrawalMinFee: string;
+  isWithdrawEnabled: boolean;
+}
+
+interface KuCoinCurrency {
+  currency: string;
+  chains: KuCoinCurrencyChain[];
+}
+
 export class KuCoinRestClient {
   private readonly apiKey: string;
   private readonly apiSecret: string;
@@ -183,6 +196,55 @@ export class KuCoinRestClient {
       amount: amount - fee,
       fee,
     };
+  }
+
+  /**
+   * Get withdrawal methods (min sizes/fees) for all currencies
+   */
+  async getWithdrawMethods(): Promise<
+    Array<{
+      asset: string;
+      method: string;
+      network?: string;
+      minimum: number;
+      maximum?: number;
+      fee?: number;
+      genAddress: boolean;
+    }>
+  > {
+    const currencies = await this.request<KuCoinCurrency[]>('GET', '/api/v3/currencies');
+
+    const methods: Array<{
+      asset: string;
+      method: string;
+      network?: string;
+      minimum: number;
+      maximum?: number;
+      fee?: number;
+      genAddress: boolean;
+    }> = [];
+
+    for (const c of currencies) {
+      const asset = normalizeKuCoinAsset(c.currency);
+      for (const chain of c.chains || []) {
+        if (!chain.isWithdrawEnabled) continue;
+        const minimum = parseFloat(chain.withdrawalMinSize);
+        const fee = parseFloat(chain.withdrawalMinFee);
+        const network = chain.chainId || undefined;
+        const method = network || `${asset} Network`;
+        methods.push({
+          asset,
+          method,
+          network,
+          minimum: Number.isFinite(minimum) ? minimum : 0,
+          maximum: undefined,
+          fee: Number.isFinite(fee) ? fee : undefined,
+          genAddress: false,
+        });
+      }
+    }
+
+    return methods;
   }
 
   /**

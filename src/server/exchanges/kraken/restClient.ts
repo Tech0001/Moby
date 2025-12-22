@@ -127,7 +127,7 @@ export class KrakenRestClient {
     network?: string;
     minimum: string;
     limit: string | false;
-    fee: string;
+    fee?: string;
     'gen-address': boolean;
   }>> {
     logger.debug({ asset }, 'Getting withdrawal methods');
@@ -141,7 +141,7 @@ export class KrakenRestClient {
       network?: string;
       minimum: string;
       limit: string | false;
-      fee: string;
+      fee?: string;
       'gen-address': boolean;
     }>>('WithdrawMethods', params);
   }

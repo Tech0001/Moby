@@ -118,6 +118,10 @@ export const KuCoinAdapterFactory: ExchangeAdapterFactory = {
         }));
       },
 
+      async getWithdrawMethods() {
+        return client.getWithdrawMethods();
+      },
+
       async getOpenOrders() {
         const result = await client.getOpenOrders();
         // Convert to standard format

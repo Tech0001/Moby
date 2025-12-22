@@ -1,4 +1,4 @@
-import { mkdirSync, existsSync } from 'fs';
+import { mkdirSync, existsSync, appendFileSync, statSync, renameSync, unlinkSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { randomBytes } from 'crypto';
@@ -9,12 +9,12 @@ import { initDb, closeDb } from './db/sqlite.js';
 import {
   getAllApiKeys,
   setEnabled,
-  hasAnyApiKeys,
   migrateApiKeysToEncrypted,
   getAppStateValue,
   setAppStateValue,
   cleanupOldFillEvents,
   getAllSettings,
+  getEnabledExchanges,
 } from './db/repositories.js';
 import { applySettingsToConfig } from './config/applySettings.js';
 import { FillProcessor } from './domain/fillProcessor.js';
@@ -32,15 +32,6 @@ import { GateAdapterFactory } from './exchanges/gateio/factory.js';
 import type { AppConfig } from './config/schema.js';
 import type { FillEvent, ExchangeId } from './domain/types.js';
 
-/**
- * Get list of exchanges that have API keys configured
- */
-function getEnabledExchanges(): ExchangeId[] {
-  const registry = getExchangeRegistry();
-  const allExchanges = registry.getAll().map((a) => a.exchangeId);
-  return allExchanges.filter((id) => hasAnyApiKeys(id));
-}
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appLogger = createChildLogger('app');
 
@@ -49,6 +40,51 @@ const dataDir = process.env.MOBY_DATA_PATH || process.env.DATA_DIR || './data';
 if (!existsSync(dataDir)) {
   mkdirSync(dataDir, { recursive: true });
 }
+
+// File-based logging for critical events (survives crashes)
+const logFilePath = join(dataDir, 'moby.log');
+const debugLogging = false; // Set to true for verbose debugging
+const MAX_LOG_SIZE = 1024 * 1024; // 1MB max log size
+
+function logToFile(level: string, message: string, data?: Record<string, unknown>): void {
+  if (level === 'debug' && !debugLogging) return;
+  const timestamp = new Date().toISOString();
+  const dataStr = data ? ` ${JSON.stringify(data)}` : '';
+  const line = `[${timestamp}] ${level.toUpperCase()}: ${message}${dataStr}\n`;
+  try {
+    // Rotate log if too large
+    if (existsSync(logFilePath)) {
+      const stats = statSync(logFilePath);
+      if (stats.size > MAX_LOG_SIZE) {
+        const oldLogPath = `${logFilePath}.old`;
+        if (existsSync(oldLogPath)) unlinkSync(oldLogPath);
+        renameSync(logFilePath, oldLogPath);
+      }
+    }
+    appendFileSync(logFilePath, line);
+  } catch {
+    // Ignore file write errors
+  }
+}
+
+// Export for use in other modules
+export { logToFile };
+
+// Global error handlers - catch crashes before they happen
+process.on('uncaughtException', (error) => {
+  const msg = `Uncaught exception: ${error.message}`;
+  logToFile('fatal', msg, { stack: error.stack });
+  appLogger.fatal({ error: error.message, stack: error.stack }, msg);
+  // Give logger time to flush, then exit
+  setTimeout(() => process.exit(1), 100);
+});
+
+process.on('unhandledRejection', (reason) => {
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  const msg = `Unhandled promise rejection: ${error.message}`;
+  logToFile('error', msg, { stack: error.stack });
+  appLogger.error({ error: error.message, stack: error.stack }, msg);
+});
 
 // Global state
 let config: AppConfig;
@@ -60,11 +96,24 @@ let reconciler: Reconciler;
 // WS client connections by exchange
 const wsClients = new Map<ExchangeId, { disconnect: () => void }>();
 
+/**
+ * Disconnect WebSocket for an exchange
+ */
+function disconnectExchangeWs(exchangeId: ExchangeId): void {
+  const existing = wsClients.get(exchangeId);
+  if (existing) {
+    appLogger.info({ exchange: exchangeId }, 'Disconnecting WebSocket');
+    existing.disconnect();
+    wsClients.delete(exchangeId);
+  }
+}
+
 // Reconciliation interval (5 minutes)
 const RECONCILE_INTERVAL_MS = 5 * 60 * 1000;
 let reconcileInterval: ReturnType<typeof setInterval> | null = null;
 
 async function main() {
+  logToFile('info', 'Starting Moby', { dataDir, pid: process.pid });
   appLogger.info('Starting Moby');
   appLogger.info(
     {
@@ -77,6 +126,7 @@ async function main() {
   );
 
   // Register exchange adapters
+  logToFile('debug', 'Registering exchange adapters');
   registerExchange(KrakenAdapterFactory);
   registerExchange(GeminiAdapterFactory);
   registerExchange(KuCoinAdapterFactory);
@@ -84,20 +134,32 @@ async function main() {
   appLogger.info('Registered exchange adapters: Kraken, Gemini, KuCoin, Gate.io');
 
   // Initialize encryption (get or generate key)
+  logToFile('debug', 'Initializing encryption');
   appLogger.info('Initializing encryption');
   const encryptionResult = initEncryption();
+  logToFile('debug', 'Encryption initialized', { keySource: encryptionResult.keySource });
   appLogger.info(
     { keyGenerated: encryptionResult.keyGenerated, keySource: encryptionResult.keySource },
     'Encryption initialized'
   );
 
   // Initialize database
+  logToFile('debug', 'Initializing database');
   appLogger.info('Initializing database');
-  initDb();
+  try {
+    initDb();
+    logToFile('debug', 'Database initialized');
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    logToFile('error', 'Database initialization failed', { error: error.message, stack: error.stack });
+    throw err;
+  }
 
   // Load configuration (from database; migrates legacy config.yaml once if present)
+  logToFile('debug', 'Loading config');
   appLogger.info('Loading config');
   config = loadConfig();
+  logToFile('debug', 'Config loaded');
 
   // Overlay DB-backed settings (including allowed order types) onto config
   const settings = getAllSettings();
@@ -142,9 +204,12 @@ async function main() {
   }
 
   // Get enabled exchanges (those with API keys)
+  logToFile('debug', 'Getting enabled exchanges');
   const enabledExchanges = getEnabledExchanges();
+  logToFile('debug', 'Enabled exchanges', { exchanges: enabledExchanges });
 
   // Initialize fill processor
+  logToFile('debug', 'Initializing fill processor');
   fillProcessor = new FillProcessor({
     config,
     onPendingUpdated: (exchange, asset, amount) => {
@@ -204,11 +269,15 @@ async function main() {
   });
 
   // Initialize WebSocket connections for enabled exchanges
+  logToFile('debug', 'Initializing WebSocket connections');
   for (const exchangeId of enabledExchanges) {
+    logToFile('debug', 'Initializing WS for exchange', { exchange: exchangeId });
     await initializeExchangeWs(exchangeId);
   }
+  logToFile('debug', 'WebSocket connections initialized');
 
   // Create and start web server
+  logToFile('debug', 'Creating web server');
   const app = createWebServer({ config: config.web });
 
   // Set up routes with context
@@ -273,6 +342,8 @@ async function main() {
 
       return results;
     },
+    disconnectExchangeWs,
+    connectExchangeWs: initializeExchangeWs,
   });
 
   app.use(routes);
@@ -282,27 +353,34 @@ async function main() {
   if (existsSync(uiDistPath)) {
     const express = await import('express');
     app.use(express.default.static(uiDistPath));
-    app.get('/{*splat}', (req, res) => {
+    app.get('/{*splat}', (_req, res) => {
       res.sendFile(join(uiDistPath, 'index.html'));
     });
   }
 
   // Start web server
+  logToFile('debug', 'Starting web server');
   await startServer(app, config.web);
+  logToFile('debug', 'Web server started', { port: config.web.port });
 
   // Initialize client pools for enabled exchanges
+  logToFile('debug', 'Initializing client pools');
   const poolManager = getPoolManager();
   for (const exchangeId of enabledExchanges) {
     getClientPool(exchangeId); // This creates and initializes the pool
     appLogger.debug({ exchange: exchangeId }, 'Initialized client pool');
   }
+  logToFile('debug', 'Client pools initialized');
 
   // Start scheduler and poller if we have any clients
   if (poolManager.hasAnyClients()) {
+    logToFile('debug', 'Starting scheduler and status poller');
     scheduler.start();
     statusPoller.start();
+    logToFile('debug', 'Scheduler and status poller started');
 
     // Run initial reconciliation to catch any missed trades during downtime
+    logToFile('debug', 'Running initial reconciliation');
     appLogger.info('Running initial reconciliation');
     for (const exchangeId of enabledExchanges) {
       const pool = getClientPool(exchangeId);
@@ -382,6 +460,7 @@ async function main() {
     // no-op to keep event loop active
   }, 1000 * 60 * 60);
 
+  logToFile('info', 'Moby started successfully');
   appLogger.info('Moby started successfully');
 }
 
@@ -470,6 +549,7 @@ async function initializeExchangeWs(exchangeId: ExchangeId) {
 }
 
 function shutdown() {
+  logToFile('info', 'Shutting down');
   appLogger.info('Shutting down...');
 
   // Stop services

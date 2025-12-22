@@ -259,7 +259,6 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
             </div>
           ) : (
             <div className="divide-y">
-              {/* Hide non-Kraken exchanges for now */}
               {exchanges.filter((exchange) => exchange.id === 'kraken').map((exchange) => {
                 const exchangeKeys = keysByExchange[exchange.id] || [];
                 const isExpanded = expandedExchanges.has(exchange.id);
