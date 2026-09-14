@@ -1,188 +1,128 @@
 # Moby User Guide
 
-Moby is a self-hosted application that automatically moves cryptocurrency from exchanges to your personal wallets after trades execute.
+Moby monitors eligible order fills while it runs, accumulates received assets, and submits withdrawals in configured chunks to saved exchange destinations. Kraken is the currently supported exchange.
 
-## How It Works
+## Install and sign in
 
-1. You place limit orders on an exchange (e.g., Kraken)
-2. Moby monitors for when those orders fill
-3. When fills accumulate above your threshold, Moby automatically withdraws to your saved wallet addresses
-4. Funds arrive in your personal wallet without manual intervention
+Use a trusted build from [Godswildones/Moby](https://github.com/Godswildones/Moby/releases), when available. On Linux, make the downloaded AppImage executable and launch it. On first launch, create a dashboard username and password. Desktop data is stored locally; the desktop server listens on loopback.
 
----
+The running version appears beside **Moby** at the top of the dashboard. After replacing the installed AppImage, fully quit and reopen the app to use the updated version.
 
-## Initial Setup
+### Building from source
 
-### 1. Create Your Account
+Use Node.js 22 LTS and the native build prerequisites for your platform (a C/C++ compiler, Python, and the platform SDK). From your checkout:
 
-On first launch, you'll be prompted to create a username and password. This protects access to the Moby dashboard.
+```sh
+npm ci
+npm run build
+npx electron-builder --linux AppImage --x64 --publish never
+```
 
-### 2. Add Exchange API Keys
+The Linux artifact is written to `release/`. For Windows or macOS, build on that platform with `npm run electron:build:win` or `npm run electron:build:mac`. Native dependencies must match the runtime: the desktop packaging hook rebuilds them for Electron. For server development, `npm run dev` rebuilds them for your local Node.js.
 
-Navigate to the API Keys section and add your exchange credentials:
+## Connect Kraken
 
-1. Click **Add API Key**
-2. Select your exchange (Kraken, Gemini, KuCoin, Gate.io)
-3. Enter your API Key and Secret
-4. Select your account tier (affects rate limits)
+Create a dedicated API key in Kraken and add it in Moby's API Keys section. Enable:
 
-**Required API Permissions:**
-- Query Funds (balance checking)
-- Query Open Orders & Trades
-- Withdraw Funds
+| Permission | Used for |
+| --- | --- |
+| Query Funds | Balance checks and withdrawal monitoring |
+| Query Open Orders & Trades | Open orders shown in the dashboard |
+| Query Closed Orders & Trades | Fill history and recovery from connection interruptions |
+| Withdraw Funds | Withdrawal destinations, quotes, and submissions |
+| WebSocket interface | Live authenticated fill notifications |
 
-> **Security Note:** Your API keys are encrypted at rest. Keep a backup of your `.env` file - it contains the encryption key needed to decrypt your credentials.
+See Kraken's [API key setup instructions](https://support.kraken.com/articles/how-to-create-an-api-key-on-kraken-pro), [trade history permissions](https://docs.kraken.com/api-reference/account-data/get-trades-history), and [WebSocket token requirements](https://docs.kraken.com/api-reference/trading/get-websockets-token). Moby does not place or cancel trading orders, so those trading permissions are unnecessary.
 
-### 3. Sync Withdrawal Addresses
+Add and approve withdrawal addresses in Kraken first, then sync them in Configuration and select them for the assets you want swept. A wallet generated in Moby is not automatically registered as an exchange withdrawal destination. Verify the complete address, network, and any required destination tag or memo on both sides.
 
-Before Moby can withdraw, it needs to know your saved wallet addresses:
+## Configure withdrawals
 
-1. Go to the **Configuration** tab
-2. Find your exchange card
-3. Click **Sync Addresses**
+Start in **dry-run mode**. Review these settings for each asset before allowing real withdrawals:
 
-This pulls the withdrawal addresses you've already saved on the exchange. Moby can only withdraw to addresses you've pre-approved on the exchange itself.
+| Setting | Behavior |
+| --- | --- |
+| Threshold | Queued amount needed before attempting a withdrawal |
+| Reserve | Amount to retain on the exchange |
+| Destination keys | Saved exchange destinations, rotated when more than one is selected |
+| Chunk size and maximum | Size of each withdrawal attempt, subject to available funds and exchange limits |
+| Priority | Lower numbers are processed first |
+| Cooldown | Delay between withdrawals for an asset |
+| Per-wallet caps | Limits accumulated withdrawals to a destination |
+| Rolling fee budget | Optional USD limit for withdrawal fees over 24 hours |
 
----
+Minimums, fees, reserves, and available funds can prevent a configured chunk from being sent. When the fee budget is enabled and a necessary price is unavailable, Moby waits. Small chunks still incur fees and can still be held by an exchange; chunking does not guarantee faster approval.
 
-## Configuring Assets to Sweep
+After checking dry-run activity, test one small real withdrawal and confirm receipt at the destination. Keep Moby running to continue monitoring and submitting transfers.
 
-### Add an Asset
+## Pause, resume, and restart
 
-1. Click **Manage Wallets** on your exchange card
-2. Click **Configure** on an asset (e.g., ETH)
-3. Set your parameters:
+Moby keeps an internal SQLite database of detected fills, queued amounts, and withdrawal jobs.
 
-| Setting | Description |
-|---------|-------------|
-| **Sweep Threshold** | Minimum amount before triggering a withdrawal. Must be at least the exchange's minimum withdrawal amount. |
-| **Reserve** | Amount to leave on the exchange (useful for trading fees). |
-| **Wallet Keys** | Which saved addresses to withdraw to. Multiple = round-robin rotation. |
-| **Priority** | Lower number = higher priority when multiple assets are ready. |
-| **Cooldown** | Seconds to wait between withdrawals for this asset. |
-| **Chunk Size** | Amount per withdrawal. Use the 1x/2x/5x/10x buttons for quick selection based on minimum. |
+- **Pause withdrawals** stops new submissions. Monitoring continues while the app runs, so eligible fills can still add to the queue. Already submitted withdrawals can complete.
+- **Resume withdrawals** checks exchange balances before enabling submissions. Selling an asset or withdrawing manually reduces what remains available, and Moby lowers queued amounts accordingly. It will not increase the queue merely because you deposit funds or already have an exchange balance. A failed balance check leaves withdrawals paused.
+- **Clear queued amounts…** discards the accumulated withdrawal queue. First pause and wait for active withdrawals to resolve. Review and confirm the preview. Settings, wallets, and job history remain; later eligible fills can accumulate again.
+- **Closing the app** stops monitoring. Queues and job history survive, but fills that occur while Moby is closed are not automatically added on restart. Each run begins a new monitoring period. A queue saved before closing can still contain available funds, so review it before resuming.
+- **Connection interruptions during a run** are recovered through recent trade history for that run. Duplicate fills are ignored. Reconcile also compares queued amounts against current balances.
 
-4. Click **Add Asset**
+Moby cannot always infer which particular funds you intended to keep after other trading. If you want a clean starting point after selling and withdrawing to your bank, clear the queue while paused. Bank withdrawals are performed through the exchange; Moby's configured destinations are cryptocurrency addresses.
 
-### Example Configuration
+## Monitor activity and notifications
 
-For ETH with a 0.01 minimum withdrawal:
-- **Threshold:** 0.01 ETH (triggers as soon as minimum is met)
-- **Reserve:** 0 ETH (withdraw everything)
-- **Chunk Size:** 0.05 ETH (withdraw in 5x minimum chunks)
-- **Cooldown:** 60 seconds
+Overview shows connectivity, queued assets, cooldowns, fees, and withdrawal progress. History shows exchange references, destination addresses when available, transaction IDs, and reported fees.
 
----
+A held withdrawal continues to be checked. An uncertain submission is retained for review rather than automatically sent again. Check its exchange reference and account withdrawal history before resolving it; requesting cancellation does not prove it has been cancelled.
 
-## Running the Sweeper
+In Notifications, configure an optional Telegram bot and chat. Use the test-message button to check delivery. Alerts cover withdrawal starts, completions, problems, and prolonged connection or withdrawal delays. They do not include API credentials or wallet recovery secrets.
 
-### Start/Stop
+## Generated wallets
 
-Use the **Start Sweeper** / **Stop Sweeper** button in the Sweeper Control section.
+Wallets can generate and store wallets for the supported blockchains. Set a unique wallet password of at least eight characters; a long, unique passphrase is preferable. This password is separate from your dashboard login.
 
-- **Green dot** = Running and monitoring for fills
-- **Gray dot** = Stopped
+Unlocking identifies the wallet by its name, chain, and full address. Secrets are cleared from the dialog on focus loss, screen lock/suspend events, or 60 seconds without interaction. This locks wallet views while background withdrawal monitoring continues.
 
-### What Happens When Running
+Deleting a wallet requires its wallet password and confirmation that you have tested its backup. Deletion removes local recovery information; it does not move funds or remove the saved address from Kraken.
 
-1. Moby connects to the exchange via WebSocket for real-time fill notifications
-2. When a limit order fills, the received amount is added to a pending balance
-3. When pending balance exceeds your threshold, a withdrawal is initiated
-4. Moby tracks the withdrawal until it completes
+Avoid copying recovery information when clipboard history or clipboard sync is enabled. Desktop Moby clears its clipboard copy after 30 seconds, or on a screen-lock/suspend event, only if it still matches what Moby copied. Browser clearing is best effort and may be denied by browser permissions. Neither mode can erase a clipboard manager's history or copies already synced elsewhere.
 
-### Dry Run Mode
+Existing wallet ciphertext remains readable. Successfully unlocking an older wallet upgrades both its private key and recovery phrase to the new versioned encryption together. New password verifiers use the full password, including bytes beyond the old bcrypt limit. If an old vault contains wallets created with different password suffixes, each can still be recovered with its original full password; Moby retains the legacy verifier until one password successfully decrypts every wallet. Do not discard the original passwords or backups.
 
-If enabled in config, Moby will simulate withdrawals without actually submitting them. Useful for testing your configuration.
+## Backups and recovery
 
----
+| Item | Protects / contains | Recovery requirement |
+| --- | --- | --- |
+| Dashboard login password | Access to the application | Your local account credentials |
+| Wallet password | Generated private keys and recovery phrases | The original full wallet password; it cannot be recovered from `.env` |
+| `.env` encryption key | Stored exchange API credentials and Telegram credentials | The matching `.env` file |
+| `moby.db` | Encrypted wallets, account settings, queue, and withdrawal history | The database plus the appropriate passwords/keys above |
 
-## The Reconcile Button
+Before funding a generated wallet, back up its recovery information securely and verify that your chosen recovery software reproduces the **same address on the same chain**. Recovery formats vary: some chains expose private keys, others also offer a mnemonic; a private key is not interchangeable with a seed phrase. In particular, XRP's displayed private key is not an XRP family seed, and Cardano's displayed extended root key is not a mnemonic.
 
-Click **Reconcile** to manually sync with the exchange. This is useful for:
+To back up the app:
 
-- **Troubleshooting** - If pending amounts seem wrong
-- **After downtime** - If the app was closed during trading activity
-- **After manual withdrawals** - If you withdrew directly on the exchange
+1. Pause new withdrawals and review outstanding jobs.
+2. Fully quit Moby and wait for the process to exit.
+3. Copy `moby.db` and `.env` together into protected offline storage. Keep the wallet password separately and safely. On Unix, use a private backup directory and owner-only file permissions.
+4. Retain a backup made before upgrading. Once a wallet is upgraded, an older Moby version may not understand its new ciphertext.
 
-**What Reconcile does:**
-1. Fetches recent trade history from the exchange API
-2. Processes any trades that were missed
-3. Compares your actual exchange balance to Moby's pending amount
-4. Adjusts pending amounts if you withdrew manually
+Do not copy only `moby.db` while Moby is running: recent changes can still be in its SQLite WAL file. For a backup without shutting down, use SQLite's supported online backup operation and preserve the matching `.env` file. Do not manually remove WAL files.
 
-> Reconciliation also runs automatically on app startup and when WebSocket reconnects.
+To restore, fully quit Moby, preserve the current data first, and restore the matching backup files to the data directory using the same or newer compatible app version. Restoring an old database also restores old withdrawal state: keep withdrawals paused and reconcile with the exchange before resuming. Test wallet recovery without enabling withdrawals. Moby has no wallet-password reset that can recover encrypted keys without the original password.
 
----
+## Data locations
 
-## Understanding the Dashboard
+| Platform | Desktop data directory |
+| --- | --- |
+| Linux | `~/.config/Moby/` |
+| macOS | `~/Library/Application Support/Moby/` |
+| Windows | `%APPDATA%/Moby/` |
 
-### Asset States
-
-Each configured asset shows:
-- **Pending Amount** - Accumulated from fills, waiting to be withdrawn
-- **Status** - Ready, in cooldown, or in backoff (after failures)
-
-### Recent Fills
-
-Shows trade fills detected by Moby with:
-- Asset received
-- Amount
-- Trade pair and side (buy/sell)
-
-### Withdrawal Jobs
-
-Active and recent withdrawals showing:
-- Status (pending, complete, failed)
-- Amount and destination
-- Exchange reference ID
-
----
+Configuration is stored in the database. Custom server deployments can override the data paths. On Unix, Moby creates private database/key files and restricts the desktop data directory to the current user.
 
 ## Troubleshooting
 
-### "No withdrawal addresses found"
+If withdrawals are waiting, check pause/dry-run state, eligible fills, the threshold, exchange minimums, reserves, cooldowns, caps, fee budget, and active or held withdrawals for that asset. Reconcile can refresh trade history for the current run and check balances.
 
-Click **Sync Addresses** to pull addresses from your exchange. You must have addresses saved on the exchange first.
+If password attempts are temporarily blocked, wait for the displayed delay. Wallet endpoints share the same limit, and restarting the app does not reset it. An unreadable legacy wallet may need the exact original password, including any suffix beyond 72 bytes.
 
-### Withdrawals not triggering
-
-Check:
-1. Is the sweeper running? (green dot)
-2. Is pending amount above threshold?
-3. Is the asset in cooldown? (wait for timer)
-4. Is the asset in backoff? (previous failure, will retry)
-
-Click **Reconcile** to force a sync if amounts seem wrong.
-
-### "Withdrawal limit reached"
-
-You've hit your exchange's withdrawal limit. Moby will skip withdrawals until the limit resets (usually daily).
-
-### App was closed during trading
-
-No problem - on restart, Moby automatically reconciles trade history and picks up where it left off.
-
----
-
-## Data Locations
-
-| Platform | Data Directory |
-|----------|----------------|
-| macOS | `~/Library/Application Support/Moby/` |
-| Windows | `%APPDATA%/Moby/` |
-| Linux | `~/.config/Moby/` |
-
-**Important files:**
-- `moby.db` - Database (balances, jobs, settings)
-- `.env` - Encryption key (backup this!)
-- Configuration is stored in the application database (no `config.yaml`). A legacy file will be migrated automatically if present on first run.
-
----
-
-## Tips
-
-1. **Start small** - Test with a small threshold first to verify everything works
-2. **Use multiple wallets** - Add several addresses for round-robin distribution
-3. **Set reasonable reserves** - Keep some funds for trading fees
-4. **Monitor initially** - Watch the first few withdrawals to confirm success
-5. **Backup your .env** - Without the encryption key, API credentials can't be recovered
+For GitHub access after the repository transfer, the repository URL is `https://github.com/Godswildones/Moby.git`. Check `git remote -v` and make sure the branch's upstream points to that repository.

@@ -1,6 +1,8 @@
-import { app, BrowserWindow, powerMonitor, shell, dialog } from 'electron';
+import { app, BrowserWindow, powerMonitor, shell, dialog, ipcMain, clipboard } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import secretClipboardModule from './secret-clipboard.cjs';
+const secretClipboard = secretClipboardModule.createSecretClipboard(clipboard);
 import { pathToFileURL, fileURLToPath } from 'url';
 
 // ES module equivalent of __dirname
@@ -32,7 +34,7 @@ function electronLog(msg) {
   try {
     // Ensure directory exists
     if (!fs.existsSync(userDataPath)) {
-      fs.mkdirSync(userDataPath, { recursive: true });
+      fs.mkdirSync(userDataPath, { recursive: true, mode: 0o700 });
     }
     fs.appendFileSync(path.join(userDataPath, 'moby.log'), line);
   } catch (err) {
@@ -58,6 +60,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
       // Ensure timers are throttled when the window is hidden/minimized.
       backgroundThrottling: true,
     },
@@ -69,6 +72,21 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
   });
+
+  const canWriteClipboard = (contents, permission, origin) => contents === mainWindow?.webContents &&
+    permission === 'clipboard-sanitized-write' && origin === new URL(SERVER_URL).origin && mainWindow.isFocused();
+  mainWindow.webContents.session.setPermissionRequestHandler((contents, permission, callback, details) => {
+    callback(canWriteClipboard(contents, permission, details.requestingUrl ? new URL(details.requestingUrl).origin : ''));
+  });
+  mainWindow.webContents.session.setPermissionCheckHandler(canWriteClipboard);
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (new URL(url).origin !== new URL(SERVER_URL).origin) event.preventDefault();
+  });
+  mainWindow.webContents.on('will-redirect', (event, url) => {
+    if (new URL(url).origin !== new URL(SERVER_URL).origin) event.preventDefault();
+  });
+  mainWindow.webContents.on('will-attach-webview', event => event.preventDefault());
+  mainWindow.on('blur', () => mainWindow?.webContents.send('vault-lock'));
 
   // Load the server URL
   mainWindow.loadURL(SERVER_URL);
@@ -210,9 +228,11 @@ function stopServer() {
  * Set up power monitor events
  */
 function setupPowerMonitor() {
-  powerMonitor.on('lock-screen', () => {});
-  powerMonitor.on('unlock-screen', () => {});
-  powerMonitor.on('suspend', () => {});
+  const lock = () => { secretClipboard.clear(); mainWindow?.webContents.send('vault-lock'); };
+  powerMonitor.on('lock-screen', lock);
+  powerMonitor.on('suspend', lock);
+  // Some Linux desktops do not emit lock-screen; system idle is a fallback.
+  setInterval(() => { if (powerMonitor.getSystemIdleTime() >= 60) lock(); }, 5_000);
   powerMonitor.on('resume', () => {
     mainWindow?.webContents.reload();
   });
@@ -226,8 +246,10 @@ async function initialize() {
 
   // Create data directory if it doesn't exist
   if (!fs.existsSync(userDataPath)) {
-    fs.mkdirSync(userDataPath, { recursive: true });
+    fs.mkdirSync(userDataPath, { recursive: true, mode: 0o700 });
   }
+
+  if (process.platform !== 'win32') fs.chmodSync(userDataPath, 0o700);
 
   try {
     await startServer();
@@ -249,6 +271,13 @@ async function initialize() {
     app.quit();
   }
 }
+
+ipcMain.handle('copy-wallet-secret', (event, text) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame ||
+      new URL(event.senderFrame.url).origin !== new URL(SERVER_URL).origin || !mainWindow.isFocused() ||
+      typeof text !== 'string' || !text || text.length > 4096) throw new Error('Clipboard request rejected');
+  secretClipboard.copy(text);
+});
 
 // Acquire the lock before scheduling initialization, so a second launch cannot start another sweeper.
 const gotTheLock = app.requestSingleInstanceLock();
@@ -273,6 +302,7 @@ app.on('activate', () => {
 
 // Clean up before quitting
 app.on('before-quit', () => {
+  secretClipboard.clear();
   electronLog('before-quit event');
   stopServer();
 });

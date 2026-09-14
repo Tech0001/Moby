@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypt
 import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { createChildLogger } from './logger.js';
+import { restrictPrivateFile } from './privateFiles.js';
 
 const logger = createChildLogger('encryption');
 
@@ -18,7 +19,7 @@ let cachedKey: Buffer | null = null;
 function ensureEnvDir(path: string) {
   const dir = dirname(path);
   if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
 }
 
@@ -31,6 +32,7 @@ function readEnvFromFiles(): string | undefined {
 
   for (const envPath of candidates) {
     if (!existsSync(envPath)) continue;
+    restrictPrivateFile(envPath);
     const envContent = readFileSync(envPath, 'utf-8');
     const match = envContent.match(new RegExp(`^${ENV_KEY_NAME}=(.+)$`, 'm'));
     if (match) {
@@ -83,6 +85,7 @@ function getMasterKey(): Buffer {
  * Call this on app startup before any encryption/decryption
  */
 export function initEncryption(): { keyGenerated: boolean; keySource: string } {
+  restrictPrivateFile(PRIMARY_ENV_PATH);
   let envKey = process.env[ENV_KEY_NAME];
   let keySource = 'environment';
 
@@ -107,9 +110,9 @@ export function initEncryption(): { keyGenerated: boolean; keySource: string } {
     ensureEnvDir(PRIMARY_ENV_PATH);
 
     if (existsSync(PRIMARY_ENV_PATH)) {
-      appendFileSync(PRIMARY_ENV_PATH, envLine);
+      appendFileSync(PRIMARY_ENV_PATH, envLine, { mode: 0o600 });
     } else {
-      writeFileSync(PRIMARY_ENV_PATH, envLine.trimStart());
+      writeFileSync(PRIMARY_ENV_PATH, envLine.trimStart(), { mode: 0o600 });
     }
 
     logger.info({ path: PRIMARY_ENV_PATH }, 'Generated new encryption key and saved to .env file');

@@ -65,6 +65,8 @@ try {
     await sleep(100);
   }
   assert.ok(tabs.includes('Notifications'), `Missing Notifications tab: ${JSON.stringify(tabs)}`);
+  const expectedVersion = `v${JSON.parse(readFileSync('package.json', 'utf8')).version}`;
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"App version\"]')?.textContent"), expectedVersion);
   await evaluate("document.querySelectorAll('[role=tab]').forEach(tab => { if (tab.textContent === 'Notifications') { tab.focus(); tab.click(); } })");
   let text;
   for (let attempt = 0; attempt < 30; attempt++) {
@@ -77,7 +79,46 @@ try {
   assert.equal(telegram.enabled, false); assert.equal(telegram.hasToken, false);
   const screenshot = await command('Page.captureScreenshot', { format: 'png' });
   writeFileSync(profile + '/notifications.png', Buffer.from(screenshot.data, 'base64'));
-  console.log(JSON.stringify({ passed: true, binary, profile, tabs, screenshot: profile + '/notifications.png' }));  if (process.env.MOBY_LAYOUT_REVIEW === '1') {
+  console.log(JSON.stringify({ passed: true, binary, profile, tabs, screenshot: profile + '/notifications.png' }));
+  if (process.env.MOBY_WALLET_REVIEW === '1') {
+    // Only the isolated profile is used. No exchange is connected or funded.
+    const walletPassword = randomBytes(24).toString('hex');
+    const setupWallet = await evaluate(`fetch('/api/wallets/password', { method:'POST', headers:{'Content-Type':'application/json'}, body:${JSON.stringify(JSON.stringify({password:walletPassword}))} }).then(r=>r.status)`);
+    assert.equal(setupWallet, 200);
+    const created = await evaluate(`fetch('/api/wallets', { method:'POST', headers:{'Content-Type':'application/json'}, body:${JSON.stringify(JSON.stringify({password:walletPassword,name:'Disposable security test',chain:'ethereum'}))} }).then(async r=>({status:r.status,body:await r.json()}))`);
+    assert.equal(created.status, 200); assert.ok(created.body.wallet.id);
+    assert.equal(created.body.wallet.privateKey, undefined);
+    await evaluate("{ const tab=[...document.querySelectorAll('[role=tab]')].find(tab=>tab.textContent==='Wallets'); tab.focus(); tab.click(); }");
+    for(let attempt=0; attempt<50; attempt++) {
+      if(await evaluate("!!document.querySelector('[title=\"View Private Key\"]')")) break;
+      await sleep(100);
+    }
+    await evaluate("document.querySelector('[title=\"View Private Key\"]').click()");
+    await sleep(150);
+    await evaluate(`{ const input=document.querySelector('[placeholder="Enter your wallet password"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(walletPassword)}); input.dispatchEvent(new Event('input',{bubbles:true})); }`);
+    await evaluate("[...document.querySelectorAll('[role=dialog] button')].find(b=>b.textContent==='Unlock').click()");
+    for(let attempt=0; attempt<100; attempt++) {
+      if(await evaluate("!!document.querySelector('[role=dialog] input[readonly]')")) break;
+      await sleep(100);
+    }
+    const secretView=await evaluate("({open:!!document.querySelector('[role=dialog]'), masked:document.querySelector('[role=dialog] input[readonly]')?.value === '•'.repeat(32), text:document.querySelector('[role=dialog]')?.innerText})");
+    assert.equal(secretView.masked,true,JSON.stringify(secretView));
+    assert.ok(secretView.text.includes(created.body.wallet.address));
+    const shot=await command('Page.captureScreenshot',{format:'png'});
+    writeFileSync(profile+'/wallet-locked-display.png',Buffer.from(shot.data,'base64'));
+    await evaluate("window.dispatchEvent(new Event('moby:vault-lock'))");
+    await sleep(100); assert.equal(await evaluate("!!document.querySelector('[role=dialog]')"),false);
+    // Verify the restricted preload survives sandboxing. Only a fake marker is copied.
+    await command('Page.bringToFront');
+    assert.equal(await evaluate("typeof window.electronAPI.copyWalletSecret"),'function');
+    await evaluate("window.electronAPI.copyWalletSecret('MOBY DISPOSABLE CLIPBOARD TEST')");
+    await evaluate("document.querySelector('[title=\"Delete Wallet\"]').click()"); await sleep(100);
+    const deletion=await evaluate("({disabled:[...document.querySelectorAll('[role=dialog] button')].find(b=>b.textContent==='Delete Wallet')?.disabled, password:!!document.querySelector('#delete-wallet-password'), confirmation:!!document.querySelector('[role=dialog] input[type=checkbox]')})");
+    assert.deepEqual(deletion,{disabled:true,password:true,confirmation:true});
+    await evaluate("[...document.querySelectorAll('[role=dialog] button')].find(b=>b.textContent==='Cancel').click()");
+    console.log(JSON.stringify({walletSecurity:true, screenshot:profile+'/wallet-locked-display.png',deletion}));
+  }
+  if (process.env.MOBY_LAYOUT_REVIEW === '1') {
     const now = Date.now();
     const sample = { enabled:true,dryRun:false,hasApiKeys:true,updatedAt:now,
       connection:{exchanges:[{exchange:'kraken',connected:true,lastSuccessAt:now},{exchange:'gemini',connected:false,error:null}]},

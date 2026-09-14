@@ -1,6 +1,6 @@
 {
   "name": "Moby",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "Self-hosted daemon that monitors Kraken trades and auto-withdraws to pre-saved addresses",
   "author": {
     "name": "Moby",

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { version } from '../../../package.json';
 import { LayoutDashboard, List, Key, Settings, LogOut, Wallet, Bell, ScrollText, History, Palette } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import { exchangeName, formatAmount } from '../lib/display';
@@ -73,7 +74,7 @@ export function Dashboard({ user, onLogout }: { user: { userId: string; username
   const selectedBalanceExchange = exchanges.includes(balanceExchange) ? balanceExchange : exchanges[0];
   return <div className="moby-dashboard min-h-screen bg-background text-foreground">
     <header className="sticky top-0 z-50 border-b bg-background"><div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
-      <div className="flex gap-3 items-center"><WhaleIcon className="h-8 w-auto text-primary" /><h1 className="text-xl font-semibold">Moby</h1></div>
+      <div className="flex gap-3 items-center"><WhaleIcon className="h-8 w-auto text-primary" /><h1 className="text-xl font-semibold">Moby</h1><span className="text-xs text-muted-foreground whitespace-nowrap" aria-label="App version">v{version}</span></div>
       <div className="flex gap-3 items-center">
         <details className="relative"><summary className="cursor-pointer list-none p-2 rounded hover:bg-muted" aria-label="Appearance" title="Appearance"><Palette size={18} /></summary>
           <div className="absolute right-0 top-10 flex gap-3 items-center border rounded-lg bg-popover p-3 shadow-lg"><ThemeSelector /><ModeToggle /></div></details>

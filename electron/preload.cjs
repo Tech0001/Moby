@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Expose protected methods that allow the renderer process to use
 // ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
+  copyWalletSecret: (text) => ipcRenderer.invoke('copy-wallet-secret', text),
+
   // Platform info
   platform: process.platform,
 
@@ -24,3 +26,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
 // Log that preload script ran
 console.log('Moby preload script loaded');
+
+ipcRenderer.on('vault-lock', () => window.dispatchEvent(new Event('moby:vault-lock')));

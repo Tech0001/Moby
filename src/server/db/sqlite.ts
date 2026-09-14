@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { preparePrivateFile, restrictPrivateFile } from '../utils/privateFiles.js';
 import { createChildLogger } from '../utils/logger.js';
 
 const logger = createChildLogger('sqlite');
@@ -24,6 +25,7 @@ export function initDb(): Database.Database {
   logger.info({ path: DB_PATH }, 'Initializing SQLite database');
 
   try {
+    if (DB_PATH !== ':memory:') preparePrivateFile(DB_PATH);
     db = new Database(DB_PATH);
     logger.info('Database file opened');
   } catch (err) {
@@ -33,6 +35,10 @@ export function initDb(): Database.Database {
 
   try {
     db.pragma('journal_mode = WAL');
+    if (DB_PATH !== ':memory:') {
+      restrictPrivateFile(`${DB_PATH}-wal`);
+      restrictPrivateFile(`${DB_PATH}-shm`);
+    }
     db.pragma('foreign_keys = ON');
     logger.info('Database pragmas set');
   } catch (err) {

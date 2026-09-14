@@ -1,5 +1,6 @@
 import { apiFetch } from '@/ui/lib/api';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { copyWalletSecret } from '@/ui/lib/secretClipboard';
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/components/ui/card";
 import { Button } from "@/ui/components/ui/button";
 import { Input } from "@/ui/components/ui/input";
@@ -101,6 +102,44 @@ export function ManagementPanel() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteWalletId, setDeleteWalletId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [backupConfirmed, setBackupConfirmed] = useState(false);
+  const unlockGeneration = useRef(0);
+  const unlockRequest = useRef<AbortController | null>(null);
+  const selectedWallet = wallets.find(w => w.id === unlockWalletId);
+  const deletingWallet = wallets.find(w => w.id === deleteWalletId);
+
+  function closeCreateDialog() {
+    setShowCreateDialog(false); setWalletPassword(''); setShowCreatePassword(false);
+  }
+  function closeSetupDialog() {
+    setShowSetPasswordDialog(false); setNewPassword(''); setConfirmPassword('');
+  }
+  function closeDeleteDialog() {
+    setShowDeleteDialog(false); setDeletePassword(''); setBackupConfirmed(false); setDeleteWalletId(null);
+  }
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const lock = () => {
+      closeUnlockDialog(); closeCreateDialog(); closeSetupDialog(); closeDeleteDialog();
+    };
+    const activity = () => { clearTimeout(timer); timer = setTimeout(lock, 60_000); };
+    const visibility = () => { if (document.hidden) lock(); };
+    window.addEventListener('blur', lock);
+    window.addEventListener('moby:vault-lock', lock);
+    document.addEventListener('visibilitychange', visibility);
+    window.addEventListener('pointerdown', activity);
+    window.addEventListener('keydown', activity);
+    activity();
+    return () => {
+      clearTimeout(timer); unlockGeneration.current++; unlockRequest.current?.abort();
+      window.removeEventListener('blur', lock);
+      window.removeEventListener('moby:vault-lock', lock);
+      document.removeEventListener('visibilitychange', visibility);
+      window.removeEventListener('pointerdown', activity);
+      window.removeEventListener('keydown', activity);
+    };
+  }, []);
 
   useEffect(() => {
     checkPasswordAndFetch();
@@ -213,54 +252,58 @@ export function ManagementPanel() {
     } catch (err) {
       setError('Failed to create wallet');
     } finally {
-      setCreating(false);
+      setCreating(false); setWalletPassword(''); setShowCreatePassword(false);
     }
   }
 
   async function handleUnlock() {
-    if (!unlockWalletId || !unlockPassword) return;
-
+    if (!selectedWallet || !unlockPassword || unlocking) return;
+    const wallet = selectedWallet;
+    const generation = ++unlockGeneration.current;
+    unlockRequest.current?.abort();
+    const controller = new AbortController();
+    unlockRequest.current = controller;
     setUnlocking(true);
     setError('');
-
     try {
-      const res = await apiFetch(`/api/wallets/${unlockWalletId}/unlock`, {
-        method: 'POST',
+      const res = await apiFetch(`/api/wallets/${wallet.id}/unlock`, {
+        method: 'POST', signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: unlockPassword }),
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        setPrivateKey(data.privateKey);
-        setMnemonic(data.mnemonic || null);
-        setUnlockPassword('');
-      } else {
-        const data = await res.json();
-        setError(data.error || 'Failed to unlock wallet');
+      const data = await res.json();
+      if (generation !== unlockGeneration.current || controller.signal.aborted) return;
+      if (!res.ok) { setError(data.error || 'Failed to unlock wallet'); return; }
+      if (data.id !== wallet.id || data.address !== wallet.address || data.chain !== wallet.chain) {
+        setError('Wallet response did not match the selected wallet. Refresh and try again.'); return;
       }
-    } catch (err) {
-      setError('Failed to unlock wallet');
+      setPrivateKey(data.privateKey);
+      setMnemonic(data.mnemonic || null);
+      setUnlockPassword('');
+    } catch {
+      if (generation === unlockGeneration.current && !controller.signal.aborted) setError('Failed to unlock wallet');
     } finally {
-      setUnlocking(false);
+      if (generation === unlockGeneration.current) { setUnlocking(false); setUnlockPassword(''); }
     }
   }
 
   async function handleDelete() {
-    if (!deleteWalletId) return;
+    if (!deletingWallet || !deletePassword || !backupConfirmed || deleting) return;
+    const wallet = deletingWallet;
 
     setDeleting(true);
     setError('');
 
     try {
-      const res = await apiFetch(`/api/wallets/${deleteWalletId}`, {
+      const res = await apiFetch(`/api/wallets/${wallet.id}`, {
         method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: deletePassword, backupConfirmed, address: wallet.address }),
       });
 
       if (res.ok) {
-        setWallets((prev) => prev.filter((w) => w.id !== deleteWalletId));
-        setShowDeleteDialog(false);
-        setDeleteWalletId(null);
+        setWallets((prev) => prev.filter((w) => w.id !== wallet.id));
+        closeDeleteDialog();
         setSuccess('Wallet deleted');
         setTimeout(() => setSuccess(''), 3000);
       } else {
@@ -270,17 +313,21 @@ export function ManagementPanel() {
     } catch (err) {
       setError('Failed to delete wallet');
     } finally {
-      setDeleting(false);
+      setDeleting(false); setDeletePassword('');
     }
   }
 
-  function copyToClipboard(text: string) {
-    navigator.clipboard.writeText(text);
-    setSuccess('Copied to clipboard');
-    setTimeout(() => setSuccess(''), 2000);
+  async function copyToClipboard(text: string, secret = false) {
+    try {
+      if (secret) await copyWalletSecret(text);
+      else await navigator.clipboard.writeText(text);
+      setSuccess(secret ? 'Copied. Clipboard clearing is attempted after 30 seconds; clipboard history may retain a copy.' : 'Copied to clipboard');
+      setTimeout(() => setSuccess(''), 5000);
+    } catch { setError('Could not copy. Clipboard access was denied.'); }
   }
 
   function openUnlockDialog(walletId: string) {
+    closeUnlockDialog(); setError('');
     setUnlockWalletId(walletId);
     setUnlockPassword('');
     setPrivateKey(null);
@@ -289,6 +336,7 @@ export function ManagementPanel() {
   }
 
   function closeUnlockDialog() {
+    unlockGeneration.current++; unlockRequest.current?.abort(); unlockRequest.current = null; setUnlocking(false);
     setShowUnlockDialog(false);
     setUnlockWalletId(null);
     setUnlockPassword('');
@@ -299,6 +347,7 @@ export function ManagementPanel() {
   }
 
   function openDeleteDialog(walletId: string) {
+    closeDeleteDialog(); setError('');
     setDeleteWalletId(walletId);
     setShowDeleteDialog(true);
   }
@@ -372,7 +421,7 @@ export function ManagementPanel() {
         </Card>
 
         {/* Set Password Dialog */}
-        <Dialog open={showSetPasswordDialog} onOpenChange={setShowSetPasswordDialog}>
+        <Dialog open={showSetPasswordDialog} onOpenChange={(open) => !open && closeSetupDialog()}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Set Wallet Password</DialogTitle>
@@ -406,7 +455,7 @@ export function ManagementPanel() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="ghost" onClick={() => setShowSetPasswordDialog(false)}>
+              <Button variant="ghost" onClick={closeSetupDialog}>
                 Cancel
               </Button>
               <Button onClick={handleSetPassword} disabled={settingPassword}>
@@ -573,7 +622,7 @@ export function ManagementPanel() {
       </Card>
 
       {/* Create Wallet Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+      <Dialog open={showCreateDialog} onOpenChange={(open) => !open && closeCreateDialog()}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Generate New Wallet</DialogTitle>
@@ -647,7 +696,7 @@ export function ManagementPanel() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setShowCreateDialog(false)}>
+            <Button variant="ghost" onClick={closeCreateDialog}>
               Cancel
             </Button>
             <Button 
@@ -666,7 +715,9 @@ export function ManagementPanel() {
           <DialogHeader>
             <DialogTitle>View Wallet Secrets</DialogTitle>
             <DialogDescription>
-              Enter your wallet password to decrypt and view your credentials.
+              {selectedWallet?.name} · {selectedWallet?.chain}
+              <span className="block break-all font-mono text-xs mt-2">{selectedWallet?.address}</span>
+              <span className="block mt-2">Secrets close when you switch windows, lock the screen, or stop interacting for 60 seconds.</span>
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -688,6 +739,7 @@ export function ManagementPanel() {
               </div>
             ) : (
               <div className="space-y-4">
+                <p className="text-xs text-muted-foreground">Copying secrets can expose them to clipboard history or sync. Disable those features before copying. Moby attempts to clear its copy after 30 seconds.</p>
                 {/* Toggle buttons when mnemonic is available */}
                 {mnemonic && (
                   <div className="flex gap-2 border-b pb-3">
@@ -716,7 +768,7 @@ export function ManagementPanel() {
                     <div className="relative">
                       <Input
                         type={showPrivateKey ? 'text' : 'password'}
-                        value={privateKey}
+                        value={showPrivateKey ? privateKey : '•'.repeat(32)}
                         readOnly
                         className="font-mono text-xs pr-20"
                       />
@@ -733,7 +785,7 @@ export function ManagementPanel() {
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7"
-                          onClick={() => copyToClipboard(privateKey)}
+                          onClick={() => copyToClipboard(privateKey, true)}
                         >
                           <Copy className="h-3 w-3" />
                         </Button>
@@ -768,7 +820,7 @@ export function ManagementPanel() {
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7"
-                          onClick={() => copyToClipboard(mnemonic)}
+                          onClick={() => copyToClipboard(mnemonic, true)}
                         >
                           <Copy className="h-3 w-3" />
                         </Button>
@@ -796,20 +848,29 @@ export function ManagementPanel() {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      <Dialog open={showDeleteDialog} onOpenChange={(open) => !open && closeDeleteDialog()}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Wallet</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this wallet? This action cannot be undone.
-              Make sure you have backed up the private key if needed.
+              Delete {deletingWallet?.name} ({deletingWallet?.chain})? This removes its stored recovery information permanently.
+              <span className="block break-all font-mono text-xs mt-2">{deletingWallet?.address}</span>
             </DialogDescription>
           </DialogHeader>
+          {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+          <div className="space-y-3">
+            <Label htmlFor="delete-wallet-password">Wallet Password</Label>
+            <Input id="delete-wallet-password" type="password" autoComplete="off" value={deletePassword} onChange={e => setDeletePassword(e.target.value)} />
+            <label className="flex gap-2 items-start text-sm">
+              <input type="checkbox" checked={backupConfirmed} onChange={e => setBackupConfirmed(e.target.checked)} />
+              I have backed up this wallet and verified I can recover the address shown above.
+            </label>
+          </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setShowDeleteDialog(false)}>
+            <Button variant="ghost" onClick={closeDeleteDialog}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting || !deletePassword || !backupConfirmed}>
               {deleting ? 'Deleting...' : 'Delete Wallet'}
             </Button>
           </DialogFooter>

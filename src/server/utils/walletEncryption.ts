@@ -1,140 +1,113 @@
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
+import { createCipheriv, createDecipheriv, randomBytes, scrypt, timingSafeEqual } from 'crypto';
 import bcrypt from 'bcrypt';
-import { getWalletSetting, setWalletSetting } from '../db/repositories.js';
+import { getDb } from '../db/sqlite.js';
+import { getAllWallets, getWalletById, getWalletSetting, type WalletRecord } from '../db/repositories.js';
 
-const ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 16;
-const SALT_LENGTH = 32;
-const KEY_LENGTH = 32;
-const SCRYPT_COST = 16384; // N parameter (2^14) - standard secure value
-const BCRYPT_ROUNDS = 12; // Cost factor for bcrypt password hashing
-
-/**
- * Derive encryption key from password using scrypt
- */
-function deriveKey(password: string, salt: Buffer): Buffer {
-  return scryptSync(password, salt, KEY_LENGTH, { N: SCRYPT_COST, r: 8, p: 1 });
+// Versioned parameters: never change the derivation of existing ciphertext.
+const CURRENT_VERSION = 'v2';
+const HASH_PREFIX = 'scrypt-v2';
+function deriveKey(password: string, salt: Buffer, legacy = false): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    scrypt(password, salt, 32, { N: legacy ? 16384 : 131072, r: 8, p: 1, maxmem: 256 * 1024 * 1024 },
+      (error, key) => error ? reject(error) : resolve(key));
+  });
 }
-
-/**
- * Check if a wallet password has been set
- */
-export function hasWalletPassword(): boolean {
-  const hash = getWalletSetting('password_hash');
-  return hash !== null;
+function hex(value: string, bytes?: number): Buffer {
+  if (!/^(?:[a-f0-9]{2})+$/i.test(value) || (bytes !== undefined && value.length !== bytes * 2)) {
+    throw new Error('Invalid encrypted wallet data');
+  }
+  return Buffer.from(value, 'hex');
 }
-
-/**
- * Set the wallet password (first time setup)
- * Stores a bcrypt hash for secure verification - NOT used for encryption
- */
+async function passwordHash(password: string): Promise<string> {
+  const salt = randomBytes(32);
+  const key = await deriveKey(password, salt);
+  try { return `${HASH_PREFIX}:${salt.toString('hex')}:${key.toString('hex')}`; }
+  finally { key.fill(0); }
+}
+export function hasWalletPassword(): boolean { return getWalletSetting('password_hash') !== null; }
 export async function setWalletPassword(password: string): Promise<void> {
-  if (hasWalletPassword()) {
-    throw new Error('Wallet password already set');
-  }
-
-  if (password.length < 8) {
-    throw new Error('Password must be at least 8 characters');
-  }
-
-  const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-  setWalletSetting('password_hash', hash);
+  if (password.length < 8) throw new Error('Password must be at least 8 characters');
+  if (hasWalletPassword()) throw new Error('Wallet password already set');
+  const hash = await passwordHash(password);
+  // Do not overwrite another setup that completed while the KDF was running.
+  const result = getDb().prepare("INSERT OR IGNORE INTO wallet_settings (key, value) VALUES ('password_hash', ?)").run(hash);
+  if (!result.changes) throw new Error('Wallet password already set');
 }
 
-/**
- * Verify the wallet password is correct using bcrypt
- */
-export async function verifyWalletPassword(password: string): Promise<boolean> {
-  const storedHash = getWalletSetting('password_hash');
-  if (!storedHash) {
-    return false;
+export async function verifyWalletPassword(password: string, target?: WalletRecord): Promise<boolean> {
+  const stored = getWalletSetting('password_hash');
+  if (!stored) return false;
+  if (stored.startsWith(`${HASH_PREFIX}:`)) {
+    const [prefix, salt, digest, extra] = stored.split(':');
+    if (prefix !== HASH_PREFIX || extra !== undefined) throw new Error('Invalid wallet password data');
+    const expected = hex(digest, 32);
+    const actual = await deriveKey(password, hex(salt, 32));
+    try { return timingSafeEqual(actual, expected); }
+    finally { actual.fill(0); }
   }
+  if (!(await bcrypt.compare(password, stored))) return false;
 
-  return bcrypt.compare(password, storedHash);
+  // bcrypt ignores bytes after byte 72. Authenticate the complete password against
+  // EVERY encrypted secret before replacing the legacy verifier. A vault produced
+  // by the old bug may contain different suffixes: each wallet remains recoverable
+  // with its own original password, without upgrading or discarding its neighbours.
+  const wallets = getAllWallets().map(w => getWalletById(w.id)!);
+  let allValid = true;
+  let targetValid = false;
+  for (const wallet of wallets) {
+    try {
+      await decryptWallet(wallet, password);
+      if (wallet.id === target?.id) targetValid = true;
+    } catch { allValid = false; }
+  }
+  if (allValid) {
+    const hash = await passwordHash(password);
+    getDb().prepare("UPDATE wallet_settings SET value = ? WHERE key = 'password_hash' AND value = ?").run(hash, stored);
+  }
+  return target ? targetValid : allValid;
 }
 
-/**
- * Encrypt a private key with the user's password
- * Returns: { encrypted: string, salt: string } where both are hex-encoded
- */
-export function encryptPrivateKey(
-  privateKey: string,
-  password: string
-): { encrypted: string; salt: string } {
-  // Generate random salt for this wallet
-  const salt = randomBytes(SALT_LENGTH);
-
-  // Derive encryption key from password + salt
-  const key = deriveKey(password, salt);
-
-  // Generate random IV
-  const iv = randomBytes(IV_LENGTH);
-
-  // Encrypt
-  const cipher = createCipheriv(ALGORITHM, key, iv);
-  let encrypted = cipher.update(privateKey, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  const authTag = cipher.getAuthTag();
-
-  // Format: iv:authTag:ciphertext (all hex)
-  const encryptedData = `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
-
-  return {
-    encrypted: encryptedData,
-    salt: salt.toString('hex'),
-  };
+export async function encryptPrivateKey(plaintext: string, password: string): Promise<{ encrypted: string; salt: string }> {
+  const salt = randomBytes(32);
+  const key = await deriveKey(password, salt);
+  try {
+    const iv = randomBytes(16);
+    const cipher = createCipheriv('aes-256-gcm', key, iv);
+    cipher.setAAD(Buffer.from(CURRENT_VERSION));
+    const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+    return { encrypted: `${CURRENT_VERSION}:${iv.toString('hex')}:${cipher.getAuthTag().toString('hex')}:${encrypted.toString('hex')}`, salt: salt.toString('hex') };
+  } finally { key.fill(0); }
+}
+export async function decryptPrivateKey(data: string, salt: string, password: string): Promise<string> {
+  const parts = data.split(':');
+  const legacy = parts.length === 3;
+  if (!legacy && (parts.length !== 4 || parts.shift() !== CURRENT_VERSION)) throw new Error('Unsupported wallet encryption version');
+  const [iv, tag, ciphertext] = parts;
+  const ivBytes = hex(iv, 16), tagBytes = hex(tag, 16), encrypted = hex(ciphertext);
+  const key = await deriveKey(password, hex(salt, 32), legacy);
+  try {
+    const decipher = createDecipheriv('aes-256-gcm', key, ivBytes);
+    if (!legacy) decipher.setAAD(Buffer.from(CURRENT_VERSION));
+    decipher.setAuthTag(tagBytes);
+    return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
+  } finally { key.fill(0); }
+}
+export async function decryptWallet(wallet: WalletRecord, password: string): Promise<{ privateKey: string; mnemonic?: string }> {
+  if (!!wallet.encryptedMnemonic !== !!wallet.mnemonicSalt) throw new Error('Incomplete recovery phrase data');
+  const privateKey = await decryptPrivateKey(wallet.encryptedPrivateKey, wallet.salt, password);
+  const mnemonic = wallet.encryptedMnemonic && wallet.mnemonicSalt
+    ? await decryptPrivateKey(wallet.encryptedMnemonic, wallet.mnemonicSalt, password) : undefined;
+  return { privateKey, mnemonic };
 }
 
-/**
- * Decrypt a private key with the user's password
- */
-export function decryptPrivateKey(
-  encryptedData: string,
-  saltHex: string,
-  password: string
-): string {
-  const salt = Buffer.from(saltHex, 'hex');
-  const key = deriveKey(password, salt);
-
-  const [ivHex, authTagHex, ciphertext] = encryptedData.split(':');
-
-  if (!ivHex || !authTagHex || !ciphertext) {
-    throw new Error('Invalid encrypted data format');
-  }
-
-  const iv = Buffer.from(ivHex, 'hex');
-  const authTag = Buffer.from(authTagHex, 'hex');
-
-  const decipher = createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(authTag);
-
-  let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-
-  return decrypted;
-}
-
-/**
- * Change the wallet password
- * This requires re-encrypting all existing wallets
- */
-export async function changeWalletPassword(
-  oldPassword: string,
-  newPassword: string,
-  reEncryptCallback: (oldPass: string, newPass: string) => void
-): Promise<void> {
-  if (!(await verifyWalletPassword(oldPassword))) {
-    throw new Error('Current password is incorrect');
-  }
-
-  if (newPassword.length < 8) {
-    throw new Error('New password must be at least 8 characters');
-  }
-
-  // Re-encrypt all wallets with new password
-  reEncryptCallback(oldPassword, newPassword);
-
-  // Update the password hash with bcrypt
-  const hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-  setWalletSetting('password_hash', hash);
+export async function upgradeWalletEncryption(wallet: WalletRecord, secrets: { privateKey: string; mnemonic?: string }, password: string): Promise<void> {
+  if (wallet.encryptedPrivateKey.startsWith('v2:') && (!wallet.encryptedMnemonic || wallet.encryptedMnemonic.startsWith('v2:'))) return;
+  const key = await encryptPrivateKey(secrets.privateKey, password);
+  const phrase = secrets.mnemonic ? await encryptPrivateKey(secrets.mnemonic, password) : undefined;
+  // Both secrets change together, only if the record is still the one we decrypted.
+  getDb().transaction(() => {
+    if (JSON.stringify(getWalletById(wallet.id)) !== JSON.stringify(wallet)) throw new Error('Wallet changed; unlock it again');
+    getDb().prepare(`UPDATE wallets SET encrypted_private_key = ?, salt = ?, encrypted_mnemonic = ?, mnemonic_salt = ?, updated_at = ? WHERE id = ?`)
+      .run(key.encrypted, key.salt, phrase?.encrypted ?? null, phrase?.salt ?? null, Date.now(), wallet.id);
+  }).immediate();
 }
