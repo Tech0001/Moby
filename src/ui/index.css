@@ -125,3 +125,36 @@
     background-color: var(--badge-danger-hover-bg, var(--color-red-600)) !important;
   }
 }
+
+/* Operational views share readable density and semantics across decorative themes. */
+.moby-dashboard .section-heading { font-size: 1rem; font-weight: 600; letter-spacing: 0; }
+.control-strip { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; padding: .85rem 1rem; border: 1px solid hsl(var(--border) / .35); border-radius: .6rem; background: hsl(var(--card)); }
+.metric, .sweep-card { padding: 1rem; border: 1px solid hsl(var(--border) / .28); border-radius: .6rem; background: hsl(var(--card)); }
+.withdrawal-row { background: hsl(var(--card)); }
+.withdrawal-row summary:hover { background: hsl(var(--muted) / .35); }
+.withdrawal-row summary::-webkit-details-marker { display: none; }
+.detail-label { font-size: .75rem; color: hsl(var(--muted-foreground)); margin-bottom: .25rem; }
+.notice-banner { border: 1px solid #b58131; border-radius: .5rem; padding: .75rem 1rem; background: #c78c1610; font-size: .875rem; }
+.filter-select { min-height: 2.5rem; border: 1px solid hsl(var(--border) / .4); border-radius: .4rem; background: hsl(var(--background)); color: hsl(var(--foreground)); padding: .5rem .75rem; font: inherit; font-size: .875rem; }
+.status-badge { display: inline-flex; align-items: center; white-space: nowrap; font-size: .75rem; line-height: 1.4; font-family: system-ui, sans-serif; font-weight: 600; border-radius: 999px; padding: .2rem .6rem; border: 1px solid currentColor; }
+.status-badge[data-tone=neutral] { color: hsl(var(--muted-foreground)); background: hsl(var(--muted) / .25); }
+.status-badge[data-tone=success] { color: #15803d; background: #dcfce7; }
+.status-badge[data-tone=danger] { color: #b91c1c; background: #fee2e2; }
+.status-badge[data-tone=warning] { color: #92400e; background: #fef3c7; }
+.status-badge[data-tone=info] { color: #1d4ed8; background: #dbeafe; }
+.dark .status-badge[data-tone=success] { color: #86efac; background: #14532d40; }
+.dark .status-badge[data-tone=danger] { color: #fca5a5; background: #7f1d1d40; }
+.dark .status-badge[data-tone=warning] { color: #fcd34d; background: #78350f40; }
+.dark .status-badge[data-tone=info] { color: #93c5fd; background: #1e3a8a40; }
+.connection-chip { display: inline-flex; gap: .4rem; align-items: center; font-size: .75rem; padding: .25rem .5rem; color: #a16207; }
+.connection-chip[data-connected=true] { color: #15803d; }
+.dark .connection-chip { color: #fcd34d; }
+.dark .connection-chip[data-connected=true] { color: #86efac; }
+.moby-dashboard .progress-track { background: hsl(var(--muted-foreground) / .14) !important; }
+.moby-navigation { width: max-content; }
+.moby-dashboard [role=tab] { text-transform: none; letter-spacing: 0; }
+.moby-dashboard .font-mono, .moby-dashboard .tabular-nums { font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) { .control-strip > div:last-child { width: 100%; justify-content: space-between; } }
+@media (prefers-reduced-motion: reduce) { .moby-dashboard *, .moby-dashboard *::before, .moby-dashboard *::after { animation: none !important; transition: none !important; } }
+
+.withdrawal-row summary > div { overflow-wrap: anywhere; }

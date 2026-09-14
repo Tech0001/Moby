@@ -65,6 +65,7 @@ export class ExchangeClientPool {
   private readonly factory: ExchangeAdapterFactory;
   private clients: Map<string, ExchangeRestClient> = new Map();
   private roundRobinIndex: number = 0;
+  private credentials = new Map<string, string>();
 
   constructor(exchangeId: ExchangeId) {
     this.exchangeId = exchangeId;
@@ -88,13 +89,17 @@ export class ExchangeClientPool {
     for (const id of currentIds) {
       if (!newIds.has(id)) {
         this.clients.delete(id);
+        this.credentials.delete(id);
         logger.info({ exchangeId: this.exchangeId, keyId: id }, 'Removed client from pool');
       }
     }
 
     // Add clients for new keys
     for (const key of keys) {
+      const fingerprint = `${key.apiKey}:${key.apiSecret}`;
+      if (this.credentials.get(key.id) !== fingerprint) this.clients.delete(key.id);
       if (!this.clients.has(key.id)) {
+        this.credentials.set(key.id, fingerprint);
         // Extract passphrase if stored with secret (format: secret:passphrase)
         let apiSecret = key.apiSecret;
         let passphrase: string | undefined;
@@ -108,6 +113,12 @@ export class ExchangeClientPool {
           apiKey: key.apiKey,
           apiSecret,
           passphrase,
+          beforeRequest: () => {
+            const current = getApiKeyById(key.id);
+            if (!current?.isActive || !current.isValid || current.apiKey !== key.apiKey || current.apiSecret !== key.apiSecret) {
+              throw new Error('API key changed or disabled before request');
+            }
+          },
         });
         this.clients.set(key.id, client);
         logger.info({ exchangeId: this.exchangeId, keyId: key.id, name: key.name }, 'Added client to pool');

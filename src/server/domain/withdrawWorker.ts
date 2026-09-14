@@ -1,16 +1,19 @@
+import { feeBudgetReason } from './feeBudget.js';
+import { checkBalances } from './balanceGuard.js';
+import { validateBalances } from '../exchanges/balances.js';
+import { getDb } from '../db/sqlite.js';
 import { createChildLogger } from '../utils/logger.js';
 import {
   getAssetState,
-  subtractPendingAmount,
-  addPendingAmount,
+  getQueueRevision, getControlRevision,
+  reserveWithdrawal, releaseWithdrawal, getActiveWithdrawalJobs, getAssetConfig, isEnabled, isExchangeEnabled,
   recordWithdrawalAttempt,
-  createWithdrawalJob,
   updateWithdrawalJob,
   getExchangeAddressesByAsset,
   getWithdrawalMethod,
   type AssetConfigRecord,
 } from '../db/repositories.js';
-import { advanceWalletIndex, getCurrentWalletKey } from './rrSelector.js';
+import { getCurrentWalletKey } from './rrSelector.js';
 import type { ExchangeRestClient } from '../exchanges/types.js';
 import type { GlobalConfig } from '../config/schema.js';
 import type { WithdrawalJob, ExchangeId } from './types.js';
@@ -18,6 +21,7 @@ import { computeChunkAmount, type PriceProvider } from './chunking.js';
 import { toKuCoinPair } from '../exchanges/kucoin/index.js';
 import { toGeminiPair } from '../exchanges/gemini/index.js';
 import { toGatePair } from '../exchanges/gateio/index.js';
+import { KrakenApiError } from '../exchanges/kraken/restClient.js';
 import { toKrakenAsset } from '../exchanges/kraken/index.js';
 
 const logger = createChildLogger('withdraw-worker');
@@ -51,24 +55,13 @@ function createPriceProvider(exchange: ExchangeId, client: ExchangeRestClient): 
         pairs.push(...buildPricePairs(exchange, asset, quote));
       }
 
-      let ticker: Record<string, { c: [string, string] }> = {};
-      try {
-        ticker = await client.getTicker(pairs);
-      } catch (err) {
-        logger.debug({ exchange, asset, err }, 'Failed to fetch ticker for USD price');
-        return null;
-      }
-
-      // Honor quote priority order: USD > USDT > USDC
-      for (const quote of USD_QUOTES) {
-        const candidates = buildPricePairs(exchange, asset, quote);
-        for (const pair of candidates) {
-          const priceStr = ticker[pair]?.c?.[0];
-          const price = priceStr ? parseFloat(priceStr) : NaN;
-          if (price > 0) {
-            return price;
-          }
-        }
+      for (const pair of pairs) {
+        try {
+          const ticker = await client.getTicker([pair]);
+          const value = Object.values(ticker)[0]?.c?.[0];
+          const price = Number(value);
+          if (Number.isFinite(price) && price > 0) return price;
+        } catch { /* Try the next supported quote/pair. */ }
       }
 
       return null;
@@ -80,6 +73,8 @@ export interface WithdrawWorkerOptions {
   exchangeClient: ExchangeRestClient;
   exchange: ExchangeId;
   globalConfig: GlobalConfig;
+  canSubmit?: () => boolean;
+  beforeBalanceCheck?: () => Promise<unknown>;
 }
 
 export interface WithdrawResult {
@@ -102,9 +97,19 @@ export async function startWithdrawal(
   const { destKeys, reserve } = assetConfig;
 
   // Track if we've reserved funds (for rollback on failure)
-  let reservedAmount = 0;
+  let job: WithdrawalJob | undefined;
+  const controlRevision = getControlRevision();
 
   try {
+    if (getActiveWithdrawalJobs(exchange).some(j => j.asset === asset)) {
+      return { success: false, skipped: true, skipReason: 'Waiting for the current withdrawal to settle before checking this asset’s balance' };
+    }
+    let checked;
+    try {
+      await options.beforeBalanceCheck?.();
+      checked = await checkBalances(exchange, exchangeClient);
+    }
+    catch (error) { return { success: false, skipped: true, skipReason: error instanceof Error ? error.message : 'Balance check unavailable' }; }
     // Get current state
     const state = getAssetState(exchange, asset);
     if (!state) {
@@ -150,14 +155,21 @@ export async function startWithdrawal(
       };
     }
 
-    // IMPORTANT: Reserve the funds immediately to prevent race conditions
-    // If another withdrawal is triggered concurrently, it will see reduced pending amount
-    subtractPendingAmount(exchange, asset, withdrawAmount);
-    reservedAmount = withdrawAmount;
-    logger.debug({ exchange, asset, amount: withdrawAmount }, 'Reserved funds for withdrawal');
-
     // Get destination wallet key using round-robin
-    const destKey = getCurrentWalletKey(exchange, asset, destKeys);
+    let destKey = getCurrentWalletKey(exchange, asset, destKeys);
+    let usdPrice = assetConfig.perWalletCapUsd ? await createPriceProvider(exchange, exchangeClient).getUsdPrice(asset) : null;
+    if (assetConfig.perWalletCapUsd && !usdPrice) return { success: false, skipped: true, skipReason: 'USD price unavailable for wallet cap' };
+    let walletFound = false;
+    for (let i = 0; i < destKeys.length; i++) {
+      const candidate = destKeys[(state.rrIndex + i) % destKeys.length];
+      const total = getDb().prepare(`SELECT COALESCE(SUM(amount), 0) AS amount FROM withdrawal_jobs
+        WHERE exchange = ? AND asset = ? AND dest_key = ? AND status != 'cancelled' AND (status != 'failed' OR exchange_ref IS NOT NULL)`).get(exchange, asset, candidate) as { amount: number };
+      if (globalConfig.keyNamePrefix && !candidate.startsWith(globalConfig.keyNamePrefix)) continue;
+      if (assetConfig.perWalletCapCoin && total.amount + withdrawAmount > assetConfig.perWalletCapCoin + 1e-10) continue;
+      if (assetConfig.perWalletCapUsd && (total.amount + withdrawAmount) * usdPrice! > assetConfig.perWalletCapUsd) continue;
+      destKey = candidate; walletFound = true; break;
+    }
+    if (!walletFound) return { success: false, skipped: true, skipReason: 'Every wallet has reached its cap or fails the prefix filter' };
 
     // Check prefix filter if configured
     if (globalConfig.keyNamePrefix) {
@@ -167,7 +179,7 @@ export async function startWithdrawal(
           'Wallet key does not match prefix filter'
         );
         // Restore reserved funds
-        addPendingAmount(exchange, asset, reservedAmount);
+
         return {
           success: false,
           skipped: true,
@@ -183,7 +195,7 @@ export async function startWithdrawal(
     if (!addressRecord) {
       logger.warn({ exchange, asset, destKey }, 'Destination key not found in exchange addresses');
       // Restore reserved funds
-      addPendingAmount(exchange, asset, reservedAmount);
+
       return {
         success: false,
         skipped: true,
@@ -202,7 +214,7 @@ export async function startWithdrawal(
           'Amount below cached minimum, skipping'
         );
         // Restore reserved funds
-        addPendingAmount(exchange, asset, reservedAmount);
+
         return {
           success: false,
           skipped: true,
@@ -215,7 +227,7 @@ export async function startWithdrawal(
       );
     }
 
-    // Cap amount to stay below 80k×fee (to avoid manual review) using Kraken's fee response
+    // Retain the configured legacy size cap; this is not a guarantee against exchange holds.
     const MAX_FEE_MULTIPLE = 80000;
 
     async function getInfoWithFeeCap(
@@ -227,11 +239,6 @@ export async function startWithdrawal(
         const safeMax = info.fee * MAX_FEE_MULTIPLE;
         if (requested > safeMax) {
           const adjusted = safeMax;
-          const delta = requested - adjusted;
-          if (delta > 0) {
-            addPendingAmount(exchange, asset, delta);
-            reservedAmount -= delta;
-          }
           info = await exchangeClient.getWithdrawInfo(asset, destKey, adjusted);
           requested = adjusted;
         }
@@ -251,7 +258,7 @@ export async function startWithdrawal(
         'Withdrawal limit reached, skipping'
       );
       // Restore reserved funds
-      addPendingAmount(exchange, asset, reservedAmount);
+
       return {
         success: false,
         skipped: true,
@@ -266,7 +273,7 @@ export async function startWithdrawal(
         'Withdrawal amount exceeds current limit, skipping until limit resets'
       );
       // Restore reserved funds
-      addPendingAmount(exchange, asset, reservedAmount);
+
       return {
         success: false,
         skipped: true,
@@ -278,7 +285,7 @@ export async function startWithdrawal(
     const netAmount = withdrawInfo.amount;
     if (netAmount <= 0) {
       // Restore reserved funds
-      addPendingAmount(exchange, asset, reservedAmount);
+
       return {
         success: false,
         skipped: true,
@@ -286,36 +293,43 @@ export async function startWithdrawal(
       };
     }
 
-    // Submit withdrawal
-    logger.info(
-      {
-        exchange,
-        asset,
-        amount: withdrawAmount,
-        destKey,
-        address: addressRecord.address,
-        fee: withdrawInfo.fee,
-        netAmount,
-        method,
-      },
-      'Submitting withdrawal'
-    );
-
-    const result = await exchangeClient.withdraw(asset, destKey, addressRecord.address, withdrawAmount);
-
-    // Success - funds already reserved, just update other state
-    // (subtractPendingAmount was called earlier to prevent race conditions)
-    advanceWalletIndex(exchange, asset, destKeys.length);
-    recordWithdrawalAttempt(exchange, asset, true);
-
-    // Create job record
-    const job = createWithdrawalJob(
-      exchange,
-      asset,
-      method,
-      destKey,
-      withdrawAmount
-    );
+    withdrawAmount = Math.floor(withdrawAmount * 1e8) / 1e8;
+    if (!Number.isFinite(withdrawAmount) || withdrawAmount <= withdrawInfo.fee || withdrawAmount < (cachedMethod?.minimum ?? 0) ||
+        !Number.isFinite(withdrawInfo.fee) || withdrawInfo.fee < 0 || !Number.isFinite(withdrawInfo.amount) ||
+        !Number.isFinite(withdrawInfo.limit) || (exchange === 'kraken' && withdrawInfo.method !== method) ||
+        (assetConfig.method && method !== assetConfig.method)) {
+      return { success: false, skipped: true, skipReason: 'Invalid quote, network mismatch, or amount below fee/minimum' };
+    }
+    // Store a price snapshot for the fee ledger. Missing quotes never bypass an enabled budget.
+    if (withdrawInfo.fee > 0 && !usdPrice) {
+      try { usdPrice = await createPriceProvider(exchange, exchangeClient).getUsdPrice(asset); } catch { usdPrice = null; }
+    }
+    const feeUsd = withdrawInfo.fee === 0 ? 0 : usdPrice && Number.isFinite(usdPrice) && usdPrice > 0 ? withdrawInfo.fee * usdPrice : null;
+    const budgetReason = feeBudgetReason(globalConfig.dailyFeeBudgetUsd, feeUsd);
+    if (budgetReason) return { success: false, skipped: true, skipReason: budgetReason };
+    if (globalConfig.dryRun) return { success: false, skipped: true, skipReason: 'Dry run: no withdrawal submitted' };
+    // Quotes and price lookups can take time. Confirm spendable funds again
+    // immediately before reserving a job; a failure never starts a transfer.
+    let available;
+    try { available = await exchangeClient.getBalance(); validateBalances(available); }
+    catch (error) { return { success: false, skipped: true, skipReason: error instanceof Error ? error.message : 'Balance check unavailable' }; }
+    if (Math.max(0, Number(available[asset] ?? '0')) + 1e-10 < withdrawAmount + reserve) {
+      return { success: false, skipped: true, skipReason: 'Balance changed or funds are held; waiting for the next balance check' };
+    }
+    const canSubmit = () => getControlRevision() === controlRevision && isEnabled() && isExchangeEnabled(exchange) && (options.canSubmit?.() ?? true) &&
+      JSON.stringify(getAssetConfig(exchange, asset)) === JSON.stringify(assetConfig);
+    if (!canSubmit()) return { success: false, skipped: true, skipReason: 'Settings or credentials changed' };
+    if (checked.revision !== getQueueRevision(exchange) || getActiveWithdrawalJobs(exchange).some(j => j.asset === asset)) {
+      return { success: false, skipped: true, skipReason: 'Queue changed while preparing this withdrawal; checking again' };
+    }
+    job = reserveWithdrawal(exchange, asset, method, destKey, withdrawAmount, assetConfig,
+      { global: globalConfig.maxInflightWithdrawals, perAsset: globalConfig.perAssetMaxInflight, usdPrice,
+        quotedFee: withdrawInfo.fee, feeUsd, dailyFeeBudgetUsd: globalConfig.dailyFeeBudgetUsd, destinationAddress: addressRecord.address }) ?? undefined;
+    if (!job) return { success: false, skipped: true, skipReason: feeBudgetReason(globalConfig.dailyFeeBudgetUsd, feeUsd) || 'Funds or withdrawal slot no longer available' };
+    const reservedRevision = getQueueRevision(exchange);
+    const result = await exchangeClient.withdraw(asset, destKey, addressRecord.address, withdrawAmount,
+      { maxFee: withdrawInfo.fee, beforeSend: () => canSubmit() && reservedRevision === getQueueRevision(exchange) });
+    if (!result?.refId) throw new Error('Exchange did not return a withdrawal reference');
 
     // Update with exchange reference
     updateWithdrawalJob(job.id, {
@@ -323,6 +337,7 @@ export async function startWithdrawal(
       status: 'pending',
     });
 
+    recordWithdrawalAttempt(exchange, asset, true);
     job.exchangeRef = result.refId;
     job.status = 'pending';
 
@@ -343,10 +358,13 @@ export async function startWithdrawal(
     const errorMsg = error instanceof Error ? error.message : String(error);
     logger.error({ exchange, asset, error: errorMsg }, 'Withdrawal failed');
 
-    // Restore reserved funds if any were reserved
-    if (reservedAmount > 0) {
-      addPendingAmount(exchange, asset, reservedAmount);
-      logger.debug({ exchange, asset, amount: reservedAmount }, 'Restored reserved funds after failure');
+    if (job) {
+      if (error instanceof KrakenApiError && error.definitelyRejected) {
+        releaseWithdrawal(job.id, 'failed', errorMsg);
+      } else {
+        // Transport errors and unclassified exchange errors cannot prove non-submission.
+        updateWithdrawalJob(job.id, { status: 'unknown', lastError: errorMsg });
+      }
     }
 
     // Calculate backoff
@@ -358,14 +376,12 @@ export async function startWithdrawal(
 
     recordWithdrawalAttempt(exchange, asset, false, backoffUntil);
 
-    return { success: false, error: errorMsg };
+    return { success: false, job, error: errorMsg };
   }
 }
 
 // Default cooldown between withdrawals (60 seconds)
 const DEFAULT_COOLDOWN_SECONDS = 60;
-const COOLDOWN_JITTER_MIN = 0.01; // 1%
-const COOLDOWN_JITTER_MAX = 0.10; // 10%
 
 /**
  * Check if an asset is eligible for withdrawal attempt
@@ -394,21 +410,12 @@ export function isEligibleForWithdrawal(
     };
   }
 
-  // Check cooldown (use asset config or default) with slight jitter to avoid fixed cadence
-  const baseCooldownSeconds = assetConfig.cooldownSeconds ?? DEFAULT_COOLDOWN_SECONDS;
-  const jitterPercent = COOLDOWN_JITTER_MIN + Math.random() * (COOLDOWN_JITTER_MAX - COOLDOWN_JITTER_MIN);
-  const jitterDirection = Math.random() < 0.5 ? -1 : 1;
-  const cooldownSeconds = baseCooldownSeconds * (1 + jitterDirection * jitterPercent);
-  const cooldownMs = Math.max(0, cooldownSeconds * 1000);
-  if (state.lastWithdrawAt) {
-    const elapsed = now - state.lastWithdrawAt;
-    if (elapsed < cooldownMs) {
-      const remainingMs = cooldownMs - elapsed;
-      return {
-        eligible: false,
-        reason: `In cooldown for ${Math.ceil(remainingMs / 1000)}s`,
-      };
-    }
+  if (getActiveWithdrawalJobs(exchange).some(job => job.asset === asset && ['held', 'unknown'].includes(job.status))) {
+    return { eligible: false, reason: 'A held or uncertain withdrawal needs review' };
+  }
+  const cooldownMs = (assetConfig.cooldownSeconds ?? DEFAULT_COOLDOWN_SECONDS) * 1000;
+  if (state.lastWithdrawAt && now - state.lastWithdrawAt < cooldownMs) {
+    return { eligible: false, reason: 'In cooldown' };
   }
 
   // Check per-asset inflight limit

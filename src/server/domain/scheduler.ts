@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { createChildLogger } from '../utils/logger.js';
 import {
-  getAllAssetStates,
+  getAllAssetStates, getApiKeyById,
   getInflightCount,
   isEnabled,
   getEnabledAssetConfigs,
@@ -14,11 +14,13 @@ import { getClientPool } from '../exchanges/clientPool.js';
 import { getExchangeRegistry } from '../exchanges/registry.js';
 import type { AppConfig } from '../config/schema.js';
 import type { WithdrawalJob, ExchangeId } from './types.js';
+import type { ExchangeRestClient } from '../exchanges/types.js';
 
 const logger = createChildLogger('scheduler');
 
 export interface SchedulerOptions {
   config: AppConfig;
+  syncTrades?: (exchange: ExchangeId, client: ExchangeRestClient) => Promise<unknown>;
 }
 
 export interface SchedulerEvents {
@@ -33,11 +35,16 @@ export class Scheduler extends EventEmitter {
   private tickTimer: NodeJS.Timeout | null = null;
   private running = false;
   private wakeRequested = false;
+  private ticking = false;
+  private revision = 0;
+  readonly assetNotices = new Map<string, string>();
   private readonly disabledTickMs = 10_000;
+  private syncTrades?: SchedulerOptions['syncTrades'];
 
   constructor(options: SchedulerOptions) {
     super();
     this.config = options.config;
+    this.syncTrades = options.syncTrades;
   }
 
   /**
@@ -67,6 +74,7 @@ export class Scheduler extends EventEmitter {
       logger.info('Stopping scheduler');
     }
     this.running = false;
+    this.revision++;
 
     if (this.tickTimer) {
       clearTimeout(this.tickTimer);
@@ -79,13 +87,9 @@ export class Scheduler extends EventEmitter {
    */
   wake(): void {
     this.wakeRequested = true;
-
-    // If we have a pending tick, cancel it and run immediately
-    if (this.tickTimer) {
-      clearTimeout(this.tickTimer);
-      this.tickTimer = null;
-      setImmediate(() => this.tick());
-    }
+    if (!this.running || this.ticking) return;
+    if (this.tickTimer) clearTimeout(this.tickTimer);
+    this.scheduleTick(0);
   }
 
   /**
@@ -93,6 +97,9 @@ export class Scheduler extends EventEmitter {
    */
   updateConfig(config: AppConfig): void {
     this.config = config;
+    this.assetNotices.clear();
+    this.revision++;
+    this.wake();
   }
 
   /**
@@ -100,6 +107,7 @@ export class Scheduler extends EventEmitter {
    */
   private scheduleTick(delayMs?: number): void {
     if (!this.running) return;
+    if (this.tickTimer) clearTimeout(this.tickTimer);
 
     this.tickTimer = setTimeout(
       () => this.tick(),
@@ -112,9 +120,9 @@ export class Scheduler extends EventEmitter {
    */
   private async tick(): Promise<void> {
     // Check if stopped (handles race condition during shutdown)
-    if (!this.running) {
-      return;
-    }
+    if (!this.running || this.ticking) return;
+    this.ticking = true;
+    this.tickTimer = null;
 
     this.wakeRequested = false;
     this.emit('tick');
@@ -123,7 +131,6 @@ export class Scheduler extends EventEmitter {
       // Check if enabled
       if (!isEnabled()) {
         logger.debug('Scheduler disabled, skipping tick');
-        this.scheduleTick(Math.max(this.config.global.schedulerTickMs, this.disabledTickMs));
         return;
       }
 
@@ -139,10 +146,10 @@ export class Scheduler extends EventEmitter {
       }
     } catch (error) {
       logger.error({ error }, 'Scheduler tick error');
+    } finally {
+      this.ticking = false;
+      this.scheduleTick(this.wakeRequested ? 0 : isEnabled() ? this.config.global.schedulerTickMs : this.disabledTickMs);
     }
-
-    // Schedule next tick
-    this.scheduleTick();
   }
 
   /**
@@ -252,22 +259,27 @@ export class Scheduler extends EventEmitter {
       return 'skipped';
     }
 
+    const revision = this.revision;
     // Try withdrawal
     const result = await startWithdrawal(asset, assetConfig, {
       exchangeClient: selection.client,
       exchange,
       globalConfig: this.config.global,
+      beforeBalanceCheck: () => this.syncTrades?.(exchange, selection.client) ?? Promise.resolve(),
+      canSubmit: () => this.running && this.revision === revision && !!getApiKeyById(selection.keyId)?.isActive,
     });
 
     // Record usage regardless of outcome
     pool.recordUsage(selection.keyId, 2); // Withdrawals cost more
 
     if (result.success && result.job) {
+      this.assetNotices.delete(`${exchange}:${asset}`);
       this.emit('withdrawalStarted', result.job);
       return 'started';
     }
 
     if (result.skipped) {
+      this.assetNotices.set(`${exchange}:${asset}`, result.skipReason || 'Waiting');
       logger.debug({ exchange, asset, reason: result.skipReason }, 'Withdrawal skipped');
       return 'skipped';
     }

@@ -264,6 +264,48 @@ const MIGRATIONS = [
       );
     `,
   },
+  {
+    version: 3,
+    name: 'telegram_notifications',
+    sql: `
+      ALTER TABLE fill_events RENAME TO fill_events_old;
+      CREATE TABLE fill_events (
+        id TEXT NOT NULL, exchange TEXT NOT NULL, order_id TEXT NOT NULL, pair TEXT NOT NULL,
+        side TEXT NOT NULL, order_type TEXT NOT NULL, price REAL NOT NULL, volume REAL NOT NULL,
+        cost REAL NOT NULL, fee REAL NOT NULL, fee_currency TEXT NOT NULL,
+        net_received_asset TEXT NOT NULL, net_received_amount REAL NOT NULL, ts INTEGER NOT NULL,
+        PRIMARY KEY (exchange, id)
+      );
+      INSERT INTO fill_events SELECT * FROM fill_events_old;
+      DROP TABLE fill_events_old;
+      CREATE INDEX idx_fill_events_ts ON fill_events(ts);
+      CREATE INDEX idx_fill_events_asset ON fill_events(net_received_asset);
+      CREATE INDEX idx_fill_events_exchange ON fill_events(exchange);
+      ALTER TABLE asset_configs ADD COLUMN per_wallet_cap_coin REAL;
+      ALTER TABLE asset_configs ADD COLUMN per_wallet_cap_usd REAL;
+      CREATE TABLE telegram_job_state (job_id TEXT PRIMARY KEY, status TEXT NOT NULL, ref TEXT);
+      CREATE TABLE telegram_outbox (
+        event_id TEXT PRIMARY KEY, kind TEXT NOT NULL, exchange TEXT NOT NULL, asset TEXT NOT NULL,
+        amount REAL NOT NULL, message TEXT NOT NULL, created_at INTEGER NOT NULL,
+        ready_at INTEGER NOT NULL, sent_at INTEGER
+      );
+      CREATE INDEX idx_telegram_outbox_ready ON telegram_outbox(sent_at, ready_at);
+    `,
+  },
+  {
+    version: 4,
+    name: 'withdrawal_history_and_fee_budget',
+    sql: `
+      ALTER TABLE withdrawal_jobs ADD COLUMN quoted_fee REAL;
+      ALTER TABLE withdrawal_jobs ADD COLUMN actual_fee REAL;
+      ALTER TABLE withdrawal_jobs ADD COLUMN fee_usd REAL;
+      ALTER TABLE withdrawal_jobs ADD COLUMN destination_address TEXT;
+      CREATE INDEX IF NOT EXISTS idx_withdrawal_jobs_created ON withdrawal_jobs(created_at);
+      CREATE TABLE health_alert_state (
+        key TEXT PRIMARY KEY, since_at INTEGER NOT NULL, alerted INTEGER NOT NULL DEFAULT 0
+      );
+    `,
+  },
 ];
 
 function runMigrations(database: Database.Database): void {
@@ -287,15 +329,10 @@ function runMigrations(database: Database.Database): void {
     if (migration.version > currentVersion) {
       logger.info({ version: migration.version, name: migration.name }, 'Running migration');
 
-      // Run each SQL statement from the migration
-      const statements = migration.sql.split(';').filter(s => s.trim());
-      for (const stmt of statements) {
-        if (stmt.trim()) {
-          database.prepare(stmt).run();
-        }
-      }
-
-      database.prepare('INSERT INTO schema_version (version) VALUES (?)').run(migration.version);
+      database.transaction(() => {
+        database.exec(migration.sql);
+        database.prepare('INSERT INTO schema_version (version) VALUES (?)').run(migration.version);
+      }).immediate();
 
       logger.info({ version: migration.version }, 'Migration complete');
     }

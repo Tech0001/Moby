@@ -31,7 +31,7 @@ export async function computeChunkAmount(
 
   // If no chunk config, return all available
   if (!chunk) {
-    return available;
+    return Math.floor(available * 1e8) / 1e8;
   }
 
   if (available <= 0) {
@@ -80,7 +80,7 @@ export async function computeChunkAmount(
 
   logger.debug({ asset, pendingAmount, available, chunkAmount }, 'Computed chunk amount');
 
-  return chunkAmount;
+  return Number.isFinite(chunkAmount) ? Math.floor(chunkAmount * 1e8) / 1e8 : 0;
 }
 
 /**
@@ -193,12 +193,12 @@ export async function checkWalletCap(
   if (perWalletCapUsd !== undefined) {
     if (!priceProvider) {
       // Can't check USD cap without price - allow conservatively
-      return { allowed: true };
+      return { allowed: false, reason: 'USD price unavailable for wallet cap' };
     }
 
     const price = await priceProvider.getUsdPrice(asset);
-    if (!price) {
-      return { allowed: true };
+    if (!price || !Number.isFinite(price) || price <= 0) {
+      return { allowed: false, reason: 'USD price unavailable for wallet cap' };
     }
 
     const totalAfterUsd = (totalWithdrawnToWallet + proposedAmount) * price;

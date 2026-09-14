@@ -1,3 +1,4 @@
+import { apiFetch } from '@/ui/lib/api';
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/components/ui/card";
 import { Button } from "@/ui/components/ui/button";
@@ -25,11 +26,14 @@ interface AssetConfig {
   chunkAmount: number | null;
   chunkMode?: 'fixedCoin' | 'fixedUsd';
   chunkMax?: number | null;
+  perWalletCapCoin?: number | null;
+  perWalletCapUsd?: number | null;
 }
 
 interface GlobalConfig {
   enabledOnBoot: boolean;
   dryRun: boolean;
+  dailyFeeBudgetUsd: number | null;
   maxInflightWithdrawals: number;
   perAssetMaxInflight: number;
   schedulerTickMs: number;
@@ -46,6 +50,7 @@ interface Config {
 // Database-backed settings (editable)
 interface GlobalSettings {
   dryRun: boolean;
+  dailyFeeBudgetUsd: number | null;
   maxInflightWithdrawals: number;
   perAssetMaxInflight: number;
   keyNamePrefix: string;
@@ -134,7 +139,7 @@ export function ConfigPanel() {
 
     for (const exchangeId of exchangeIds) {
       try {
-        const res = await fetch(`/api/exchanges/${exchangeId}/supports-sync`);
+        const res = await apiFetch(`/api/exchanges/${exchangeId}/supports-sync`);
         if (res.ok) {
           const data = await res.json();
           supportMap[exchangeId] = data;
@@ -149,7 +154,7 @@ export function ConfigPanel() {
 
   async function fetchConfig() {
     try {
-      const res = await fetch('/api/config');
+      const res = await apiFetch('/api/config');
       if (res.ok) {
         const data = await res.json();
         setConfig(data);
@@ -163,7 +168,7 @@ export function ConfigPanel() {
 
   async function fetchAssetConfigs() {
     try {
-      const res = await fetch('/api/config/assets');
+      const res = await apiFetch('/api/config/assets');
       if (res.ok) {
         const data = await res.json();
         setAssetConfigs(data.assets || []);
@@ -175,7 +180,7 @@ export function ConfigPanel() {
 
   async function fetchSweeperStatus() {
     try {
-      const res = await fetch('/api/status');
+      const res = await apiFetch('/api/status');
       if (res.ok) {
         const data = await res.json();
         setSweeperStatus({ enabled: data.enabled, hasApiKeys: data.hasApiKeys });
@@ -188,8 +193,8 @@ export function ConfigPanel() {
   async function fetchExchanges() {
     try {
       const [exchangesRes, keysRes] = await Promise.all([
-        fetch('/api/exchanges/available'),
-        fetch('/api/keys')
+        apiFetch('/api/exchanges/available'),
+        apiFetch('/api/keys')
       ]);
 
       if (exchangesRes.ok && keysRes.ok) {
@@ -214,7 +219,7 @@ export function ConfigPanel() {
 
   async function fetchActiveAssets() {
     try {
-      const res = await fetch('/api/orders?exchange=all');
+      const res = await apiFetch('/api/orders?exchange=all');
       if (res.ok) {
         const data = await res.json();
         const orders = data.orders || [];
@@ -267,13 +272,12 @@ export function ConfigPanel() {
     setToggling(true);
     try {
       const endpoint = sweeperStatus.enabled ? '/api/control/stop' : '/api/control/start';
-      const res = await fetch(endpoint, { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        setSweeperStatus({ ...sweeperStatus, enabled: data.enabled });
-      }
+      const res = await apiFetch(endpoint, { method: 'POST' }, sweeperStatus.enabled ? 30000 : 120000);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not change withdrawal state');
+      setSweeperStatus({ ...sweeperStatus, enabled: data.enabled });
     } catch (err) {
-      setError('Failed to toggle sweeper');
+      setError(err instanceof Error ? err.message : 'Failed to toggle sweeper');
     } finally {
       setToggling(false);
     }
@@ -284,7 +288,7 @@ export function ConfigPanel() {
     setError('');
     setSuccess('');
     try {
-      const res = await fetch('/api/control/reconcile', {
+      const res = await apiFetch('/api/control/reconcile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
@@ -314,7 +318,7 @@ export function ConfigPanel() {
   async function fetchAddresses() {
     setLoadingAddresses(true);
     try {
-      const res = await fetch('/api/addresses');
+      const res = await apiFetch('/api/addresses');
       if (res.ok) {
         const data = await res.json();
         setAddresses(data);
@@ -328,7 +332,7 @@ export function ConfigPanel() {
 
   async function fetchWithdrawalMethods() {
     try {
-      const res = await fetch('/api/withdrawal-methods');
+      const res = await apiFetch('/api/withdrawal-methods');
       if (res.ok) {
         const data = await res.json();
         setWithdrawalMethods(data);
@@ -340,7 +344,7 @@ export function ConfigPanel() {
 
   async function fetchSettings() {
     try {
-      const res = await fetch('/api/settings');
+      const res = await apiFetch('/api/settings');
       if (res.ok) {
         const data = await res.json();
         setSettings(data);
@@ -358,7 +362,7 @@ export function ConfigPanel() {
     setSuccess('');
 
     try {
-      const res = await fetch('/api/settings', {
+      const res = await apiFetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settingsForm),
@@ -396,7 +400,7 @@ export function ConfigPanel() {
   async function syncAddresses(exchangeId: string, exchangeName: string) {
     setSyncingExchange(exchangeId);
     try {
-      const res = await fetch(`/api/exchanges/${exchangeId}/addresses/sync`, { method: 'POST' });
+      const res = await apiFetch(`/api/exchanges/${exchangeId}/addresses/sync`, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
         await fetchAddresses();
@@ -432,7 +436,7 @@ export function ConfigPanel() {
     setError('');
 
     try {
-      const res = await fetch(`/api/exchanges/${exchangeId}/addresses/manual`, {
+      const res = await apiFetch(`/api/exchanges/${exchangeId}/addresses/manual`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -460,7 +464,7 @@ export function ConfigPanel() {
     if (!confirm(`Delete withdrawal address "${key}" for ${asset}?`)) return;
 
     try {
-      const res = await fetch(`/api/exchanges/${exchangeId}/addresses/${asset}/${encodeURIComponent(key)}`, {
+      const res = await apiFetch(`/api/exchanges/${exchangeId}/addresses/${asset}/${encodeURIComponent(key)}`, {
         method: 'DELETE',
       });
 
@@ -484,6 +488,8 @@ export function ConfigPanel() {
     priority?: number;
     cooldownSeconds?: number;
     chunkAmount?: number;
+    perWalletCapCoin?: number | null;
+    perWalletCapUsd?: number | null;
     chunkMode?: 'fixedCoin' | 'fixedUsd';
   }) {
     setSaving(true);
@@ -491,7 +497,7 @@ export function ConfigPanel() {
     setSuccess('');
 
     try {
-      const res = await fetch(`/api/config/exchanges/${exchange}/assets/${asset}`, {
+      const res = await apiFetch(`/api/config/exchanges/${exchange}/assets/${asset}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(configData),
@@ -519,7 +525,7 @@ export function ConfigPanel() {
     if (!confirm(`Delete ${asset} configuration for ${exchange}?`)) return;
 
     try {
-      const res = await fetch(`/api/config/exchanges/${exchange}/assets/${asset}`, {
+      const res = await apiFetch(`/api/config/exchanges/${exchange}/assets/${asset}`, {
         method: 'DELETE',
       });
 
@@ -537,7 +543,7 @@ export function ConfigPanel() {
 
   async function toggleExchangeEnabled(exchange: string, enabled: boolean) {
     try {
-      const res = await fetch(`/api/exchanges/${exchange}/settings`, {
+      const res = await apiFetch(`/api/exchanges/${exchange}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled }),
@@ -566,11 +572,11 @@ export function ConfigPanel() {
     }
     const assetKey = addr.asset.split(/[-/]/)[0] || addr.asset;
     if (!acc[exchange][assetKey]) {
-      acc[exchange][assetKey] = { method: addr.method, entries: [] as Array<{ key: string; address: string }> };
+      acc[exchange][assetKey] = { method: addr.method, entries: [] as Array<{ key: string; address: string; method?: string }> };
     }
-    acc[exchange][assetKey].entries.push({ key: addr.key, address: addr.address });
+    acc[exchange][assetKey].entries.push({ key: addr.key, address: addr.address, method: addr.method });
     return acc;
-  }, {} as Record<string, Record<string, { method: string; entries: Array<{ key: string; address: string }> }>>);
+  }, {} as Record<string, Record<string, { method: string; entries: Array<{ key: string; address: string; method?: string }> }>>);
 
   // Group asset configs by exchange
   const configsByExchange = assetConfigs.reduce((acc, cfg) => {
@@ -635,7 +641,7 @@ export function ConfigPanel() {
                     variant={sweeperStatus?.enabled ? 'destructive' : 'default'}
                     size="sm"
                   >
-                    {toggling ? 'Working...' : sweeperStatus?.enabled ? 'Stop' : 'Start'}
+                    {toggling ? sweeperStatus?.enabled ? 'Pausing…' : 'Checking balances…' : sweeperStatus?.enabled ? 'Stop' : 'Start'}
                   </Button>
                 </div>
 
@@ -680,6 +686,14 @@ export function ConfigPanel() {
                         checked={settingsForm.dryRun}
                         onCheckedChange={(checked) => setSettingsForm({ ...settingsForm, dryRun: checked })}
                       />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="fee-budget">24-hour fee budget (USD, optional)</Label>
+                      <Input id="fee-budget" type="number" min="0.01" step="0.01" placeholder="No limit" value={settingsForm.dailyFeeBudgetUsd ?? ''}
+                        onChange={e => setSettingsForm({ ...settingsForm, dailyFeeBudgetUsd: e.target.value === '' ? null : Number(e.target.value) })} />
+                      <p className="text-xs text-muted-foreground">Reserves estimated USD fees before each chunk across all exchanges, over a rolling 24 hours. Holds keep their fee reservation. Actual exchange fees may differ. Blank disables the limit.</p>
+                      <p className="text-xs text-muted-foreground">Missing prices or older withdrawals with unrecorded fees pause new submissions until the budget can be checked.</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -765,6 +779,7 @@ export function ConfigPanel() {
                         {settings.dryRun ? 'ON' : 'OFF'}
                       </Badge>
                     </div>
+                    <div><span className="text-muted-foreground">Fee budget / 24h:</span><span className="ml-2">{settings.dailyFeeBudgetUsd == null ? 'No limit' : `$${settings.dailyFeeBudgetUsd}`}</span></div>
                     <div>
                       <span className="text-muted-foreground">Max Inflight:</span>
                       <span className="ml-2">{settings.maxInflightWithdrawals}</span>
@@ -879,7 +894,7 @@ interface AddAssetDialogProps {
   initialAsset?: string;
   editingConfig?: AssetConfig;
   existingAssets: string[];
-  addressesByAsset: Record<string, { method: string; entries: Array<{ key: string; address: string }> }>;
+  addressesByAsset: Record<string, { method: string; entries: Array<{ key: string; address: string; method?: string }> }>;
   withdrawalMethods: WithdrawalMethod[];
   onSave: (asset: string, config: {
     threshold: number;
@@ -888,6 +903,8 @@ interface AddAssetDialogProps {
     priority?: number;
     cooldownSeconds?: number;
     chunkAmount?: number;
+    perWalletCapCoin?: number | null;
+    perWalletCapUsd?: number | null;
     chunkMode?: 'fixedCoin' | 'fixedUsd';
   }) => void;
   saving: boolean;
@@ -911,16 +928,16 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
   const [cooldownSeconds, setCooldownSeconds] = useState(60);
   const [chunkAmount, setChunkAmount] = useState(0.01);
   const [chunkMode, setChunkMode] = useState<'fixedCoin' | 'fixedUsd'>('fixedCoin');
+  const [capCoin, setCapCoin] = useState('');
+  const [capUsd, setCapUsd] = useState('');
   const [userEditedValues, setUserEditedValues] = useState(false);
+  const [previewAmount, setPreviewAmount] = useState('');
 
   // Get withdrawal method info for the selected asset (minimum, fee)
   const assetInfo = selectedAsset ? addressesByAsset[selectedAsset] : null;
-  // Try exact match first, then case-insensitive, then just by asset (if only one method exists)
-  const methodInfo = selectedAsset && assetInfo
-    ? withdrawalMethods.find(m => m.asset === selectedAsset && m.method === assetInfo.method)
-      ?? withdrawalMethods.find(m => m.asset === selectedAsset && m.method.toLowerCase() === assetInfo.method.toLowerCase())
-      ?? withdrawalMethods.find(m => m.asset === selectedAsset) // fallback: any method for this asset
-    : null;
+  const selectedMethods = [...new Set((assetInfo?.entries || []).filter(e => selectedKeys.includes(e.key)).map(e => e.method || assetInfo!.method))];
+  const previewMethod = selectedMethods.length === 1 ? selectedMethods[0] : null;
+  const methodInfo = selectedAsset && previewMethod ? withdrawalMethods.find(m => m.exchange === exchange && m.asset === selectedAsset && m.method.toLowerCase() === previewMethod.toLowerCase()) : undefined;
   const minimum = methodInfo?.minimum ?? 0;
   const isUsdChunk = chunkMode === 'fixedUsd';
 
@@ -931,7 +948,10 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
 
       // Reset user-edited flag when dialog opens
       setUserEditedValues(false);
+      setPreviewAmount('');
 
+      setCapCoin(editingConfig?.perWalletCapCoin?.toString() ?? '');
+      setCapUsd(editingConfig?.perWalletCapUsd?.toString() ?? '');
       if (editingConfig) {
         // Pre-fill with existing config values
         setSelectedKeys(editingConfig.destKeys);
@@ -968,10 +988,8 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
       setSelectedKeys(addressesByAsset[selectedAsset]?.entries?.map((e) => e.key) || []);
       // Set threshold to minimum withdrawal amount
       const info = addressesByAsset[selectedAsset];
-      // Try exact match first, then case-insensitive, then just by asset
-      const method = withdrawalMethods.find(m => m.asset === selectedAsset && m.method === info.method)
-        ?? withdrawalMethods.find(m => m.asset === selectedAsset && m.method.toLowerCase() === info.method.toLowerCase())
-        ?? withdrawalMethods.find(m => m.asset === selectedAsset);
+      const networks = new Set(info.entries.map(e => e.method || info.method));
+      const method = networks.size === 1 ? withdrawalMethods.find(m => m.exchange === exchange && m.asset === selectedAsset && m.method.toLowerCase() === info.method.toLowerCase()) : undefined;
       if (method?.minimum) {
         setThreshold(method.minimum);
         setChunkAmount(method.minimum); // Also set chunk size to minimum
@@ -998,6 +1016,8 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
       cooldownSeconds,
       chunkAmount,
       chunkMode,
+      perWalletCapCoin: capCoin ? Number(capCoin) : null,
+      perWalletCapUsd: capUsd ? Number(capUsd) : null,
     });
   }
 
@@ -1057,7 +1077,7 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
                             className="font-mono"
                             title={entry.address}
                           >
-                            {entry.key}
+                            {entry.key} · {entry.method || assetInfo.method}
                           </Button>
                         ))}
                       </div>
@@ -1071,6 +1091,8 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
 
               {assetInfo && (
                 <div className="space-y-4 md:border-l md:pl-6">
+                  {selectedMethods.length > 1 && <p className="text-sm text-amber-500">Selected wallets use different networks. Fees and minimums vary; each is checked separately before submission.</p>}
+                  {!methodInfo && selectedMethods.length === 1 && <p className="text-sm text-muted-foreground">No cached fee or minimum for {previewMethod}. Moby will request a current quote before submitting.</p>}
                   {/* Show minimum withdrawal info if available */}
                   {methodInfo && (
                     <div className="text-xs bg-muted/50 rounded px-3 py-2 space-y-1">
@@ -1222,6 +1244,20 @@ function AddAssetDialog({ open, onOpenChange, exchange, initialAsset, editingCon
           </div>
         )}
 
+        <div className="grid grid-cols-2 gap-3 mt-3">
+          <div><Label htmlFor="wallet-cap-coin">Per-wallet lifetime cap (coin, optional)</Label>
+            <Input id="wallet-cap-coin" type="number" min="0" step="any" value={capCoin} onChange={e => setCapCoin(e.target.value)} /></div>
+          <div><Label htmlFor="wallet-cap-usd">Per-wallet lifetime cap (USD, optional)</Label>
+            <Input id="wallet-cap-usd" type="number" min="0" step="any" value={capUsd} onChange={e => setCapUsd(e.target.value)} /></div>
+        </div>
+        {!isUsdChunk && methodInfo?.fee != null && chunkAmount > 0 && <div className="border-t pt-3 space-y-2">
+          <Label htmlFor="preview-total">Preview a total amount ({selectedAsset})</Label>
+          <Input id="preview-total" type="number" min="0" step="any" placeholder="Optional estimate" value={previewAmount} onChange={e => setPreviewAmount(e.target.value)} />
+          {Number(previewAmount) > reserve && <p className="text-sm text-muted-foreground">
+            Up to {Math.ceil((Number(previewAmount) - reserve) / chunkAmount)} chunks · approximately {Number((Math.ceil((Number(previewAmount) - reserve) / chunkAmount) * methodInfo.fee).toFixed(8))} {selectedAsset} in fees at the cached rate.
+            A remainder below the network minimum waits for more funds. Prices, fees, wallet caps, and available slots can change the result.
+          </p>}
+        </div>}
         <DialogFooter className="mt-4">
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
@@ -1292,7 +1328,7 @@ function ManualAddressDialog({ open, onOpenChange, exchange, exchangeName, withd
   async function fetchTradeableCoins() {
     setLoadingCoins(true);
     try {
-      const res = await fetch(`/api/exchanges/${exchange}/tradeable-coins`);
+      const res = await apiFetch(`/api/exchanges/${exchange}/tradeable-coins`);
       if (res.ok) {
         const data = await res.json();
         setTradeableCoins(data.coins || []);

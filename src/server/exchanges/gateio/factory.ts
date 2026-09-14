@@ -71,8 +71,8 @@ export const GateAdapterFactory: ExchangeAdapterFactory = {
     return {
       exchangeId: 'gateio' as ExchangeId,
 
-      async getBalance() {
-        return client.getBalance();
+      async getBalance(options) {
+        return client.getBalance(options);
       },
 
       async getWithdrawInfo(asset, address, amount) {

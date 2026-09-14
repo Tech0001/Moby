@@ -1,12 +1,12 @@
+import { createHash, createPrivateKey, createPublicKey, randomBytes } from 'node:crypto';
+import { base58, bech32 } from '@scure/base';
 import { Wallet, Mnemonic, HDNodeWallet } from 'ethers';
 import * as bitcoin from 'bitcoinjs-lib';
 import ECPairFactory from 'ecpair';
 import * as ecc from 'tiny-secp256k1';
-import { Keypair as SolanaKeypair } from '@solana/web3.js';
 import { Wallet as XrpWallet } from 'xrpl';
 import { Keypair as StellarKeypair } from '@stellar/stellar-sdk';
 import algosdk from 'algosdk';
-import { MnemonicKey } from '@terra-money/terra.js';
 import type { WalletChain } from '../db/repositories.js';
 
 // Dynamic import for Cardano (it's a native module)
@@ -77,12 +77,17 @@ function generateBitcoinWallet(): GeneratedWallet {
   };
 }
 
+export function solanaWalletFromSeed(seed: Uint8Array): GeneratedWallet {
+  if (seed.length !== 32) throw new Error('An Ed25519 seed must have 32 bytes');
+  // RFC 8410 PKCS#8 wraps the Ed25519 seed; OpenSSL derives the matching public key.
+  const key = createPrivateKey({ key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), Buffer.from(seed)]), format: 'der', type: 'pkcs8' });
+  const publicKey = createPublicKey(key).export({ format: 'jwk' });
+  const publicBytes = Buffer.from(publicKey.x!, 'base64url');
+  return { address: base58.encode(publicBytes), privateKey: Buffer.concat([Buffer.from(seed), publicBytes]).toString('hex') };
+}
+
 function generateSolanaWallet(): GeneratedWallet {
-  const keypair = SolanaKeypair.generate();
-  return {
-    address: keypair.publicKey.toBase58(),
-    privateKey: Buffer.from(keypair.secretKey).toString('hex'),
-  };
+  return solanaWalletFromSeed(randomBytes(32));
 }
 
 function generateXrpWallet(): GeneratedWallet {
@@ -153,15 +158,16 @@ function harden(num: number): number {
   return 0x80000000 + num;
 }
 
-function generateLuncWallet(): GeneratedWallet {
-  // Generate a new mnemonic key for Terra/LUNC
-  const mk = new MnemonicKey();
+export function luncWalletFromMnemonic(mnemonic: string): GeneratedWallet {
+  // Terra Classic's existing derivation path and compressed-key address format.
+  const wallet = HDNodeWallet.fromPhrase(mnemonic, '', "m/44'/330'/0'/0/0");
+  const sha = createHash('sha256').update(Buffer.from(wallet.publicKey.slice(2), 'hex')).digest();
+  const addressBytes = createHash('ripemd160').update(sha).digest();
+  return { address: bech32.encode('terra', bech32.toWords(addressBytes)), privateKey: wallet.privateKey.slice(2), mnemonic };
+}
 
-  return {
-    address: mk.accAddress, // Terra Classic address (property, not method)
-    privateKey: mk.privateKey.toString('hex'), // Raw private key
-    mnemonic: mk.mnemonic, // Seed phrase
-  };
+function generateLuncWallet(): GeneratedWallet {
+  return luncWalletFromMnemonic(Mnemonic.fromEntropy(randomBytes(32)).phrase);
 }
 
 /**

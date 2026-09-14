@@ -1,3 +1,5 @@
+import { validateBalances } from '../balances.js';
+import { parseTrade } from './trades.js';
 import type {
   ExchangeId,
   ExchangeAdapterFactory,
@@ -11,7 +13,7 @@ import type {
 } from '../types.js';
 import { KrakenRestClient } from './restClient.js';
 import { KrakenWsClient } from './wsClient.js';
-import { normalizeKrakenAsset, parseKrakenPair } from './normalize.js';
+import { normalizeKrakenAsset, parseKrakenPair, toKrakenAsset } from './normalize.js';
 
 // Kraken-specific error strings
 const RATE_LIMIT_ERRORS = [
@@ -26,7 +28,6 @@ const RATE_LIMIT_ERRORS = [
 const AUTH_ERRORS = [
   'EAPI:Invalid key',
   'EAPI:Invalid signature',
-  'EAPI:Invalid nonce',
   'EGeneral:Permission denied',
   'EAccount:Invalid permissions',
   'EAuth:Account temporary disabled',
@@ -61,6 +62,7 @@ export const KrakenAdapterFactory: ExchangeAdapterFactory = {
       apiKey: options.apiKey,
       apiSecret: options.apiSecret,
       dryRun: options.dryRun,
+      beforeRequest: options.beforeRequest,
     });
 
     // Wrap to conform to ExchangeRestClient interface
@@ -68,16 +70,18 @@ export const KrakenAdapterFactory: ExchangeAdapterFactory = {
       exchangeId: 'kraken' as ExchangeId,
 
       async getBalance() {
-        return client.getBalance();
+        const balances = await client.getBalance();
+        validateBalances(balances);
+        return Object.fromEntries(Object.entries(balances).map(([asset, amount]) => [normalizeKrakenAsset(asset), amount]));
       },
 
       async getWithdrawInfo(asset, key, amount) {
-        return client.getWithdrawInfo(asset, key, amount);
+        return client.getWithdrawInfo(toKrakenAsset(asset), key, amount);
       },
 
-      async withdraw(asset, key, _address, amount) {
+      async withdraw(asset, key, _address, amount, options) {
         // Kraken uses key (saved address name), not the actual address
-        const result = await client.withdraw(asset, key, amount);
+        const result = await client.withdraw(toKrakenAsset(asset), key, amount, options?.maxFee, options?.beforeSend);
         return { refId: result.refid };
       },
 
@@ -85,10 +89,10 @@ export const KrakenAdapterFactory: ExchangeAdapterFactory = {
         const statuses = await client.getWithdrawStatus(asset);
         return statuses.map((s) => ({
           refId: s.refid,
-          asset: s.asset,
+          asset: normalizeKrakenAsset(s.asset),
           amount: parseFloat(s.amount),
           fee: parseFloat(s.fee),
-          status: mapKrakenStatus(s.status),
+          status: s['status-prop'] === 'onhold' ? 'held' as const : s['status-prop'] === 'cancel-pending' ? 'pending' as const : s['status-prop'] === 'canceled' ? 'cancelled' as const : mapKrakenStatus(s.status),
           txid: s.txid,
           address: s.info,
           timestamp: s.time * 1000,
@@ -143,40 +147,19 @@ export const KrakenAdapterFactory: ExchangeAdapterFactory = {
       },
 
       async getTradesHistory(options?: { start?: number; end?: number }) {
-        const result = await client.getTradesHistory({
-          start: options?.start ? Math.floor(options.start / 1000) : undefined,
-          end: options?.end ? Math.floor(options.end / 1000) : undefined,
-        });
-
-        // Convert Kraken trade format to standard format
         const trades: import('../types.js').TradeHistoryRecord[] = [];
-        for (const [tradeId, trade] of Object.entries(result.trades)) {
-          const t = trade as {
-            ordertxid: string;
-            pair: string;
-            type: string;
-            ordertype: string;
-            price: string;
-            vol: string;
-            cost: string;
-            fee: string;
-            time: number;
-          };
-          const { base, quote } = parseKrakenPair(t.pair);
-          trades.push({
-            tradeId,
-            orderId: t.ordertxid,
-            pair: `${base}/${quote}`,
-            side: t.type as 'buy' | 'sell',
-            orderType: t.ordertype,
-            price: parseFloat(t.price),
-            volume: parseFloat(t.vol),
-            cost: parseFloat(t.cost),
-            fee: parseFloat(t.fee),
-            feeCurrency: t.type === 'buy' ? base : quote, // Kraken fees in received asset
-            timestamp: t.time * 1000,
-          });
+        const end = Math.floor((options?.end ?? Date.now()) / 1000);
+        for (let offset = 0; ; offset += 50) {
+          const page = await client.getTradesHistory({ start: options?.start ? Math.floor(options.start / 1000) : undefined, end, offset });
+          const entries = Object.entries(page.trades);
+          for (const [id, raw] of entries) {
+            const fill = parseTrade(id, raw);
+            if (fill) trades.push(fill);
+          }
+          if (offset + entries.length >= page.count) break;
+          if (!entries.length) throw new Error('Incomplete Kraken trade history page');
         }
+
         return trades;
       },
 
@@ -267,9 +250,10 @@ function mapKrakenStatus(
     case 'initial':
     case 'pending':
       return 'pending';
+    case 'settled':
+    case 'cancel pending':
     case 'processing':
       return 'processing';
-    case 'settled':
     case 'success':
       return 'complete';
     case 'failure':
@@ -277,7 +261,6 @@ function mapKrakenStatus(
       return 'failed';
     case 'on hold':
       return 'held';
-    case 'cancel pending':
     case 'canceled':
     case 'cancelled':
       return 'cancelled';

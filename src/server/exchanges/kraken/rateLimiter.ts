@@ -61,24 +61,11 @@ export class RateLimiter {
    * Wait until we can make a call
    */
   async waitForToken(cost: number = this.costPerCall): Promise<void> {
-    this.refill();
-
-    if (this.tokens >= cost) {
-      this.tokens -= cost;
-      return;
+    if (cost > this.maxTokens || cost <= 0) throw new Error('Invalid rate limiter cost');
+    while (!this.tryConsume(cost)) {
+      const waitMs = Math.max(1, Math.ceil(((cost - this.tokens) / this.refillRate) * 1000));
+      await new Promise(resolve => setTimeout(resolve, waitMs));
     }
-
-    // Calculate wait time
-    const tokensNeeded = cost - this.tokens;
-    const waitMs = Math.ceil((tokensNeeded / this.refillRate) * 1000);
-
-    logger.debug({ tokensNeeded, waitMs }, 'Rate limited, waiting');
-
-    await new Promise((resolve) => setTimeout(resolve, waitMs));
-
-    // Refill and consume after waiting
-    this.refill();
-    this.tokens -= cost;
   }
 
   /**

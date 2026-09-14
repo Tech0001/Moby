@@ -1,3 +1,4 @@
+import { apiFetch } from '@/ui/lib/api';
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/ui/components/ui/card';
 import { Button } from '@/ui/components/ui/button';
@@ -23,7 +24,7 @@ export function Login({ onLogin }: LoginProps) {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
@@ -37,7 +38,7 @@ export function Login({ onLogin }: LoginProps) {
       }
 
       // Get user info
-      const meRes = await fetch('/api/auth/me');
+      const meRes = await apiFetch('/api/auth/me');
       const userData = await meRes.json();
       onLogin(userData);
     } catch (err) {

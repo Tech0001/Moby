@@ -4,7 +4,7 @@ import {
   getActiveWithdrawalJobs,
   updateWithdrawalJob,
   incrementPollCount,
-  addPendingAmount,
+  releaseWithdrawal,
 } from '../db/repositories.js';
 import { getClientPool } from '../exchanges/clientPool.js';
 import type { ExchangeRestClient, WithdrawStatusRecord } from '../exchanges/types.js';
@@ -33,9 +33,10 @@ function mapStatus(exchangeStatus: string): WithdrawalStatus {
     case 'initial':
     case 'pending':
       return 'pending';
+    case 'settled':
+    case 'cancel pending':
     case 'processing':
       return 'pending';
-    case 'settled':
     case 'success':
     case 'complete':
       return 'complete';
@@ -45,7 +46,6 @@ function mapStatus(exchangeStatus: string): WithdrawalStatus {
     case 'on hold':
     case 'held':
       return 'held';
-    case 'cancel pending':
     case 'canceled':
     case 'cancelled':
       return 'cancelled';
@@ -60,6 +60,7 @@ export class StatusPoller extends EventEmitter {
 
   private pollTimer: NodeJS.Timeout | null = null;
   private running = false;
+  private polling = false;
   private lastPollTime = 0;
 
   constructor(options: StatusPollerOptions) {
@@ -151,6 +152,7 @@ export class StatusPoller extends EventEmitter {
    */
   private schedulePoll(): void {
     if (!this.running) return;
+    if (this.pollTimer) clearTimeout(this.pollTimer);
 
     const jobs = getActiveWithdrawalJobs();
     const delay = this.calculatePollDelay(jobs);
@@ -163,9 +165,9 @@ export class StatusPoller extends EventEmitter {
    */
   private async poll(): Promise<void> {
     // Check if stopped (handles race condition during shutdown)
-    if (!this.running) {
-      return;
-    }
+    if (!this.running || this.polling) return;
+    this.polling = true;
+    this.pollTimer = null;
 
     const now = Date.now();
     this.lastPollTime = now;
@@ -176,7 +178,6 @@ export class StatusPoller extends EventEmitter {
 
       if (allJobs.length === 0) {
         logger.debug('No active jobs to poll');
-        this.schedulePoll();
         return;
       }
 
@@ -196,9 +197,10 @@ export class StatusPoller extends EventEmitter {
       }
     } catch (error) {
       logger.error({ error }, 'Status poll failed');
+    } finally {
+      this.polling = false;
+      this.schedulePoll();
     }
-
-    this.schedulePoll();
   }
 
   /**
@@ -220,8 +222,10 @@ export class StatusPoller extends EventEmitter {
     }
 
     try {
+      if (!this.running) return;
       // Fetch status from exchange (one call for all jobs)
       const statuses = await selection.client.getWithdrawStatus();
+      if (!this.running) return;
       pool.recordUsage(selection.keyId, 1);
 
       // Build lookup map by refid
@@ -265,6 +269,11 @@ export class StatusPoller extends EventEmitter {
     }
 
     const newStatus = mapStatus(exchangeStatus.status);
+    const details: Parameters<typeof updateWithdrawalJob>[1] = {};
+    if (exchangeStatus.txid && exchangeStatus.txid !== job.txid) details.txid = exchangeStatus.txid;
+    if (Number.isFinite(exchangeStatus.fee) && exchangeStatus.fee >= 0 && exchangeStatus.fee !== job.actualFee) details.actualFee = exchangeStatus.fee;
+    if (Object.keys(details).length) updateWithdrawalJob(job.id, details);
+
 
     // No change
     if (newStatus === job.status) {
@@ -283,6 +292,10 @@ export class StatusPoller extends EventEmitter {
       'Job status updated'
     );
 
+    if (newStatus === 'cancelled') {
+      if (releaseWithdrawal(job.id, 'cancelled')) this.emit('jobFailed', { ...job, status: 'cancelled' }, 'Withdrawal cancelled');
+      return;
+    }
     // Update job in database
     updateWithdrawalJob(job.id, {
       status: newStatus,
@@ -303,11 +316,7 @@ export class StatusPoller extends EventEmitter {
         this.emit('jobHeld', { ...job, status: newStatus });
         break;
 
-      case 'cancelled':
-        // Return amount to pending
-        addPendingAmount(job.exchange, job.asset, job.amount);
-        logger.info({ jobId: job.id, amount: job.amount }, 'Cancelled withdrawal returned to pending');
-        break;
+
     }
   }
 

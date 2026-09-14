@@ -122,11 +122,13 @@ export interface ExchangeRestClient {
   readonly exchangeId: ExchangeId;
 
   // Balance
-  getBalance(): Promise<Record<string, string>>;
+  // Complete snapshot. includeHeld returns total owned funds, including open
+  // order holds; omitted assets mean zero. Errors must never become empty maps.
+  getBalance(options?: { includeHeld?: boolean }): Promise<Record<string, string>>;
 
   // Withdrawals
   getWithdrawInfo(asset: string, key: string, amount: number): Promise<WithdrawInfo>;
-  withdraw(asset: string, key: string, address: string, amount: number): Promise<WithdrawResult>;
+  withdraw(asset: string, key: string, address: string, amount: number, options?: { maxFee?: number; beforeSend?: () => boolean }): Promise<WithdrawResult>;
   getWithdrawStatus(asset?: string): Promise<WithdrawStatusRecord[]>;
   getWithdrawAddresses(asset?: string, method?: string): Promise<SavedAddress[]>;
   getWithdrawMethods?(asset?: string): Promise<WithdrawalMethod[]>;
@@ -209,6 +211,7 @@ export interface RestClientOptions {
   apiSecret: string;
   passphrase?: string; // KuCoin
   dryRun?: boolean;
+  beforeRequest?: () => void;
 }
 
 /**

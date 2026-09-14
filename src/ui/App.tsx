@@ -1,3 +1,4 @@
+import { apiFetch, SESSION_EXPIRED } from './lib/api';
 import { useState, useEffect } from 'react';
 import { Login } from './components/Login';
 import { Setup } from './components/Setup';
@@ -15,28 +16,34 @@ interface User {
 
 export function App() {
   const [loading, setLoading] = useState(true);
+  const [statusError, setStatusError] = useState('');
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    checkStatus();
+    const expired = () => setUser(null);
+    window.addEventListener(SESSION_EXPIRED, expired);
+    void checkStatus();
+    return () => window.removeEventListener(SESSION_EXPIRED, expired);
   }, []);
 
   async function checkStatus() {
+    setStatusError('');
     try {
       // Check setup status
-      const setupRes = await fetch('/api/setup/status');
+      const setupRes = await apiFetch('/api/setup/status');
+      if (!setupRes.ok) throw new Error('Could not reach Moby');
       const setup = await setupRes.json();
       setSetupStatus(setup);
 
       // Check if logged in
-      const meRes = await fetch('/api/auth/me');
+      const meRes = await apiFetch('/api/auth/me');
       if (meRes.ok) {
         const userData = await meRes.json();
         setUser(userData);
       }
     } catch (error) {
-      console.error('Failed to check status:', error);
+      if (error instanceof Error && !error.message.includes('session expired')) setStatusError('Could not connect to Moby. Please retry.');
     } finally {
       setLoading(false);
     }
@@ -51,8 +58,8 @@ export function App() {
   }
 
   async function handleLogout() {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    setUser(null);
+    try { await apiFetch('/api/auth/logout', { method: 'POST' }); }
+    finally { setUser(null); }
   }
 
   if (loading) {
@@ -62,6 +69,11 @@ export function App() {
       </div>
     );
   }
+
+  if (statusError) return <div className="min-h-screen flex flex-col gap-3 items-center justify-center">
+    <p role="alert">{statusError}</p>
+    <button className="border rounded px-4 py-2" onClick={() => { void checkStatus(); }}>Retry connection</button>
+  </div>;
 
   // Need initial setup
   if (!setupStatus?.setupComplete) {

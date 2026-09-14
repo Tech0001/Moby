@@ -70,8 +70,8 @@ export const GeminiAdapterFactory: ExchangeAdapterFactory = {
     return {
       exchangeId: 'gemini' as ExchangeId,
 
-      async getBalance() {
-        return client.getBalance();
+      async getBalance(options) {
+        return client.getBalance(options);
       },
 
       async getWithdrawInfo(asset, key, amount) {

@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '../../utils/fetchWithTimeout.js';
+import { balanceNumber } from '../balances.js';
 /**
  * Gemini REST API Client
  *
@@ -91,7 +93,7 @@ export class GeminiRestClient {
 
     logger.debug({ endpoint }, 'Making Gemini API request');
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: 'POST',
       headers,
     });
@@ -111,14 +113,14 @@ export class GeminiRestClient {
   /**
    * Get account balances
    */
-  async getBalance(): Promise<Record<string, string>> {
+  async getBalance(options?: { includeHeld?: boolean }): Promise<Record<string, string>> {
     const balances = await this.request<GeminiBalance[]>('/v1/balances');
 
     const result: Record<string, string> = {};
     for (const bal of balances) {
       const asset = normalizeGeminiAsset(bal.currency);
-      // Use available balance (what can be traded/withdrawn)
-      result[asset] = bal.available;
+      // Preserve order-held funds during reconciliation.
+      result[asset] = String(balanceNumber(options?.includeHeld ? bal.amount : bal.available));
     }
 
     return result;
@@ -440,7 +442,7 @@ export class GeminiRestClient {
     for (const pair of pairs) {
       try {
         // Gemini ticker is a public endpoint
-        const response = await fetch(
+        const response = await fetchWithTimeout(
           `${GEMINI_API_BASE}/v1/pubticker/${pair.toLowerCase()}`
         );
 

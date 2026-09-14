@@ -1,7 +1,7 @@
 import { app, BrowserWindow, powerMonitor, shell, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
+import { pathToFileURL, fileURLToPath } from 'url';
 
 // ES module equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -17,10 +17,11 @@ let mainWindow = null;
 let serverProcess = null;
 let serverStarted = false;
 
-const SERVER_PORT = 3000;
-const SERVER_URL = `http://localhost:${SERVER_PORT}`;
+let SERVER_URL = '';
+process.env.MOBY_DESKTOP = '1';
 
 // Set userData path for the app data (db, config, logs)
+if (process.env.MOBY_TEST_DATA_PATH) app.setPath('userData', process.env.MOBY_TEST_DATA_PATH);
 const userDataPath = app.getPath('userData');
 process.env.MOBY_DATA_PATH = userDataPath;
 
@@ -72,13 +73,17 @@ function createWindow() {
   // Load the server URL
   mainWindow.loadURL(SERVER_URL);
 
+  mainWindow.webContents.on('render-process-gone', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) setTimeout(() => mainWindow?.loadURL(SERVER_URL), 1000);
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 
   // Open external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
 }
@@ -141,8 +146,9 @@ async function startServer() {
 
   // Import the compiled server directly (runs in same process)
   electronLog('Importing server module');
-  const serverUrl = `file://${serverPath}`;
-  await import(serverUrl);
+  const serverModule = await import(pathToFileURL(serverPath).href);
+  SERVER_URL = await serverModule.ready;
+  if (!SERVER_URL) throw new Error('Server startup failed');
   electronLog('Server module imported');
 
   // Wait for the server to actually be reachable, otherwise Electron init appears to "hang"
@@ -207,7 +213,9 @@ function setupPowerMonitor() {
   powerMonitor.on('lock-screen', () => {});
   powerMonitor.on('unlock-screen', () => {});
   powerMonitor.on('suspend', () => {});
-  powerMonitor.on('resume', () => {});
+  powerMonitor.on('resume', () => {
+    mainWindow?.webContents.reload();
+  });
 }
 
 /**
@@ -242,8 +250,10 @@ async function initialize() {
   }
 }
 
-// App ready
-app.whenReady().then(initialize);
+// Acquire the lock before scheduling initialization, so a second launch cannot start another sweeper.
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) app.exit(0);
+else app.whenReady().then(initialize);
 
 // Quit when all windows are closed
 app.on('window-all-closed', () => {
@@ -268,7 +278,6 @@ app.on('before-quit', () => {
 });
 
 // Handle second instance (single instance lock)
-const gotTheLock = app.requestSingleInstanceLock();
 electronLog(`Single instance lock: ${gotTheLock ? 'obtained' : 'failed (another instance running)'}`);
 
 if (!gotTheLock) {

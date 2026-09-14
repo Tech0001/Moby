@@ -1,3 +1,4 @@
+import { apiFetch } from '@/ui/lib/api';
 import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent } from '@/ui/components/ui/card';
 import { Button } from '@/ui/components/ui/button';
@@ -72,7 +73,7 @@ export function LogsPanel() {
       if (sinceId) params.set('sinceId', sinceId.toString());
       params.set('limit', '500');
 
-      const res = await fetch(`/api/logs?${params}`);
+      const res = await apiFetch(`/api/logs?${params}`);
       if (res.ok) {
         const data = await res.json();
 

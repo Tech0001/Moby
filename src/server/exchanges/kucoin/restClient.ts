@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '../../utils/fetchWithTimeout.js';
+import { balanceNumber } from '../balances.js';
 /**
  * KuCoin REST API Client
  *
@@ -117,7 +119,7 @@ export class KuCoinRestClient {
 
     logger.debug({ method, endpoint }, 'Making KuCoin API request');
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method,
       headers,
       body: method !== 'GET' && bodyStr ? bodyStr : undefined,
@@ -137,15 +139,15 @@ export class KuCoinRestClient {
   /**
    * Get account balances
    */
-  async getBalance(): Promise<Record<string, string>> {
+  async getBalance(options?: { includeHeld?: boolean }): Promise<Record<string, string>> {
     const accounts = await this.request<KuCoinAccount[]>('GET', '/api/v1/accounts');
 
     const result: Record<string, string> = {};
 
-    // Sum up available balances across all account types
+    // Sum account totals for reconciliation; available funds for display.
     for (const acc of accounts) {
       const asset = normalizeKuCoinAsset(acc.currency);
-      const available = parseFloat(acc.available);
+      const available = balanceNumber(options?.includeHeld ? acc.balance : acc.available);
 
       if (!result[asset]) {
         result[asset] = '0';
@@ -497,7 +499,7 @@ export class KuCoinRestClient {
           kucoinPair = toKuCoinPair(base, quote);
         }
 
-        const response = await fetch(
+        const response = await fetchWithTimeout(
           `${KUCOIN_API_BASE}/api/v1/market/orderbook/level1?symbol=${kucoinPair}`
         );
 

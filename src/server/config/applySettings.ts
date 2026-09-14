@@ -13,6 +13,7 @@ export function applySettingsToConfig(config: AppConfig, settings: GlobalSetting
     global: {
       ...config.global,
       dryRun: settings.dryRun,
+      dailyFeeBudgetUsd: settings.dailyFeeBudgetUsd,
       maxInflightWithdrawals: settings.maxInflightWithdrawals,
       perAssetMaxInflight: settings.perAssetMaxInflight,
       keyNamePrefix: settings.keyNamePrefix,

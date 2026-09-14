@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '../../utils/fetchWithTimeout.js';
+import { balanceNumber } from '../balances.js';
 /**
  * Gate.io REST API Client
  *
@@ -93,7 +95,7 @@ export class GateRestClient {
 
     logger.debug({ method, path }, 'Making Gate.io API request');
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method,
       headers,
       body: method !== 'GET' && bodyStr ? bodyStr : undefined,
@@ -111,16 +113,14 @@ export class GateRestClient {
   /**
    * Get account balances
    */
-  async getBalance(): Promise<Record<string, string>> {
+  async getBalance(options?: { includeHeld?: boolean }): Promise<Record<string, string>> {
     const accounts = await this.request<GateAccount[]>('GET', '/spot/accounts');
 
     const result: Record<string, string> = {};
 
     for (const acc of accounts) {
-      const available = parseFloat(acc.available);
-      if (available > 0) {
-        result[normalizeGateAsset(acc.currency)] = acc.available;
-      }
+      const amount = balanceNumber(acc.available) + (options?.includeHeld ? balanceNumber(acc.locked) : 0);
+      result[normalizeGateAsset(acc.currency)] = String(amount);
     }
 
     return result;

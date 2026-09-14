@@ -29,11 +29,12 @@ export const PollingConfigSchema = z.object({
 export const GlobalConfigSchema = z.object({
   enabledOnBoot: z.boolean().default(false),
   dryRun: z.boolean().default(false),
+  dailyFeeBudgetUsd: z.number().finite().positive().nullable().default(null),
   maxInflightWithdrawals: z.number().int().positive().default(2),
   perAssetMaxInflight: z.number().int().positive().default(1),
   schedulerTickMs: z.number().int().positive().default(1000),
   backoffSeconds: z.array(z.number().positive()).default([15, 30, 60, 120, 300, 600]),
-  allowedOrderTypes: z.array(z.string()).default(['limit', 'take-profit', 'take-profit-limit']),
+  allowedOrderTypes: z.array(z.string()).default(['market', 'limit', 'take-profit', 'take-profit-limit']),
   disabledExchanges: z.array(ExchangeIdSchema).default([]),
   keyNamePrefix: z.string().optional(), // Optional prefix filter for wallet keys
 });
@@ -52,11 +53,12 @@ export const AppConfigSchema = z.object({
   global: GlobalConfigSchema.default({
     enabledOnBoot: false,
     dryRun: false,
+    dailyFeeBudgetUsd: null,
     maxInflightWithdrawals: 2,
     perAssetMaxInflight: 1,
     schedulerTickMs: 1000,
     backoffSeconds: [15, 30, 60, 120, 300, 600],
-    allowedOrderTypes: ['limit', 'take-profit', 'take-profit-limit'],
+    allowedOrderTypes: ['market', 'limit', 'take-profit', 'take-profit-limit'],
     disabledExchanges: [],
   }),
   polling: PollingConfigSchema.default({

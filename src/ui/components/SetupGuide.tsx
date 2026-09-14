@@ -24,7 +24,7 @@ export function SetupGuide({
   if (hasApiKeys && hasConfiguredAssets) currentStep = 3;
   if (hasApiKeys && hasConfiguredAssets && isSweeperEnabled) currentStep = 4;
 
-  if (currentStep === 4) return null; // Setup complete
+  if (hasApiKeys && hasConfiguredAssets) return null; // Pausing does not undo setup.
 
   const steps = [
     {
@@ -48,7 +48,7 @@ export function SetupGuide({
     {
       id: 3,
       title: "Start Sweeper",
-      description: "Enable the background sweeper to start monitoring for deposits.",
+      description: "Enable withdrawals for accumulated trade fills.",
       icon: Play,
       action: "Start Sweeper",
       isAction: true,

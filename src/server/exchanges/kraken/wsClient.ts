@@ -1,14 +1,11 @@
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
 import { createChildLogger } from '../../utils/logger.js';
-import { fetchWithTimeout } from '../../utils/fetchWithTimeout.js';
+import { KrakenRestClient } from './restClient.js';
+import { parseTrade } from './trades.js';
 import type { FillEvent } from '../../domain/types.js';
 
 const logger = createChildLogger('kraken-ws');
-
-const KRAKEN_WS_AUTH_URL = 'https://api.kraken.com/0/private/GetWebSocketsToken';
-const KRAKEN_WS_PRIVATE_URL = 'wss://ws-auth.kraken.com';
-
 export interface KrakenWsClientOptions {
   apiKey: string;
   apiSecret: string;
@@ -20,402 +17,134 @@ export interface KrakenWsClientOptions {
   reconnectDelayMs?: number;
 }
 
-interface WsMessage {
-  event?: string;
-  channelName?: string;
-  status?: string;
-  errorMessage?: string;
-  reqid?: number;
-}
-
-interface TradeData {
-  ordertxid: string;
-  pair: string;
-  time: string;
-  type: string;
-  ordertype: string;
-  price: string;
-  cost: string;
-  fee: string;
-  vol: string;
-  margin: string;
-  postxid?: string;
-}
-
-// OwnTrades message can be either:
-// - Snapshot: [Array<Record<tradeId, TradeData>>, "ownTrades", {sequence}]
-// - Update: [Record<tradeId, TradeData>, "ownTrades", {sequence}]
-type OwnTradesMessage = [
-  Record<string, TradeData> | Array<Record<string, TradeData>>,
-  string, // channel name
-  { sequence: number }
-];
-
 export class KrakenWsClient extends EventEmitter {
-  private readonly apiKey: string;
-  private readonly apiSecret: string;
+  private ws: WebSocket | null = null;
+  private tokenClient: KrakenRestClient;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private pingTimer: NodeJS.Timeout | null = null;
+  private isConnecting = false;
+  private shouldConnect = false;
+  private subscribed = false;
+  private generation = 0;
+  private lastMessageAt = 0;
+  private connectedAt = 0;
+  private sequence: number | null = null;
+  private attempts = 0;
   private readonly autoReconnect: boolean;
   private readonly reconnectDelayMs: number;
 
-  private ws: WebSocket | null = null;
-  private wsToken: string | null = null;
-  private tokenExpiry: number = 0;
-  private reconnectTimer: NodeJS.Timeout | null = null;
-  private pingTimer: NodeJS.Timeout | null = null;
-  private isConnecting: boolean = false;
-  private shouldConnect: boolean = false;
-  private hasReceivedInitialSnapshot: boolean = false;
-  private lastSequence: number = 0;
-
   constructor(options: KrakenWsClientOptions) {
     super();
-
-    this.apiKey = options.apiKey;
-    this.apiSecret = options.apiSecret;
+    this.tokenClient = new KrakenRestClient(options);
     this.autoReconnect = options.autoReconnect ?? true;
     this.reconnectDelayMs = options.reconnectDelayMs ?? 5000;
-
     if (options.onFill) this.on('fill', options.onFill);
     if (options.onConnect) this.on('connect', options.onConnect);
     if (options.onDisconnect) this.on('disconnect', options.onDisconnect);
     if (options.onError) this.on('error', options.onError);
   }
 
-  /**
-   * Get WebSocket authentication token from REST API
-   */
-  private async getWsToken(): Promise<string> {
-    // Check if we have a valid cached token
-    if (this.wsToken && Date.now() < this.tokenExpiry) {
-      return this.wsToken;
-    }
-
-    const { generateNonce, generateSignature } = await import('./sign.js');
-
-    const nonce = generateNonce();
-    const postData = `nonce=${nonce}`;
-    const urlPath = '/0/private/GetWebSocketsToken';
-    const signature = generateSignature(urlPath, postData, nonce, this.apiSecret);
-
-    const response = await fetchWithTimeout(KRAKEN_WS_AUTH_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'API-Key': this.apiKey,
-        'API-Sign': signature,
-      },
-      body: postData,
-      timeoutMs: 10000, // 10 second timeout for token request
-    });
-
-    const data = await response.json() as {
-      error: string[];
-      result?: { token: string; expires: number };
-    };
-
-    if (data.error?.length > 0) {
-      throw new Error(`Failed to get WS token: ${data.error.join(', ')}`);
-    }
-
-    if (!data.result?.token) {
-      throw new Error('No token in response');
-    }
-
-    this.wsToken = data.result.token;
-    // Token expires in ~15 minutes, refresh a bit early
-    this.tokenExpiry = Date.now() + (data.result.expires - 60) * 1000;
-
-    logger.debug('Obtained new WebSocket token');
-    return this.wsToken;
-  }
-
-  /**
-   * Connect to Kraken WebSocket
-   */
   async connect(): Promise<void> {
-    if (this.isConnecting || this.ws?.readyState === WebSocket.OPEN) {
-      logger.debug('Already connected or connecting');
-      return;
-    }
-
+    if (this.isConnecting || this.ws) return;
     this.shouldConnect = true;
     this.isConnecting = true;
-
+    const generation = ++this.generation;
     try {
-      const token = await this.getWsToken();
-
-      logger.info('Connecting to Kraken WebSocket');
-
-      this.ws = new WebSocket(KRAKEN_WS_PRIVATE_URL);
-
-      this.ws.on('open', () => {
-        logger.info('WebSocket connected');
+      const { token } = await this.tokenClient.getWebSocketsToken();
+      if (!this.shouldConnect || generation !== this.generation) return;
+      const ws = new WebSocket('wss://ws-auth.kraken.com', { handshakeTimeout: 20000 });
+      this.ws = ws;
+      ws.on('open', () => {
+        if (this.ws !== ws) return;
         this.isConnecting = false;
-
-        // Subscribe to own trades
-        this.subscribe(token);
-
-        // Start ping timer
-        this.startPingTimer();
-
-        this.emit('connect');
+        this.connectedAt = this.lastMessageAt = Date.now();
+        ws.send(JSON.stringify({ event: 'subscribe', subscription: {
+          name: 'ownTrades', token, snapshot: false, consolidate_taker: false,
+        } }));
+        this.pingTimer = setInterval(() => {
+          if (Date.now() - this.lastMessageAt > 60000 || (!this.subscribed && Date.now() - this.connectedAt > 20000)) {
+            this.fail(new Error('Kraken feed timed out'));
+          } else if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ event: 'ping' }));
+          }
+        }, 10000);
       });
-
-      this.ws.on('message', (data: Buffer) => {
+      ws.on('message', data => {
+        if (this.ws !== ws) return;
+        this.lastMessageAt = Date.now();
         this.handleMessage(data.toString());
       });
-
-      this.ws.on('close', (code: number, reason: Buffer) => {
-        logger.info({ code, reason: reason.toString() }, 'WebSocket closed');
-        this.handleDisconnect();
-      });
-
-      this.ws.on('error', (error: Error) => {
-        logger.error({ error: error.message }, 'WebSocket error');
-        this.emit('error', error);
-      });
+      ws.on('close', () => { if (this.ws === ws) this.resetConnection(); });
+      ws.on('error', error => { if (this.ws === ws) this.fail(error); });
     } catch (error) {
-      this.isConnecting = false;
-      logger.error({ error }, 'Failed to connect');
-      this.emit('error', error instanceof Error ? error : new Error(String(error)));
-
-      if (this.autoReconnect && this.shouldConnect) {
-        this.scheduleReconnect();
-      }
+      if (generation === this.generation && this.shouldConnect) this.fail(error instanceof Error ? error : new Error(String(error)));
     }
   }
 
-  /**
-   * Disconnect from WebSocket
-   */
   disconnect(): void {
     this.shouldConnect = false;
-    this.clearTimers();
-    this.hasReceivedInitialSnapshot = false;
-    this.lastSequence = 0;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.resetConnection();
+  }
 
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
+  private fail(error: Error): void {
+    logger.warn({ error: error.message }, 'Kraken feed needs reconnection');
+    if (this.listenerCount('error')) this.emit('error', error);
+    this.resetConnection();
+  }
+
+  private resetConnection(): void {
+    ++this.generation;
+    if (this.pingTimer) clearInterval(this.pingTimer);
+    this.pingTimer = null;
+    const ws = this.ws;
+    this.ws = null;
+    this.isConnecting = false;
+    this.subscribed = false;
+    this.sequence = null;
+    ws?.terminate();
+    this.emit('disconnect');
+    if (this.autoReconnect && this.shouldConnect && !this.reconnectTimer) {
+      const delay = Math.min(60000, this.reconnectDelayMs * 2 ** Math.min(this.attempts++, 4));
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null;
+        void this.connect();
+      }, delay);
     }
   }
 
-  /**
-   * Subscribe to ownTrades channel
-   */
-  private subscribe(token: string): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-
-    const subscribeMsg = {
-      event: 'subscribe',
-      subscription: {
-        name: 'ownTrades',
-        token,
-      },
-    };
-
-    this.ws.send(JSON.stringify(subscribeMsg));
-    logger.debug('Subscribed to ownTrades');
-  }
-
-  /**
-   * Handle incoming WebSocket messages
-   */
   private handleMessage(data: string): void {
     try {
       const msg = JSON.parse(data);
-
-      // Handle system/subscription messages
-      if (msg.event) {
-        this.handleEventMessage(msg as WsMessage);
+      if (msg.event === 'subscriptionStatus') {
+        if (msg.status === 'error') throw new Error(msg.errorMessage || 'Subscription rejected');
+        if (msg.status === 'subscribed' && msg.subscription?.name === 'ownTrades') {
+          this.subscribed = true;
+          this.attempts = 0;
+          this.emit('connect');
+        }
         return;
       }
-
-      // Handle ownTrades data
-      if (Array.isArray(msg) && msg[1] === 'ownTrades') {
-        this.handleOwnTrades(msg as OwnTradesMessage);
+      if (!Array.isArray(msg) || msg[1] !== 'ownTrades') return;
+      const sequence = msg[2]?.sequence;
+      if (!Number.isInteger(sequence) || (this.sequence !== null && sequence !== this.sequence + 1)) {
+        throw new Error('Gap in Kraken trade feed sequence');
+      }
+      this.sequence = sequence;
+      if (!Array.isArray(msg[0])) throw new Error('Invalid ownTrades payload');
+      for (const entry of msg[0]) {
+        for (const [id, trade] of Object.entries(entry)) {
+          const fill = parseTrade(id, trade);
+          if (!fill) throw new Error('Invalid trade in Kraken feed');
+          this.emit('fill', fill);
+        }
       }
     } catch (error) {
-      logger.error({ error, data }, 'Failed to parse WebSocket message');
+      this.fail(error instanceof Error ? error : new Error(String(error)));
     }
   }
 
-  /**
-   * Handle system event messages
-   */
-  private handleEventMessage(msg: WsMessage): void {
-    switch (msg.event) {
-      case 'systemStatus':
-        logger.debug({ status: msg.status }, 'System status');
-        break;
-
-      case 'subscriptionStatus':
-        if (msg.status === 'subscribed') {
-          logger.info({ channel: msg.channelName }, 'Subscription confirmed');
-        } else if (msg.status === 'error') {
-          logger.error({ error: msg.errorMessage }, 'Subscription error');
-        }
-        break;
-
-      case 'heartbeat':
-        // Ignore heartbeats
-        break;
-
-      case 'pong':
-        // Response to our ping
-        break;
-
-      default:
-        logger.debug({ event: msg.event }, 'Unhandled event');
-    }
-  }
-
-  /**
-   * Handle ownTrades messages (trade executions)
-   * Kraken sends all trades as arrays: [[{tradeId: trade}, ...], "ownTrades", {sequence: n}]
-   * First message after subscription is the historical snapshot, subsequent messages are real-time
-   */
-  private handleOwnTrades(msg: OwnTradesMessage): void {
-    const data = msg[0];
-    const sequence = msg[2]?.sequence;
-
-    // Both snapshot and real-time come as arrays
-    if (!Array.isArray(data)) {
-      logger.warn({ data }, 'Unexpected ownTrades format (not an array)');
-      return;
-    }
-
-    // First message after subscription is the historical snapshot - skip it
-    // We use reconciliation to catch historical trades, not the snapshot
-    if (!this.hasReceivedInitialSnapshot) {
-      this.hasReceivedInitialSnapshot = true;
-      this.lastSequence = sequence || 0;
-      logger.debug({ count: data.length, sequence }, 'Received initial ownTrades snapshot (ignoring historical)');
-      return;
-    }
-
-    // Check for sequence gaps (indicates missed messages)
-    if (sequence && this.lastSequence > 0 && sequence > this.lastSequence + 1) {
-      const gap = sequence - this.lastSequence - 1;
-      logger.warn(
-        { lastSequence: this.lastSequence, currentSequence: sequence, gap },
-        'Detected sequence gap in ownTrades - some messages may have been missed'
-      );
-      // Emit event so app.ts can trigger reconciliation if needed
-      this.emit('sequenceGap', gap);
-    }
-    this.lastSequence = sequence || this.lastSequence;
-
-    // Process real-time trade updates
-    logger.debug({ count: data.length, sequence }, 'Received real-time ownTrades update');
-
-    for (const tradeObj of data) {
-      // Each item is {tradeId: tradeDetails}
-      for (const [tradeId, trade] of Object.entries(tradeObj)) {
-        const fill: FillEvent = {
-          tradeId,
-          orderId: trade.ordertxid,
-          pair: trade.pair,
-          side: trade.type as 'buy' | 'sell',
-          orderType: trade.ordertype,
-          price: parseFloat(trade.price),
-          volume: parseFloat(trade.vol),
-          cost: parseFloat(trade.cost),
-          fee: parseFloat(trade.fee),
-          feeCurrency: this.getFeeAsset(trade.pair, trade.type),
-          timestamp: Math.floor(parseFloat(trade.time) * 1000),
-        };
-
-        logger.info(
-          {
-            tradeId,
-            pair: fill.pair,
-            side: fill.side,
-            volume: fill.volume,
-            price: fill.price,
-          },
-          'Fill received'
-        );
-
-        this.emit('fill', fill);
-      }
-    }
-  }
-
-  /**
-   * Determine fee currency based on pair and side
-   * Kraken typically charges fees in the quote currency for trades
-   */
-  private getFeeAsset(pair: string, side: string): string {
-    // For simplicity, assume fee is in quote currency
-    // This should be refined based on actual Kraken behavior
-    if (pair.includes('/')) {
-      return pair.split('/')[1];
-    }
-    // Handle pairs like XBTUSD
-    return pair.slice(-3);
-  }
-
-  /**
-   * Handle disconnection
-   */
-  private handleDisconnect(): void {
-    this.clearTimers();
-    this.ws = null;
-    this.isConnecting = false;
-    this.hasReceivedInitialSnapshot = false;
-    this.lastSequence = 0;
-
-    this.emit('disconnect');
-
-    if (this.autoReconnect && this.shouldConnect) {
-      this.scheduleReconnect();
-    }
-  }
-
-  /**
-   * Schedule reconnection attempt
-   */
-  private scheduleReconnect(): void {
-    if (this.reconnectTimer) return;
-
-    logger.info({ delayMs: this.reconnectDelayMs }, 'Scheduling reconnect');
-
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
-      this.connect();
-    }, this.reconnectDelayMs);
-  }
-
-  /**
-   * Start ping timer to keep connection alive
-   */
-  private startPingTimer(): void {
-    this.pingTimer = setInterval(() => {
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ event: 'ping' }));
-      }
-    }, 30000); // Ping every 30 seconds
-  }
-
-  /**
-   * Clear all timers
-   */
-  private clearTimers(): void {
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    if (this.pingTimer) {
-      clearInterval(this.pingTimer);
-      this.pingTimer = null;
-    }
-  }
-
-  /**
-   * Check if connected
-   */
-  isConnected(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN;
-  }
+  isConnected(): boolean { return this.subscribed && this.ws?.readyState === WebSocket.OPEN; }
+  getLastMessageAt(): number | null { return this.lastMessageAt || null; }
 }

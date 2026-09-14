@@ -38,6 +38,7 @@ export function createWebServer(options: WebServerOptions): Express {
     session({
       secret: config.sessionSecret,
       resave: false,
+      rolling: true,
       saveUninitialized: false,
       cookie: {
         secure: config.trustProxy, // Use secure cookies behind HTTPS proxy
@@ -81,15 +82,16 @@ let httpServer: ReturnType<Express['listen']> | null = null;
 /**
  * Start the web server
  */
-export function startServer(app: Express, config: WebConfig): Promise<void> {
-  return new Promise((resolve) => {
+export function startServer(app: Express, config: WebConfig): Promise<ReturnType<Express['listen']>> {
+  return new Promise((resolve, reject) => {
     httpServer = app.listen(config.port, config.host, () => {
       logger.info(
         { host: config.host, port: config.port },
         'Web server started'
       );
-      resolve();
+      resolve(httpServer!);
     });
+    httpServer.once('error', reject);
   });
 }
 

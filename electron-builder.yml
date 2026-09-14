@@ -1,6 +1,7 @@
 appId: com.moby.app
 productName: Moby
 copyright: Copyright © 2024
+beforeBuild: scripts/rebuild-native.cjs
 
 directories:
   output: release
@@ -60,16 +61,13 @@ nsis:
   shortcutName: Moby
 
 linux:
+  syncDesktopName: true
   target:
     - AppImage
     - deb
   icon: assets/icon.png
   category: Finance
   maintainer: "Moby <support@moby.app>"
-
-# Rebuild native modules for Electron
-electronDownload:
-  mirror: https://npmmirror.com/mirrors/electron/
 
 # Don't publish anywhere
 publish: null

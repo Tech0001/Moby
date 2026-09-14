@@ -1,3 +1,6 @@
+import { buildDashboardStatus } from './domain/dashboardStatus.js';
+import { WithdrawalControl, initializeWithdrawalState } from './domain/withdrawalControl.js';
+import { createWithdrawalControlRoutes } from './web/withdrawalControl.js';
 import { mkdirSync, existsSync, appendFileSync, statSync, renameSync, unlinkSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -7,21 +10,24 @@ import { initEncryption } from './utils/encryption.js';
 import { loadConfig, reloadConfig } from './config/loadConfig.js';
 import { initDb, closeDb } from './db/sqlite.js';
 import {
-  getAllApiKeys,
-  setEnabled,
+  getAllApiKeys, recoverInterruptedWithdrawals, isExchangeEnabled, getControlRevision,
   migrateApiKeysToEncrypted,
   getAppStateValue,
   setAppStateValue,
   cleanupOldFillEvents,
   getAllSettings,
-  getEnabledExchanges,
+  getEnabledExchanges, getMonitoredExchanges,
 } from './db/repositories.js';
+import { TelegramNotifications } from './notifications/telegram.js';
+import { createNotificationRoutes } from './web/notifications.js';
+import { createWithdrawalReviewRoutes } from './web/withdrawalReview.js';
+import type { ExchangeWsClient } from './exchanges/types.js';
 import { applySettingsToConfig } from './config/applySettings.js';
 import { FillProcessor } from './domain/fillProcessor.js';
 import { Scheduler } from './domain/scheduler.js';
 import { StatusPoller } from './domain/statusPoller.js';
 import { Reconciler } from './domain/reconciler.js';
-import { createWebServer, startServer } from './web/server.js';
+import { createWebServer, startServer, getHttpServer } from './web/server.js';
 import { createRoutes } from './web/routes.js';
 import { getPoolManager, getClientPool } from './exchanges/clientPool.js';
 import { getExchangeRegistry, registerExchange } from './exchanges/registry.js';
@@ -92,9 +98,11 @@ let fillProcessor: FillProcessor;
 let scheduler: Scheduler;
 let statusPoller: StatusPoller;
 let reconciler: Reconciler;
+let notifications: TelegramNotifications;
+let shuttingDown = false;
 
 // WS client connections by exchange
-const wsClients = new Map<ExchangeId, { disconnect: () => void }>();
+const wsClients = new Map<ExchangeId, ExchangeWsClient>();
 
 /**
  * Disconnect WebSocket for an exchange
@@ -108,8 +116,8 @@ function disconnectExchangeWs(exchangeId: ExchangeId): void {
   }
 }
 
-// Reconciliation interval (5 minutes)
-const RECONCILE_INTERVAL_MS = 5 * 60 * 1000;
+// Reconciliation interval (30 seconds)
+const RECONCILE_INTERVAL_MS = 30000;
 let reconcileInterval: ReturnType<typeof setInterval> | null = null;
 
 async function main() {
@@ -155,6 +163,8 @@ async function main() {
     throw err;
   }
 
+  recoverInterruptedWithdrawals();
+
   // Load configuration (from database; migrates legacy config.yaml once if present)
   logToFile('debug', 'Loading config');
   appLogger.info('Loading config');
@@ -183,6 +193,7 @@ async function main() {
     appLogger.info('Generated new session secret');
   }
   config.web.sessionSecret = sessionSecret;
+  const webConfig = process.env.MOBY_DESKTOP === '1' ? { ...config.web, host: '127.0.0.1', port: process.env.MOBY_TEST_DATA_PATH ? 0 : config.web.port, trustProxy: false } : config.web;
 
   // Migrate existing API keys to encrypted format (idempotent)
   const encryptionMigrated = getAppStateValue('encryption_migrated');
@@ -197,11 +208,13 @@ async function main() {
     setAppStateValue('encryption_migrated', 'true');
   }
 
-  // Set initial enabled state from config
-  if (config.global.enabledOnBoot) {
-    setEnabled(true);
-    appLogger.info('Sweeper enabled on boot');
-  }
+  const bootRequested = initializeWithdrawalState(config.global.enabledOnBoot);
+  const bootRevision = getControlRevision();
+  notifications = new TelegramNotifications(undefined, Date.now, () => buildDashboardStatus(config, {
+    monitoringSince: reconciler.monitoringSince, exchanges: getMonitoredExchanges().map(exchange => ({ exchange,
+      connected: wsClients.get(exchange)?.isConnected() ?? false, ...reconciler.health.get(exchange) })),
+    assetNotices: Object.fromEntries(scheduler.assetNotices),
+  }));
 
   // Get enabled exchanges (those with API keys)
   logToFile('debug', 'Getting enabled exchanges');
@@ -230,6 +243,7 @@ async function main() {
   // Initialize scheduler
   scheduler = new Scheduler({
     config,
+    syncTrades: (exchange, client) => reconciler.syncTradeHistory(exchange, client),
   });
 
   scheduler.on('withdrawalStarted', (job) => {
@@ -268,21 +282,27 @@ async function main() {
     );
   });
 
-  // Initialize WebSocket connections for enabled exchanges
-  logToFile('debug', 'Initializing WebSocket connections');
-  for (const exchangeId of enabledExchanges) {
-    logToFile('debug', 'Initializing WS for exchange', { exchange: exchangeId });
-    await initializeExchangeWs(exchangeId);
-  }
-  logToFile('debug', 'WebSocket connections initialized');
-
   // Create and start web server
   logToFile('debug', 'Creating web server');
-  const app = createWebServer({ config: config.web });
+  const app = createWebServer({ config: webConfig });
+  const control = new WithdrawalControl({
+    exchanges: getMonitoredExchanges,
+    check: async exchange => {
+      const pool = getClientPool(exchange);
+      if (!pool.hasAvailableClients()) throw new Error(`${exchange}: no available API key for the required balance check`);
+      await pool.execute(async client => { await reconciler.runFullReconciliation(exchange, client); });
+    },
+    wake: () => scheduler.wake(),
+  });
+  app.use('/api/control', createWithdrawalControlRoutes(control));
 
   // Set up routes with context
   const routes = createRoutes({
-    config,
+    get config() { return config; },
+    getHealth: () => ({ monitoringSince: reconciler.monitoringSince, exchanges: getMonitoredExchanges().map(exchange => ({ exchange,
+      connected: wsClients.get(exchange)?.isConnected() ?? false, ...reconciler.health.get(exchange) })),
+      assetNotices: Object.fromEntries(scheduler.assetNotices) }),
+    onKeysChanged: () => { scheduler.updateConfig(config); void refreshConnections(); },
     reloadConfig: async () => {
       config = reloadConfig();
       config = applySettingsToConfig(config, getAllSettings());
@@ -316,9 +336,7 @@ async function main() {
 
       for (const exchangeId of exchanges) {
         const pool = getClientPool(exchangeId);
-        if (!pool.hasAvailableClients()) {
-          continue;
-        }
+        if (!pool.hasAvailableClients()) throw new Error(`${exchangeId}: no available API key for reconciliation`);
 
         try {
           const result = await pool.execute(async (client) => {
@@ -337,6 +355,7 @@ async function main() {
             { exchange: exchangeId, error: err instanceof Error ? err.message : 'Unknown' },
             'Manual reconciliation failed for exchange'
           );
+          throw err;
         }
       }
 
@@ -346,10 +365,13 @@ async function main() {
     connectExchangeWs: initializeExchangeWs,
   });
 
+  app.use('/api/notifications/telegram', createNotificationRoutes(notifications));
+  app.use('/api/withdrawals', createWithdrawalReviewRoutes(() => { notifications.wake(); scheduler.wake(); statusPoller.pollNow(); }));
   app.use(routes);
+  app.use('/api', (_req, res) => { res.status(404).json({ error: 'API route not found' }); });
 
   // Serve static files for the UI (in production)
-  const uiDistPath = join(__dirname, '../../dist');
+  const uiDistPath = join(__dirname, '../ui');
   if (existsSync(uiDistPath)) {
     const express = await import('express');
     app.use(express.default.static(uiDistPath));
@@ -360,7 +382,12 @@ async function main() {
 
   // Start web server
   logToFile('debug', 'Starting web server');
-  await startServer(app, config.web);
+  await startServer(app, webConfig);
+  notifications.start();
+  for (const event of ['withdrawalStarted', 'withdrawalFailed']) scheduler.on(event, () => notifications.wake());
+  scheduler.on('withdrawalStarted', () => statusPoller.pollNow());
+  for (const event of ['jobComplete', 'jobFailed', 'jobHeld']) statusPoller.on(event, () => notifications.wake());
+  void refreshConnections();
   logToFile('debug', 'Web server started', { port: config.web.port });
 
   // Initialize client pools for enabled exchanges
@@ -373,16 +400,19 @@ async function main() {
   logToFile('debug', 'Client pools initialized');
 
   // Start scheduler and poller if we have any clients
-  if (poolManager.hasAnyClients()) {
+  {
     logToFile('debug', 'Starting scheduler and status poller');
     scheduler.start();
     statusPoller.start();
     logToFile('debug', 'Scheduler and status poller started');
 
-    // Run initial reconciliation to catch any missed trades during downtime
+    // Initial checks run with submissions disabled. Only catch up fills from
+    // this monitoring run; balances reconcile queues saved by earlier runs.
     logToFile('debug', 'Running initial reconciliation');
     appLogger.info('Running initial reconciliation');
-    for (const exchangeId of enabledExchanges) {
+    if (bootRequested) {
+      void control.resume(() => !shuttingDown && getControlRevision() === bootRevision).catch(error => appLogger.error({ error: error instanceof Error ? error.message : 'Startup check failed' }, 'Withdrawals remain paused'));
+    } else for (const exchangeId of enabledExchanges) {
       const pool = getClientPool(exchangeId);
       if (pool.hasAvailableClients()) {
         pool.execute(async (client) => {
@@ -396,7 +426,7 @@ async function main() {
       }
     }
 
-    // Start periodic reconciliation (trade sync + balance check every 5 minutes)
+    // Start periodic reconciliation (trade sync + balance check every 30 seconds)
     reconcileInterval = setInterval(async () => {
       for (const exchangeId of getEnabledExchanges()) {
         const pool = getClientPool(exchangeId);
@@ -417,8 +447,6 @@ async function main() {
         }
       }
     }, RECONCILE_INTERVAL_MS);
-  } else {
-    appLogger.warn('No API keys configured - scheduler and poller not started');
   }
 
   // Daily cleanup of old fill events (runs once per day)
@@ -443,6 +471,8 @@ async function main() {
   // Handle process exit (for Electron in-process server)
   process.on('exit', () => {
     // Synchronously stop timers with silent=true to prevent logging after pino worker exits
+    notifications?.stop();
+    reconciler?.stop();
     scheduler?.stop(true);
     statusPoller?.stop(true);
     if (reconcileInterval) {
@@ -462,12 +492,23 @@ async function main() {
 
   logToFile('info', 'Moby started successfully');
   appLogger.info('Moby started successfully');
+  const address = getHttpServer()!.address();
+  return `http://${process.env.MOBY_DESKTOP === '1' ? 'localhost' : '127.0.0.1'}:${typeof address === 'object' && address ? address.port : config.web.port}`;
 }
 
 /**
  * Initialize WebSocket connection for an exchange
  */
+async function refreshConnections() {
+  if (shuttingDown) return;
+  const enabled = getEnabledExchanges();
+  for (const exchange of wsClients.keys()) if (!enabled.includes(exchange)) disconnectExchangeWs(exchange);
+  for (const exchange of enabled) await initializeExchangeWs(exchange);
+  statusPoller?.updateEnabledExchanges(enabled);
+}
 async function initializeExchangeWs(exchangeId: ExchangeId) {
+  disconnectExchangeWs(exchangeId);
+  if (shuttingDown || !isExchangeEnabled(exchangeId)) return;
   const keys = getAllApiKeys(exchangeId);
   if (keys.length === 0) {
     appLogger.debug({ exchange: exchangeId }, 'No API keys for exchange, skipping WS');
@@ -514,7 +555,7 @@ async function initializeExchangeWs(exchangeId: ExchangeId) {
           { exchange: exchangeId, tradeId: fill.tradeId, pair: fill.pair },
           'Fill received from WebSocket'
         );
-        fillProcessor.processFill(exchangeId, fill);
+        if (!shuttingDown && fill.timestamp >= reconciler.monitoringSince && isExchangeEnabled(exchangeId)) fillProcessor.processFill(exchangeId, fill);
       },
       onConnect: () => {
         appLogger.info({ exchange: exchangeId }, 'WebSocket connected');
@@ -540,8 +581,8 @@ async function initializeExchangeWs(exchangeId: ExchangeId) {
       },
     });
 
-    await wsClient.connect();
     wsClients.set(exchangeId, wsClient);
+    await wsClient.connect();
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     appLogger.error({ exchange: exchangeId, error: errorMsg }, 'Failed to connect WebSocket');
@@ -549,6 +590,10 @@ async function initializeExchangeWs(exchangeId: ExchangeId) {
 }
 
 function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  notifications?.stop();
+  reconciler?.stop();
   logToFile('info', 'Shutting down');
   appLogger.info('Shutting down...');
 
@@ -577,7 +622,7 @@ function shutdown() {
 }
 
 // Run
-main().catch((error) => {
+export const ready = main().catch((error) => {
   logger.error(
     {
       error: error instanceof Error ? error.message : error,

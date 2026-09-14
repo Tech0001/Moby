@@ -45,34 +45,4 @@ export function toKrakenAsset(standardAsset: string): string {
  * Parse a Kraken pair string to base/quote
  * Handles formats like "XBT/USD" or "XBTUSD"
  */
-export function parseKrakenPair(pair: string): { base: string; quote: string } {
-  // Handle "XBT/USD" format
-  if (pair.includes('/')) {
-    const [base, quote] = pair.split('/');
-    return {
-      base: normalizeKrakenAsset(base),
-      quote: normalizeKrakenAsset(quote),
-    };
-  }
-
-  // Handle "XBTUSD" format - find the split point
-  const quoteCurrencies = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'USDT', 'USDC', 'DAI'];
-
-  for (const quote of quoteCurrencies) {
-    if (pair.endsWith(quote)) {
-      const base = pair.slice(0, -quote.length);
-      return {
-        base: normalizeKrakenAsset(base),
-        quote: normalizeKrakenAsset(quote),
-      };
-    }
-  }
-
-  // Fallback: assume last 3 chars are quote
-  const base = pair.slice(0, -3);
-  const quote = pair.slice(-3);
-  return {
-    base: normalizeKrakenAsset(base),
-    quote: normalizeKrakenAsset(quote),
-  };
-}
+export { parsePair as parseKrakenPair } from '../../domain/types.js';

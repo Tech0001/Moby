@@ -1,3 +1,5 @@
+import { Freshness } from './Freshness';
+import { apiFetch } from '@/ui/lib/api';
 import { useState, useEffect } from 'react';
 import {
   Wallet,
@@ -27,25 +29,7 @@ const PRIORITY_ASSETS = ['USD', 'ZUSD', 'EUR', 'ZEUR', 'BTC', 'XXBT', 'ETH', 'XE
 
 // Normalize asset names (Kraken uses X/Z prefixes)
 function normalizeAsset(asset: string): string {
-  // Remove common Kraken prefixes
-  if (asset.startsWith('X') && asset.length === 4 && !['XETH', 'XRP', 'XLM', 'LTC', 'BCH'].includes(asset)) {
-    return asset.slice(1);
-  }
-  if (asset.startsWith('Z') && asset.length === 4) {
-    return asset.slice(1);
-  }
-  // Map Kraken names to common names
-  const mappings: Record<string, string> = {
-    'XXBT': 'BTC',
-    'XETH': 'ETH',
-    'XXRP': 'XRP',
-    'XXLM': 'XLM',
-    'XLTC': 'LTC',
-    'ZUSD': 'USD',
-    'ZEUR': 'EUR',
-    'ZGBP': 'GBP',
-    'XBT': 'BTC',
-  };
+  const mappings: Record<string, string> = { XXBT: 'BTC', XBT: 'BTC', XETH: 'ETH', XXRP: 'XRP', XXLM: 'XLM', XLTC: 'LTC', ZUSD: 'USD', ZEUR: 'EUR', ZGBP: 'GBP' };
   return mappings[asset] || asset;
 }
 
@@ -84,39 +68,41 @@ export function BalancePanel({ exchange = 'kraken' }: BalancePanelProps) {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [showAll, setShowAll] = useState(false);
 
-  async function fetchBalance() {
+  const [refresh, setRefresh] = useState(0);
+  async function fetchBalance(signal: AbortSignal) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/balance?exchange=${exchange}`);
+      const res = await apiFetch(`/api/balance?exchange=${exchange}`, { signal });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || 'Failed to fetch balance');
       }
       const data = await res.json();
+      if (signal.aborted) return;
       setBalance(data.balance);
       setLastUpdated(new Date());
     } catch (err) {
+      if (signal.aborted) return;
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   }
 
-  useEffect(() => {
-    fetchBalance();
-  }, [exchange]);
-
+  useEffect(() => { setBalance(null); setLastUpdated(null); }, [exchange]);
   useEffect(() => {
     if (!isVisible) return;
-    const interval = setInterval(fetchBalance, 60000);
-    return () => clearInterval(interval);
-  }, [exchange, isVisible]);
+    let stopped = false, timer: ReturnType<typeof setTimeout>;
+    const controller = new AbortController();
+    const tick = async () => { await fetchBalance(controller.signal); if (!stopped) timer = setTimeout(tick, 60000); };
+    void tick(); return () => { stopped = true; controller.abort(); clearTimeout(timer); };
+  }, [exchange, isVisible, refresh]);
 
   // Filter out zero/dust balances and sort
   const nonZeroBalances = balance
     ? Object.entries(balance)
-        .filter(([_, value]) => parseFloat(value) > 0.00001)
+        .filter(([_, value]) => Number.isFinite(Number(value)) && Number(value) > 0)
         .sort((a, b) => {
           // Priority assets first
           const aPriority = PRIORITY_ASSETS.indexOf(a[0]);
@@ -145,11 +131,7 @@ export function BalancePanel({ exchange = 'kraken' }: BalancePanelProps) {
     const num = parseFloat(amount);
     let formatted = '';
     
-    if (num >= 1000000) formatted = num.toLocaleString(undefined, { maximumFractionDigits: 0 });
-    else if (num >= 1000) formatted = num.toLocaleString(undefined, { maximumFractionDigits: 2 });
-    else if (num >= 1) formatted = num.toLocaleString(undefined, { maximumFractionDigits: 4 });
-    else if (num >= 0.001) formatted = num.toLocaleString(undefined, { maximumFractionDigits: 6 });
-    else formatted = num.toLocaleString(undefined, { maximumFractionDigits: 8 });
+    formatted = num > 0 && num < 1e-8 ? '<0.00000001' : num.toLocaleString(undefined, { maximumFractionDigits: 8 });
 
     // Split for styling decimals differently if desired, currently just returning text
     return formatted;
@@ -169,7 +151,7 @@ export function BalancePanel({ exchange = 'kraken' }: BalancePanelProps) {
                 <p className="text-sm opacity-90">{error}</p>
               </div>
             </div>
-            <Button variant="outline" size="sm" onClick={fetchBalance} className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setRefresh(v => v + 1)} className="gap-2">
               <RefreshCw className="w-4 h-4" />
               Retry
             </Button>
@@ -196,13 +178,13 @@ export function BalancePanel({ exchange = 'kraken' }: BalancePanelProps) {
         <div className="flex items-center gap-3">
           {lastUpdated && (
             <span className="text-xs text-muted-foreground hidden sm:inline-block">
-              Updated {lastUpdated.toLocaleTimeString()}
+              <Freshness at={lastUpdated.getTime()} staleAfter={90000} />
             </span>
           )}
           <Button
             variant="ghost"
             size="icon"
-            onClick={fetchBalance}
+            onClick={() => setRefresh(v => v + 1)}
             disabled={loading}
             title="Refresh Balance"
             className="h-8 w-8"
@@ -245,7 +227,7 @@ export function BalancePanel({ exchange = 'kraken' }: BalancePanelProps) {
                         <span className="font-semibold text-sm truncate">{normalized}</span>
                       </div>
                       <div className="mt-auto">
-                        <span className="font-mono text-lg font-medium tracking-tight tabular-nums block truncate" title={amount}>
+                        <span className="font-mono text-base font-medium tracking-tight tabular-nums block truncate" title={amount}>
                           {formatAmount(amount)}
                         </span>
                         <div className="h-1 w-0 group-hover:w-full bg-primary/20 rounded-full transition-all duration-300 mt-2" />

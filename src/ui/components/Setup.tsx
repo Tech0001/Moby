@@ -1,3 +1,4 @@
+import { apiFetch } from '@/ui/lib/api';
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/ui/components/ui/card';
 import { Button } from '@/ui/components/ui/button';
@@ -34,7 +35,7 @@ export function Setup({ onComplete }: SetupProps) {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/setup', {
+      const res = await apiFetch('/api/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),

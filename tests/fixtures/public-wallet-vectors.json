@@ -1,0 +1,37 @@
+{
+  "note": "Public deterministic TEST KEYS. Never send funds to these addresses. Generated with the prior wallet SDKs for compatibility checks.",
+  "terra": [
+    {
+      "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+      "address": "terra1uag78r7hn6we00ddudd9juv2f5nvapf0qtuskg",
+      "privateKey": "0555560a043ad9ad41b69dacc4eb2359bc02a086b8a99c3444f730e77730d4f1"
+    },
+    {
+      "mnemonic": "absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic avoid letter advice comic",
+      "address": "terra187he02p66hw5q56fecs89czaq08p47cq7slsvf",
+      "privateKey": "feae0dc046251cb37917b8da3397632eff2cc6285f4f15311f1cdd6ce320b3fa"
+    },
+    {
+      "mnemonic": "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo vote",
+      "address": "terra1d7cfw98zzalvv5waqwjfdnqgtvu7td4x8gd988",
+      "privateKey": "74d221cb9cb86b3c96fc82af48447ea3ae80544bc392c55e423798a2dc771d2d"
+    }
+  ],
+  "solana": [
+    {
+      "seed": "0000000000000000000000000000000000000000000000000000000000000000",
+      "address": "4zvwRjXUKGfvwnParsHAS3HuSVzV5cA4McphgmoCtajS",
+      "privateKey": "00000000000000000000000000000000000000000000000000000000000000003b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
+    },
+    {
+      "seed": "0707070707070707070707070707070707070707070707070707070707070707",
+      "address": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+      "privateKey": "0707070707070707070707070707070707070707070707070707070707070707ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"
+    },
+    {
+      "seed": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "address": "8z5oiZDBaCrP7ZCP1vQZbxkUt2eevdpPnyvpQAvAYuiL",
+      "privateKey": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff76a1592044a6e4f511265bca73a604d90b0529d1df602be30a19a9257660d1f5"
+    }
+  ]
+}

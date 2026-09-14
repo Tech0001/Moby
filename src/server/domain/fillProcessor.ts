@@ -1,9 +1,7 @@
 import { createChildLogger } from '../utils/logger.js';
 import {
-  addPendingAmount,
-  saveFillEvent,
+  accountFill,
   getFillEventExists,
-  getAppStateValue,
   getAssetConfig,
 } from '../db/repositories.js';
 import type { FillEvent, ReceivedAsset, ExchangeId } from './types.js';
@@ -31,46 +29,25 @@ export class FillProcessor {
    * Returns the received asset info if processed, null if skipped
    */
   processFill(exchange: ExchangeId, fill: FillEvent): ReceivedAsset | null {
+    if (!fill.tradeId || !fill.orderId || !['buy', 'sell'].includes(fill.side) ||
+        ![fill.price, fill.volume, fill.cost, fill.fee, fill.timestamp].every(n => Number.isFinite(n) && n >= 0) || fill.volume <= 0) return null;
     // Check if we've already processed this trade (idempotency)
     if (getFillEventExists(fill.tradeId, exchange)) {
       logger.debug({ exchange, tradeId: fill.tradeId }, 'Fill already processed, skipping');
       return null;
     }
 
-    // Check if order type is allowed
-    if (!this.isAllowedOrderType(fill.orderType)) {
-      // Save for audit even if we don't act on it
-      const received = this.computeReceivedAsset(fill);
-      if (received) {
-        saveFillEvent(exchange, fill, received.asset, received.amount);
-      }
-      logger.debug({ exchange, tradeId: fill.tradeId, orderType: fill.orderType }, 'Order type not in allowlist');
-      return null;
-    }
-
-    // Determine what asset was received
     const received = this.computeReceivedAsset(fill);
-
-    if (!received) {
-      logger.warn({ exchange, fill }, 'Could not determine received asset');
-      return null;
-    }
-
-    // Check if we're configured to sweep this asset for this exchange
-    const assetConfig = getAssetConfig(exchange, received.asset);
-    if (!assetConfig || !assetConfig.enabled) {
-      logger.debug(
-        { exchange, asset: received.asset },
-        'Asset not configured for sweeping, skipping'
-      );
-      // Still save the fill event for audit
-      saveFillEvent(exchange, fill, received.asset, received.amount);
-      return null;
-    }
-
-    // Save fill event and update pending amount
-    saveFillEvent(exchange, fill, received.asset, received.amount);
-    addPendingAmount(exchange, received.asset, received.amount);
+    if (!received) return null;
+    const { base, quote } = parsePair(fill.pair);
+    const spent = [{ asset: fill.side === 'sell' ? base : quote, amount: fill.side === 'sell' ? fill.volume : fill.cost }];
+    const feeAsset = normalizeAsset(fill.feeCurrency);
+    if (fill.fee > 0 && feeAsset !== received.asset) spent.push({ asset: feeAsset, amount: fill.fee });
+    const credit = this.isAllowedOrderType(fill.orderType) && !!getAssetConfig(exchange, received.asset)?.enabled;
+    // All trades spend assets, even when their proceeds are not configured for
+    // sweeping or their order type is excluded. Deduplicate both sides together.
+    if (!accountFill(exchange, fill, received, credit, spent)) return null;
+    if (!credit) return null;
 
     logger.info(
       {
@@ -97,7 +74,7 @@ export class FillProcessor {
    */
   private isAllowedOrderType(orderType: string): boolean {
     const allowed = this.config.global.allowedOrderTypes;
-    return allowed.includes(orderType.toLowerCase());
+    return allowed.map(type => type.toLowerCase().replaceAll('_', '-')).includes(orderType.toLowerCase().replaceAll('_', '-'));
   }
 
   /**

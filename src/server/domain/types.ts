@@ -30,6 +30,7 @@ export type WithdrawalStatus =
   | 'pending'      // Kraken accepted, waiting for processing
   | 'complete'     // Successfully completed
   | 'failed'       // Failed (will retry)
+  | 'unknown'
   | 'held'         // Held for compliance review
   | 'cancelled';   // Cancelled (won't retry)
 
@@ -48,6 +49,10 @@ export interface WithdrawalJob {
   updatedAt: number;        // Unix ms
   pollCount: number;        // How many times we've polled status
   lastError?: string;
+  quotedFee?: number | null;
+  actualFee?: number | null;
+  feeUsd?: number | null;
+  destinationAddress?: string | null;
 }
 
 // Asset state in database
@@ -71,6 +76,8 @@ export interface WithdrawInfo {
 
 // Kraken withdrawal status response
 export interface KrakenWithdrawStatus {
+  'status-prop'?: string;
+  key?: string;
   refid: string;
   method: string;
   aclass: string;
@@ -139,7 +146,7 @@ export function parsePair(pair: string): { base: string; quote: string } {
 
   // Handle "XBTUSD" format - this is trickier
   // Common quote currencies
-  const quoteCurrencies = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'USDT', 'USDC', 'DAI'];
+  const quoteCurrencies = ['ZUSD', 'ZEUR', 'ZGBP', 'ZJPY', 'ZCAD', 'ZAUD', 'ZCHF', 'XXBT', 'XETH', 'XBT', 'ETH', 'USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'USDT', 'USDC', 'DAI'];
 
   for (const quote of quoteCurrencies) {
     if (pair.endsWith(quote)) {

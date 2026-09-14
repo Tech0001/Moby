@@ -1,3 +1,4 @@
+import { feeBudgetReason } from '../domain/feeBudget.js';
 import { v4 as uuid } from 'uuid';
 import { getDb } from './sqlite.js';
 import { encrypt, safeDecrypt, isEncrypted } from '../utils/encryption.js';
@@ -128,6 +129,7 @@ export function upsertAssetState(state: AssetState): void {
     state.consecutiveFailures,
     state.backoffUntil
   );
+  bumpQueueRevision(state.exchange);
 }
 
 export function addPendingAmount(exchange: ExchangeId, asset: string, amount: number): void {
@@ -138,6 +140,7 @@ export function addPendingAmount(exchange: ExchangeId, asset: string, amount: nu
      ON CONFLICT(exchange, asset) DO UPDATE SET
        pending_amount = pending_amount + ?`
   ).run(exchange, asset, amount, amount);
+  bumpQueueRevision(exchange);
 }
 
 export function subtractPendingAmount(exchange: ExchangeId, asset: string, amount: number): void {
@@ -145,6 +148,7 @@ export function subtractPendingAmount(exchange: ExchangeId, asset: string, amoun
   db.prepare(
     `UPDATE asset_state SET pending_amount = MAX(0, pending_amount - ?) WHERE exchange = ? AND asset = ?`
   ).run(amount, exchange, asset);
+  bumpQueueRevision(exchange);
 }
 
 export function setPendingAmount(exchange: ExchangeId, asset: string, amount: number): void {
@@ -152,6 +156,16 @@ export function setPendingAmount(exchange: ExchangeId, asset: string, amount: nu
   db.prepare(
     `UPDATE asset_state SET pending_amount = ? WHERE exchange = ? AND asset = ?`
   ).run(amount, exchange, asset);
+  bumpQueueRevision(exchange);
+}
+
+// A monotonic revision detects changes during remote reads, including changes
+// that leave the pending amount equal to its original value.
+export function getQueueRevision(exchange: ExchangeId): number {
+  return Number(getAppStateValue(`queue_revision:${exchange}`) ?? 0);
+}
+function bumpQueueRevision(exchange: ExchangeId): void {
+  setAppStateValue(`queue_revision:${exchange}`, String(getQueueRevision(exchange) + 1));
 }
 
 export function advanceRrIndex(exchange: ExchangeId, asset: string, walletCount: number): void {
@@ -224,7 +238,7 @@ export function getWithdrawalJob(id: string): WithdrawalJob | null {
 
 export function getActiveWithdrawalJobs(exchange?: ExchangeId): WithdrawalJob[] {
   const db = getDb();
-  let sql = `SELECT * FROM withdrawal_jobs WHERE status IN ('submitted', 'pending')`;
+  let sql = `SELECT * FROM withdrawal_jobs WHERE status IN ('submitted', 'pending', 'held', 'unknown')`;
   const params: unknown[] = [];
 
   if (exchange) {
@@ -237,9 +251,93 @@ export function getActiveWithdrawalJobs(exchange?: ExchangeId): WithdrawalJob[] 
   return rows.map(mapWithdrawalJobRow);
 }
 
+export function listWithdrawalJobs(options: { exchange?: string; status?: string; query?: string; limit?: number; offset?: number } = {}) {
+  const clauses: string[] = [], args: unknown[] = [];
+  if (options.exchange) { clauses.push('exchange = ?'); args.push(options.exchange); }
+  if (options.status) { clauses.push('status = ?'); args.push(options.status); }
+  if (options.query) {
+    clauses.push("(asset LIKE ? ESCAPE '\\' OR dest_key LIKE ? ESCAPE '\\' OR exchange_ref LIKE ? ESCAPE '\\' OR txid LIKE ? ESCAPE '\\' OR destination_address LIKE ? ESCAPE '\\')");
+    const term = `%${options.query.replace(/[\\%_]/g, '\\$&')}%`; args.push(term, term, term, term, term);
+  }
+  const where = clauses.length ? ' WHERE ' + clauses.join(' AND ') : '';
+  const { total } = getDb().prepare('SELECT COUNT(*) AS total FROM withdrawal_jobs' + where).get(...args) as { total: number };
+  const rows = getDb().prepare('SELECT * FROM withdrawal_jobs' + where + ' ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?')
+    .all(...args, options.limit ?? 50, options.offset ?? 0) as Array<Record<string, unknown>>;
+  return { total, jobs: rows.map(mapWithdrawalJobRow) };
+}
+
+export function reserveWithdrawal(exchange: ExchangeId, asset: string, method: string, destKey: string,
+  amount: number, config: AssetConfigRecord, limits: { global: number; perAsset: number; usdPrice?: number | null;
+    quotedFee?: number; feeUsd?: number | null; dailyFeeBudgetUsd?: number | null; destinationAddress?: string }): WithdrawalJob | null {
+  return getDb().transaction(() => {
+    const state = getAssetState(exchange, asset), current = getAssetConfig(exchange, asset);
+    if (!isEnabled() || !isExchangeEnabled(exchange) || !current?.enabled || !state ||
+        JSON.stringify(current) !== JSON.stringify(config) || !Number.isFinite(amount) || amount <= 0 ||
+        state.pendingAmount + 1e-10 < amount + config.reserve || state.pendingAmount < config.threshold ||
+        (state.backoffUntil && state.backoffUntil > Date.now()) ||
+        (state.lastWithdrawAt && Date.now() - state.lastWithdrawAt < config.cooldownSeconds * 1000) ||
+        getInflightCount() >= limits.global || getInflightCount(exchange, asset) >= limits.perAsset ||
+        getActiveWithdrawalJobs(exchange).some(j => j.asset === asset && ['held', 'unknown'].includes(j.status))) return null;
+    const total = getDb().prepare(`SELECT COALESCE(SUM(amount), 0) AS amount FROM withdrawal_jobs
+      WHERE exchange = ? AND asset = ? AND dest_key = ? AND status != 'cancelled'
+      AND (status != 'failed' OR exchange_ref IS NOT NULL)`).get(exchange, asset, destKey) as { amount: number };
+    if (config.perWalletCapCoin && total.amount + amount > config.perWalletCapCoin + 1e-10) return null;
+    if (config.perWalletCapUsd && (!limits.usdPrice || !Number.isFinite(limits.usdPrice) || limits.usdPrice <= 0 ||
+        (total.amount + amount) * limits.usdPrice > config.perWalletCapUsd)) return null;
+    if (feeBudgetReason(limits.dailyFeeBudgetUsd, limits.feeUsd ?? null)) return null;
+    const job = createWithdrawalJob(exchange, asset, method, destKey, amount);
+    getDb().prepare('UPDATE withdrawal_jobs SET quoted_fee = ?, fee_usd = ?, destination_address = ? WHERE id = ?')
+      .run(limits.quotedFee ?? null, limits.feeUsd ?? null, limits.destinationAddress ?? null, job.id);
+    Object.assign(job, { quotedFee: limits.quotedFee ?? null, feeUsd: limits.feeUsd ?? null, destinationAddress: limits.destinationAddress ?? null });
+    subtractPendingAmount(exchange, asset, amount);
+    getDb().prepare('UPDATE asset_state SET rr_index = ?, last_withdraw_at = ? WHERE exchange = ? AND asset = ?')
+      .run((config.destKeys.indexOf(destKey) + 1) % config.destKeys.length, Date.now(), exchange, asset);
+    return job;
+  }).immediate();
+}
+
+export function releaseWithdrawal(id: string, status: 'failed' | 'cancelled', error?: string): boolean {
+  return getDb().transaction(() => {
+    const job = getWithdrawalJob(id);
+    if (!job || !['submitted', 'pending', 'held', 'unknown'].includes(job.status)) return false;
+    updateWithdrawalJob(id, { status, lastError: error });
+    addPendingAmount(job.exchange, job.asset, job.amount);
+    return true;
+  }).immediate();
+}
+
+export function recoverInterruptedWithdrawals(): void {
+  getDb().prepare(`UPDATE withdrawal_jobs SET status = 'unknown', updated_at = ?,
+    last_error = 'Submission interrupted. Check exchange history before retrying.'
+    WHERE status = 'submitted' AND exchange_ref IS NULL`).run(Date.now());
+}
+
+export function creditFill(exchange: ExchangeId, fill: FillEvent, asset: string, amount: number): boolean {
+  return getDb().transaction(() => {
+    if (getFillEventExists(fill.tradeId, exchange)) return false;
+    saveFillEvent(exchange, fill, asset, amount);
+    addPendingAmount(exchange, asset, amount);
+    return true;
+  }).immediate();
+}
+
+export function accountFill(exchange: ExchangeId, fill: FillEvent, received: { asset: string; amount: number },
+  credit: boolean, spent: Array<{ asset: string; amount: number }>): boolean {
+  return getDb().transaction(() => {
+    if (getFillEventExists(fill.tradeId, exchange)) return false;
+    saveFillEvent(exchange, fill, received.asset, received.amount);
+    // Clearing the queue establishes a new boundary; delayed history cannot
+    // put discarded fills back or debit a newly accumulated queue.
+    if (fill.timestamp <= Number(getAppStateValue(`queue_cleared_before:${exchange}`) ?? 0)) return false;
+    for (const debit of spent) subtractPendingAmount(exchange, debit.asset, debit.amount);
+    if (credit) addPendingAmount(exchange, received.asset, received.amount);
+    return true;
+  }).immediate();
+}
+
 export function getInflightCount(exchange?: ExchangeId, asset?: string): number {
   const db = getDb();
-  let sql = `SELECT COUNT(*) as count FROM withdrawal_jobs WHERE status IN ('submitted', 'pending')`;
+  let sql = `SELECT COUNT(*) as count FROM withdrawal_jobs WHERE status IN ('submitted', 'pending', 'held', 'unknown')`;
   const params: unknown[] = [];
 
   if (exchange) {
@@ -265,7 +363,7 @@ export function getInflightCount(exchange?: ExchangeId, asset?: string): number 
  */
 export function updateWithdrawalJob(
   id: string,
-  updates: Partial<Pick<WithdrawalJob, 'status' | 'exchangeRef' | 'txid' | 'lastError' | 'pollCount'>>
+  updates: Partial<Pick<WithdrawalJob, 'status' | 'exchangeRef' | 'txid' | 'lastError' | 'pollCount' | 'actualFee'>>
 ): void {
   const db = getDb();
   const now = Date.now();
@@ -277,6 +375,7 @@ export function updateWithdrawalJob(
     txid: 'txid',
     lastError: 'last_error',
     pollCount: 'poll_count',
+    actualFee: 'actual_fee',
   };
 
   const setClauses: string[] = ['updated_at = ?'];
@@ -306,6 +405,10 @@ export function incrementPollCount(id: string): void {
 
 function mapWithdrawalJobRow(row: Record<string, unknown>): WithdrawalJob {
   return {
+    quotedFee: row.quoted_fee as number | null,
+    actualFee: row.actual_fee as number | null,
+    feeUsd: row.fee_usd as number | null,
+    destinationAddress: row.destination_address as string | null,
     id: row.id as string,
     exchange: row.exchange as ExchangeId,
     asset: row.asset as string,
@@ -393,6 +496,11 @@ export function isEnabled(): boolean {
 
 export function setEnabled(enabled: boolean): void {
   setAppStateValue('enabled', enabled ? 'true' : 'false');
+  setAppStateValue('control_revision', String(getControlRevision() + 1));
+}
+
+export function getControlRevision(): number {
+  return Number(getAppStateValue('control_revision') ?? 0);
 }
 
 // ============== API Keys Repository (Multi-Key Support) ==============
@@ -954,6 +1062,12 @@ export function getEnabledExchanges(): ExchangeId[] {
   return rows.map((r) => r.exchange);
 }
 
+/** Include invalid active keys in health reporting so authentication failures stay visible. */
+export function getMonitoredExchanges(): ExchangeId[] {
+  return (getDb().prepare(`SELECT DISTINCT ak.exchange FROM api_keys ak LEFT JOIN exchange_settings es ON ak.exchange = es.exchange
+    WHERE ak.is_active = 1 AND (es.enabled IS NULL OR es.enabled = 1)`).all() as Array<{ exchange: ExchangeId }>).map(row => row.exchange);
+}
+
 // ============== Asset Configs Repository ==============
 
 export interface AssetConfigRecord {
@@ -969,6 +1083,8 @@ export interface AssetConfigRecord {
   chunkAmount: number | null;
   chunkMode: 'fixedCoin' | 'fixedUsd';
   chunkMax: number | null;
+  perWalletCapCoin?: number | null;
+  perWalletCapUsd?: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -987,6 +1103,8 @@ function mapAssetConfigRow(row: Record<string, unknown>): AssetConfigRecord {
     chunkAmount: row.chunk_amount as number | null,
     chunkMode: ((row.chunk_mode as string) ?? 'fixedCoin') as 'fixedCoin' | 'fixedUsd',
     chunkMax: row.chunk_max as number | null,
+    perWalletCapCoin: row.per_wallet_cap_coin as number | null,
+    perWalletCapUsd: row.per_wallet_cap_usd as number | null,
     createdAt: row.created_at as number,
     updatedAt: row.updated_at as number,
   };
@@ -1041,6 +1159,8 @@ export interface AssetConfigInput {
   chunkAmount?: number | null;
   chunkMode?: 'fixedCoin' | 'fixedUsd';
   chunkMax?: number | null;
+  perWalletCapCoin?: number | null;
+  perWalletCapUsd?: number | null;
 }
 
 export function upsertAssetConfig(
@@ -1060,8 +1180,8 @@ export function upsertAssetConfig(
   const chunkMax = config.chunkMax ?? null;
 
   db.prepare(
-    `INSERT INTO asset_configs (exchange, asset, enabled, threshold, reserve, dest_keys, priority, cooldown_seconds, method, chunk_amount, chunk_mode, chunk_max, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO asset_configs (exchange, asset, enabled, threshold, reserve, dest_keys, priority, cooldown_seconds, method, chunk_amount, chunk_mode, chunk_max, per_wallet_cap_coin, per_wallet_cap_usd, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(exchange, asset) DO UPDATE SET
        enabled = excluded.enabled,
        threshold = excluded.threshold,
@@ -1073,6 +1193,8 @@ export function upsertAssetConfig(
        chunk_amount = excluded.chunk_amount,
        chunk_mode = excluded.chunk_mode,
         chunk_max = excluded.chunk_max,
+       per_wallet_cap_coin = excluded.per_wallet_cap_coin,
+       per_wallet_cap_usd = excluded.per_wallet_cap_usd,
        updated_at = excluded.updated_at`
   ).run(
     exchange,
@@ -1087,6 +1209,8 @@ export function upsertAssetConfig(
     chunkAmount,
     chunkMode,
     chunkMax,
+    config.perWalletCapCoin ?? null,
+    config.perWalletCapUsd ?? null,
     now,
     now
   );
@@ -1497,6 +1621,7 @@ export function isWithdrawalMethodCacheStale(
 
 export interface GlobalSettings {
   dryRun: boolean;
+  dailyFeeBudgetUsd: number | null;
   maxInflightWithdrawals: number;
   perAssetMaxInflight: number;
   keyNamePrefix: string;
@@ -1505,10 +1630,11 @@ export interface GlobalSettings {
 
 const SETTINGS_DEFAULTS: GlobalSettings = {
   dryRun: false,
+  dailyFeeBudgetUsd: null,
   maxInflightWithdrawals: 2,
   perAssetMaxInflight: 1,
   keyNamePrefix: '',
-  allowedOrderTypes: ['limit', 'take-profit', 'take-profit-limit'],
+  allowedOrderTypes: ['market', 'limit', 'take-profit', 'take-profit-limit'],
 };
 
 export function getSetting<K extends keyof GlobalSettings>(key: K): GlobalSettings[K] {

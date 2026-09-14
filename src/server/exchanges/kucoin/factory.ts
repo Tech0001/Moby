@@ -80,8 +80,8 @@ export const KuCoinAdapterFactory: ExchangeAdapterFactory = {
     return {
       exchangeId: 'kucoin' as ExchangeId,
 
-      async getBalance() {
-        return client.getBalance();
+      async getBalance(options) {
+        return client.getBalance(options);
       },
 
       async getWithdrawInfo(asset, address, amount) {

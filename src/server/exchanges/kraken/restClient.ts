@@ -1,7 +1,6 @@
 import { generateSignature, generateNonce } from './sign.js';
 import { globalRateLimiter, RateLimiter } from './rateLimiter.js';
 import { createChildLogger } from '../../utils/logger.js';
-import { fetchWithTimeout } from '../../utils/fetchWithTimeout.js';
 import type { WithdrawInfo, KrakenWithdrawStatus } from '../../domain/types.js';
 
 const logger = createChildLogger('kraken-rest');
@@ -13,6 +12,7 @@ export interface KrakenRestClientOptions {
   apiSecret: string;
   rateLimiter?: RateLimiter;
   dryRun?: boolean;
+  beforeRequest?: () => void;
 }
 
 export interface KrakenResponse<T> {
@@ -20,17 +20,33 @@ export interface KrakenResponse<T> {
   result?: T;
 }
 
+export class KrakenApiError extends Error {
+  constructor(public readonly errors: string[]) {
+    super(`Kraken API error: ${errors.join(', ')}`);
+  }
+  get definitelyRejected(): boolean {
+    return this.errors.every(error => /^(EAPI:|EAuth:|EFunding:|EGeneral:Permission|EOrder:)/.test(error));
+  }
+}
+
+// Serialize private requests per key, including calls from connection tests.
+const privateQueues = new Map<string, Promise<unknown>>();
+export type KrakenClient = Pick<KrakenRestClient,
+  'getWithdrawInfo' | 'withdraw' | 'getWithdrawStatus' | 'getTradesHistory' | 'getTicker'>;
+
 export class KrakenRestClient {
   private readonly apiKey: string;
   private readonly apiSecret: string;
   private readonly rateLimiter: RateLimiter;
   private readonly dryRun: boolean;
+  private readonly beforeRequest?: () => void;
 
   constructor(options: KrakenRestClientOptions) {
     this.apiKey = options.apiKey;
     this.apiSecret = options.apiSecret;
     this.rateLimiter = options.rateLimiter ?? globalRateLimiter;
     this.dryRun = options.dryRun ?? false;
+    this.beforeRequest = options.beforeRequest;
   }
 
   /**
@@ -39,9 +55,23 @@ export class KrakenRestClient {
   private async privateRequest<T>(
     endpoint: string,
     params: Record<string, string | number> = {},
-    cost: number = 1
+    cost: number = 1,
+    beforeSend?: () => boolean
+  ): Promise<T> {
+    const previous = privateQueues.get(this.apiKey) ?? Promise.resolve();
+    const request = previous.catch(() => {}).then(() => this.sendPrivateRequest<T>(endpoint, params, cost, beforeSend));
+    privateQueues.set(this.apiKey, request);
+    try { return await request; }
+    finally { if (privateQueues.get(this.apiKey) === request) privateQueues.delete(this.apiKey); }
+  }
+
+  private async sendPrivateRequest<T>(
+    endpoint: string, params: Record<string, string | number>, cost: number, beforeSend?: () => boolean,
   ): Promise<T> {
     await this.rateLimiter.waitForToken(cost);
+    try { this.beforeRequest?.(); }
+    catch { throw new KrakenApiError(['EAPI:Credentials changed before submission']); }
+    if (beforeSend && !beforeSend()) throw new KrakenApiError(['EAPI:Withdrawal stopped before submission']);
 
     const urlPath = `/0/private/${endpoint}`;
     const nonce = generateNonce();
@@ -55,7 +85,7 @@ export class KrakenRestClient {
 
     const signature = generateSignature(urlPath, postData, nonce, this.apiSecret);
 
-    const response = await fetchWithTimeout(`${KRAKEN_API_URL}${urlPath}`, {
+    const response = await fetch(`${KRAKEN_API_URL}${urlPath}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -63,7 +93,7 @@ export class KrakenRestClient {
         'API-Sign': signature,
       },
       body: postData,
-      timeoutMs: 30000, // 30 second timeout
+      signal: AbortSignal.timeout(20000),
     });
 
     if (!response.ok) {
@@ -75,9 +105,10 @@ export class KrakenRestClient {
     if (data.error && data.error.length > 0) {
       const errorMsg = data.error.join(', ');
       logger.error({ endpoint, error: errorMsg }, 'Kraken API error');
-      throw new Error(`Kraken API error: ${errorMsg}`);
+      throw new KrakenApiError(data.error);
     }
 
+    if (data.result === undefined || data.result === null) throw new Error('Missing Kraken response result');
     return data.result as T;
   }
 
@@ -94,7 +125,7 @@ export class KrakenRestClient {
     const queryString = new URLSearchParams(params).toString();
     const url = queryString ? `${KRAKEN_API_URL}${urlPath}?${queryString}` : `${KRAKEN_API_URL}${urlPath}`;
 
-    const response = await fetchWithTimeout(url, { timeoutMs: 30000 });
+    const response = await fetch(url, { signal: AbortSignal.timeout(20000) });
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -106,7 +137,12 @@ export class KrakenRestClient {
       throw new Error(`Kraken API error: ${data.error.join(', ')}`);
     }
 
+    if (data.result === undefined || data.result === null) throw new Error('Missing Kraken response result');
     return data.result as T;
+  }
+
+  async getWebSocketsToken(): Promise<{ token: string; expires: number }> {
+    return this.privateRequest('GetWebSocketsToken');
   }
 
   // ============== Account Balance ==============
@@ -118,9 +154,6 @@ export class KrakenRestClient {
 
   // ============== Withdrawal Methods ==============
 
-  /**
-   * Get available withdrawal methods for an asset with minimums and fees
-   */
   async getWithdrawMethods(asset?: string): Promise<Array<{
     asset: string;
     method: string;
@@ -145,6 +178,7 @@ export class KrakenRestClient {
       'gen-address': boolean;
     }>>('WithdrawMethods', params);
   }
+
 
   /**
    * Get withdrawal info (limits, fees) for an asset
@@ -181,7 +215,9 @@ export class KrakenRestClient {
   async withdraw(
     asset: string,
     key: string,
-    amount: number
+    amount: number,
+    maxFee?: number,
+    beforeSend?: () => boolean,
   ): Promise<{ refid: string }> {
     if (this.dryRun) {
       logger.info({ asset, key, amount }, '[DRY RUN] Would submit withdrawal');
@@ -192,8 +228,9 @@ export class KrakenRestClient {
 
     const result = await this.privateRequest<{ refid: string }>(
       'Withdraw',
-      { asset, key, amount },
-      2 // Higher cost for withdrawal calls
+      { asset, key, amount: amount.toFixed(8), ...(maxFee === undefined ? {} : { max_fee: maxFee.toFixed(8) }) },
+      2,
+      beforeSend
     );
 
     logger.info({ asset, key, amount, refid: result.refid }, 'Withdrawal submitted');
@@ -211,12 +248,22 @@ export class KrakenRestClient {
       params.asset = asset;
     }
 
-    const result = await this.privateRequest<KrakenWithdrawStatus[]>(
-      'WithdrawStatus',
-      params
-    );
-
-    return result || [];
+    // Explicit pagination prevents long-lived held jobs falling out of the first page.
+    const statuses: KrakenWithdrawStatus[] = [];
+    let cursor = 'true';
+    const seen = new Set<string>();
+    do {
+      if (seen.has(cursor)) throw new Error('Repeated withdrawal status cursor');
+      seen.add(cursor);
+      const result = await this.privateRequest<KrakenWithdrawStatus[] | {
+        withdrawals: KrakenWithdrawStatus[]; cursor?: string;
+      }>('WithdrawStatus', { ...params, cursor, limit: 500 });
+      if (Array.isArray(result)) return [...statuses, ...result];
+      if (!Array.isArray(result.withdrawals)) throw new Error('Invalid withdrawal status response');
+      statuses.push(...result.withdrawals);
+      cursor = result.cursor || '';
+    } while (cursor);
+    return statuses;
   }
 
   /**
@@ -359,8 +406,7 @@ export class KrakenRestClient {
         await this.getWithdrawAddresses();
         hasWithdraw = true;
       } catch {
-        // May fail if no addresses, doesn't mean no permission
-        hasWithdraw = true; // Assume permission exists
+        hasWithdraw = false;
       }
 
       return { success: true, hasBalance, hasWithdraw };

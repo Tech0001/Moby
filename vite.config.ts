@@ -7,8 +7,8 @@ export default defineConfig({
   root: '.',
   publicDir: 'public',
   build: {
-    outDir: 'dist',
-    emptyOutDir: false, // Keep server files from tsc
+    outDir: 'dist/ui',
+    emptyOutDir: true, // Keep server files from tsc
   },
   resolve: {
     alias: {

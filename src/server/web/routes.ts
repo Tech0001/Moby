@@ -1,3 +1,5 @@
+import { buildDashboardStatus, type ConnectionHealth } from '../domain/dashboardStatus.js';
+import { listWithdrawalJobs } from '../db/repositories.js';
 import { Router, Request, Response, NextFunction } from 'express';
 import { v4 as uuid } from 'uuid';
 import { createChildLogger } from '../utils/logger.js';
@@ -65,7 +67,6 @@ import {
   getActiveWithdrawalJobs,
   getRecentFills,
   isEnabled,
-  setEnabled,
   getAppStateValue,
   setAppStateValue,
   getAllExchangeAddresses,
@@ -131,6 +132,8 @@ export interface ReconcileResult {
 
 export interface RoutesContext {
   config: AppConfig;
+  getHealth?: () => unknown;
+  onKeysChanged?: () => void;
   reloadConfig: () => Promise<void>;
   updateConfig: (newConfig: AppConfig) => void;
   runReconciliation?: (exchange?: ExchangeId) => Promise<ReconcileResult[]>;
@@ -339,52 +342,19 @@ export function createRoutes(context: RoutesContext): Router {
   // Get application status (optionally filtered by exchange)
   router.get('/api/status', requireAuth, (req: Request, res: Response) => {
     const exchange = (req.query.exchange as ExchangeId) || undefined;
-    const assetStates = getAllAssetStates(exchange);
-    const assetConfigs = getAllAssetConfigs(exchange);
-    const activeJobs = getActiveWithdrawalJobs(exchange);
-    const enabled = isEnabled();
-    const pool = exchange ? getClientPool(exchange) : null;
+    res.json(buildDashboardStatus(context.config, context.getHealth?.() as ConnectionHealth | undefined, exchange));
+  });
 
-    // Merge asset configs with asset states - show all configured assets
-    // even if they don't have runtime state yet (no fills processed)
-    const assetStateMap = new Map(
-      assetStates.map((s) => [`${s.exchange}:${s.asset}`, s])
-    );
-
-    const mergedAssets = assetConfigs.map((config) => {
-      const key = `${config.exchange}:${config.asset}`;
-      const state = assetStateMap.get(key);
-
-      return {
-        exchange: config.exchange,
-        asset: config.asset,
-        enabled: config.enabled,
-        threshold: config.threshold,
-        pendingAmount: state?.pendingAmount ?? 0,
-        rrIndex: state?.rrIndex ?? 0,
-        lastWithdrawAt: state?.lastWithdrawAt ?? null,
-        consecutiveFailures: state?.consecutiveFailures ?? 0,
-        backoffUntil: state?.backoffUntil ?? null,
-      };
-    });
-
-    res.json({
-      enabled,
-      hasApiKeys: hasAnyApiKeys(exchange),
-      apiKeysCount: pool?.size ?? 0,
-      assets: mergedAssets,
-      activeJobs: activeJobs.map((job) => ({
-        id: job.id,
-        exchange: job.exchange,
-        asset: job.asset,
-        amount: job.amount,
-        status: job.status,
-        destKey: job.destKey,
-        createdAt: job.createdAt,
-        exchangeRef: job.exchangeRef,
-        txid: job.txid,
-      })),
-    });
+  router.get('/api/withdrawals', requireAuth, (req: Request, res: Response) => {
+    const { exchange, status, q = '', offset = '0', limit = '50' } = req.query;
+    if ((exchange !== undefined && !['kraken', 'gemini', 'kucoin', 'gateio'].includes(String(exchange))) ||
+        (status !== undefined && !['submitted', 'pending', 'held', 'unknown', 'complete', 'failed', 'cancelled'].includes(String(status))) ||
+        typeof q !== 'string' || q.length > 200 || !/^\d+$/.test(String(offset)) || !/^\d+$/.test(String(limit)) ||
+        Number(limit) < 1 || Number(limit) > 100 || Number(offset) > 1000000) {
+      res.status(400).json({ error: 'Invalid withdrawal history filter' }); return;
+    }
+    res.json(listWithdrawalJobs({ exchange: exchange as string | undefined, status: status as string | undefined,
+      query: q, offset: Number(offset), limit: Number(limit) }));
   });
 
   // Get application logs (from in-memory buffer)
@@ -405,20 +375,6 @@ export function createRoutes(context: RoutesContext): Router {
       logs,
       stats: logBuffer.getStats(),
     });
-  });
-
-  // Start/Stop toggle
-  router.post('/api/control/start', requireAuth, (req: Request, res: Response) => {
-    setEnabled(true);
-    context.wakeScheduler?.();
-    logger.info('Sweeper enabled via UI');
-    res.json({ enabled: true });
-  });
-
-  router.post('/api/control/stop', requireAuth, (req: Request, res: Response) => {
-    setEnabled(false);
-    logger.info('Sweeper disabled via UI');
-    res.json({ enabled: false });
   });
 
   // Manual reconciliation (settle up)
@@ -552,6 +508,7 @@ export function createRoutes(context: RoutesContext): Router {
       // Refresh the client pool
       const pool = getClientPool(exchange);
       pool.refreshClients();
+      context.onKeysChanged?.();
 
       logger.info({ keyId: id, name, exchange }, 'API key added');
       res.json({
@@ -575,7 +532,7 @@ export function createRoutes(context: RoutesContext): Router {
 
   // Update an API key
   router.put('/api/keys/:id', requireAuth, (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const { name, tier, isActive } = req.body;
 
     const key = getApiKeyById(id);
@@ -594,6 +551,7 @@ export function createRoutes(context: RoutesContext): Router {
     // Refresh pool for the key's exchange
     const pool = getClientPool(key.exchange);
     pool.refreshClients();
+      context.onKeysChanged?.();
 
     logger.info({ keyId: id, updates }, 'API key updated');
     res.json({ success: true });
@@ -601,7 +559,7 @@ export function createRoutes(context: RoutesContext): Router {
 
   // Delete an API key
   router.delete('/api/keys/:id', requireAuth, (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = String(req.params.id);
 
     const key = getApiKeyById(id);
     if (!key) {
@@ -615,6 +573,7 @@ export function createRoutes(context: RoutesContext): Router {
     // Refresh pool
     const pool = getClientPool(exchange);
     pool.refreshClients();
+      context.onKeysChanged?.();
 
     logger.info({ keyId: id }, 'API key deleted');
     res.json({ success: true });
@@ -622,7 +581,7 @@ export function createRoutes(context: RoutesContext): Router {
 
   // Test a specific API key
   router.post('/api/keys/:id/test', requireAuth, async (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = String(req.params.id);
 
     const key = getApiKeyById(id);
     if (!key) {
@@ -665,6 +624,7 @@ export function createRoutes(context: RoutesContext): Router {
           markApiKeyValid(id);
           const pool = getClientPool(key.exchange);
           pool.refreshClients();
+      context.onKeysChanged?.();
         }
       }
 
@@ -679,7 +639,7 @@ export function createRoutes(context: RoutesContext): Router {
 
   // Clear rate limit for a specific key
   router.post('/api/keys/:id/clear-limit', requireAuth, (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = String(req.params.id);
 
     const key = getApiKeyById(id);
     if (!key) {
@@ -694,7 +654,7 @@ export function createRoutes(context: RoutesContext): Router {
 
   // Re-enable an invalid key (after user fixes the issue)
   router.post('/api/keys/:id/revalidate', requireAuth, async (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = String(req.params.id);
 
     const key = getApiKeyById(id);
     if (!key) {
@@ -739,6 +699,7 @@ export function createRoutes(context: RoutesContext): Router {
       markApiKeyValid(id);
       const pool = getClientPool(key.exchange);
       pool.refreshClients();
+      context.onKeysChanged?.();
 
       logger.info({ keyId: id }, 'API key revalidated');
       res.json({ success: true });
@@ -789,6 +750,10 @@ export function createRoutes(context: RoutesContext): Router {
   router.put('/api/settings', requireAuth, (req: Request, res: Response) => {
     const updates = req.body as Partial<GlobalSettings>;
 
+    if (updates.dailyFeeBudgetUsd !== undefined && updates.dailyFeeBudgetUsd !== null &&
+        (typeof updates.dailyFeeBudgetUsd !== 'number' || !Number.isFinite(updates.dailyFeeBudgetUsd) || updates.dailyFeeBudgetUsd <= 0)) {
+      res.status(400).json({ error: 'Fee budget must be a positive USD amount, or blank to disable' }); return;
+    }
     // Validate inputs
     if (updates.dryRun !== undefined && typeof updates.dryRun !== 'boolean') {
       res.status(400).json({ error: 'dryRun must be a boolean' });
@@ -845,7 +810,7 @@ export function createRoutes(context: RoutesContext): Router {
 
   // Get asset config for a specific exchange and asset
   router.get('/api/config/exchanges/:exchange/assets/:asset', requireAuth, (req: Request, res: Response) => {
-    const { exchange, asset } = req.params;
+    const exchange = String(req.params.exchange), asset = String(req.params.asset);
     const config = getAssetConfig(exchange as ExchangeId, asset);
 
     if (!config) {
@@ -861,7 +826,7 @@ export function createRoutes(context: RoutesContext): Router {
     '/api/config/exchanges/:exchange/assets/:asset',
     requireAuth,
     (req: Request, res: Response) => {
-      const { exchange, asset } = req.params;
+      const exchange = String(req.params.exchange), asset = String(req.params.asset);
       const {
         enabled,
         threshold,
@@ -873,6 +838,7 @@ export function createRoutes(context: RoutesContext): Router {
         chunkAmount,
         chunkMode,
         chunkMax,
+        perWalletCapCoin, perWalletCapUsd,
       } = req.body;
 
       // Basic validation
@@ -904,6 +870,11 @@ export function createRoutes(context: RoutesContext): Router {
         return;
       }
 
+      if ([reserve, cooldownSeconds].some(v => v !== undefined && (typeof v !== 'number' || !Number.isFinite(v) || v < 0)) ||
+          [chunkAmount, chunkMax, perWalletCapCoin, perWalletCapUsd].some(v => v != null && (typeof v !== 'number' || !Number.isFinite(v) || v <= 0)) ||
+          destKeys.some((key: unknown) => typeof key !== 'string' || !key.trim())) {
+        res.status(400).json({ error: 'Amounts, caps, and wallet keys must be valid positive values (reserve and cooldown may be zero).' }); return;
+      }
       // Save to database
       upsertAssetConfig(exchange as ExchangeId, asset, {
         enabled: enabled !== false,
@@ -916,6 +887,7 @@ export function createRoutes(context: RoutesContext): Router {
         chunkAmount: chunkAmount ?? null,
         chunkMode: chunkMode ?? 'fixedCoin',
         chunkMax: chunkMax ?? null,
+        perWalletCapCoin: perWalletCapCoin ?? null, perWalletCapUsd: perWalletCapUsd ?? null,
       });
 
       logger.info(
@@ -931,7 +903,7 @@ export function createRoutes(context: RoutesContext): Router {
     '/api/config/exchanges/:exchange/assets/:asset',
     requireAuth,
     (req: Request, res: Response) => {
-      const { exchange, asset } = req.params;
+      const exchange = String(req.params.exchange), asset = String(req.params.asset);
 
       const deleted = deleteAssetConfig(exchange as ExchangeId, asset);
 
@@ -950,7 +922,7 @@ export function createRoutes(context: RoutesContext): Router {
     '/api/config/exchanges/:exchange/assets/:asset/toggle',
     requireAuth,
     (req: Request, res: Response) => {
-      const { exchange, asset } = req.params;
+      const exchange = String(req.params.exchange), asset = String(req.params.asset);
       const { enabled } = req.body;
 
       const config = getAssetConfig(exchange as ExchangeId, asset);
@@ -1436,8 +1408,8 @@ export function createRoutes(context: RoutesContext): Router {
   // Delete a manual address
   router.delete('/api/exchanges/:exchange/addresses/:asset/:key', requireAuth, (req: Request, res: Response) => {
     const exchange = req.params.exchange as ExchangeId;
-    const asset = req.params.asset;
-    const key = decodeURIComponent(req.params.key);
+    const asset = String(req.params.asset);
+    const key = String(req.params.key);
 
     try {
       const addresses = getAllExchangeAddresses(exchange);
@@ -1695,7 +1667,7 @@ export function createRoutes(context: RoutesContext): Router {
 
       // Verify password first
       if (!(await verifyWalletPassword(password))) {
-        res.status(401).json({ error: 'Invalid password' });
+        res.status(400).json({ error: 'Invalid password' });
         return;
       }
 
@@ -1748,7 +1720,7 @@ export function createRoutes(context: RoutesContext): Router {
   // Unlock/decrypt a wallet's private key
   router.post('/api/wallets/:id/unlock', requireAuth, async (req: Request, res: Response) => {
     try {
-      const { id } = req.params;
+      const id = String(req.params.id);
       const { password } = req.body;
 
       if (!password || typeof password !== 'string') {
@@ -1758,7 +1730,7 @@ export function createRoutes(context: RoutesContext): Router {
 
       // Verify password first
       if (!(await verifyWalletPassword(password))) {
-        res.status(401).json({ error: 'Invalid password' });
+        res.status(400).json({ error: 'Invalid password' });
         return;
       }
 
@@ -1789,7 +1761,7 @@ export function createRoutes(context: RoutesContext): Router {
 
   // Delete a wallet
   router.delete('/api/wallets/:id', requireAuth, (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = String(req.params.id);
 
     const wallet = getWalletById(id);
     if (!wallet) {

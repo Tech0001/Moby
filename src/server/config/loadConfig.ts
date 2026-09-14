@@ -10,11 +10,12 @@ const DEFAULT_CONFIG: AppConfig = {
   global: {
     enabledOnBoot: false,
     dryRun: false,
+    dailyFeeBudgetUsd: null,
     maxInflightWithdrawals: 2,
     perAssetMaxInflight: 1,
     schedulerTickMs: 1000,
     backoffSeconds: [15, 30, 60, 120, 300, 600],
-    allowedOrderTypes: ['limit', 'take-profit', 'take-profit-limit'],
+    allowedOrderTypes: ['market', 'limit', 'take-profit', 'take-profit-limit'],
     disabledExchanges: [],
   },
   polling: {

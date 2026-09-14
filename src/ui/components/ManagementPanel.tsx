@@ -1,3 +1,4 @@
+import { apiFetch } from '@/ui/lib/api';
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/components/ui/card";
 import { Button } from "@/ui/components/ui/button";
@@ -107,7 +108,7 @@ export function ManagementPanel() {
 
   async function checkPasswordAndFetch() {
     try {
-      const res = await fetch('/api/wallets/password/exists');
+      const res = await apiFetch('/api/wallets/password/exists');
       if (res.ok) {
         const data = await res.json();
         setHasPassword(data.exists);
@@ -124,7 +125,7 @@ export function ManagementPanel() {
 
   async function fetchWallets() {
     try {
-      const res = await fetch('/api/wallets');
+      const res = await apiFetch('/api/wallets');
       if (res.ok) {
         const data = await res.json();
         setWallets(data.wallets);
@@ -148,7 +149,7 @@ export function ManagementPanel() {
     setError('');
 
     try {
-      const res = await fetch('/api/wallets/password', {
+      const res = await apiFetch('/api/wallets/password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: newPassword }),
@@ -186,7 +187,7 @@ export function ManagementPanel() {
     setError('');
 
     try {
-      const res = await fetch('/api/wallets', {
+      const res = await apiFetch('/api/wallets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -223,7 +224,7 @@ export function ManagementPanel() {
     setError('');
 
     try {
-      const res = await fetch(`/api/wallets/${unlockWalletId}/unlock`, {
+      const res = await apiFetch(`/api/wallets/${unlockWalletId}/unlock`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: unlockPassword }),
@@ -252,7 +253,7 @@ export function ManagementPanel() {
     setError('');
 
     try {
-      const res = await fetch(`/api/wallets/${deleteWalletId}`, {
+      const res = await apiFetch(`/api/wallets/${deleteWalletId}`, {
         method: 'DELETE',
       });
 

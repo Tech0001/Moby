@@ -1,3 +1,4 @@
+import { apiFetch } from '@/ui/lib/api';
 import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/ui/components/ui/card";
 import { Button } from "@/ui/components/ui/button";
@@ -86,7 +87,7 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
 
   async function fetchKeys(autoExpand: boolean = false) {
     try {
-      const res = await fetch('/api/keys');
+      const res = await apiFetch('/api/keys');
       if (res.ok) {
         const data = await res.json();
         setKeys(data.keys);
@@ -100,7 +101,7 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
 
   async function fetchExchanges() {
     try {
-      const res = await fetch('/api/exchanges/available');
+      const res = await apiFetch('/api/exchanges/available');
       if (res.ok) {
         const data = await res.json();
         setExchanges(data.exchanges);
@@ -136,7 +137,7 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
     }
 
     try {
-      const res = await fetch(`/api/keys/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/keys/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setSuccess(`Deleted key "${name}"`);
         fetchKeys();
@@ -149,7 +150,7 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
 
   async function handleToggleActive(id: string, currentActive: boolean) {
     try {
-      const res = await fetch(`/api/keys/${id}`, {
+      const res = await apiFetch(`/api/keys/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isActive: !currentActive }),
@@ -165,7 +166,7 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
 
   async function handleClearRateLimit(id: string) {
     try {
-      const res = await fetch(`/api/keys/${id}/clear-limit`, { method: 'POST' });
+      const res = await apiFetch(`/api/keys/${id}/clear-limit`, { method: 'POST' });
       if (res.ok) {
         setSuccess('Rate limit cleared');
         fetchKeys();
@@ -177,7 +178,7 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
 
   async function handleToggleExchangeEnabled(exchangeId: string, currentEnabled: boolean) {
     try {
-      const res = await fetch(`/api/exchanges/${exchangeId}/settings`, {
+      const res = await apiFetch(`/api/exchanges/${exchangeId}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: !currentEnabled }),
@@ -199,7 +200,7 @@ export function ApiKeysPanel({ hasKeys, onUpdate }: ApiKeysPanelProps) {
 
   async function handleRevalidate(id: string) {
     try {
-      const res = await fetch(`/api/keys/${id}/revalidate`, { method: 'POST' });
+      const res = await apiFetch(`/api/keys/${id}/revalidate`, { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
         setSuccess('Key revalidated successfully');
@@ -445,7 +446,7 @@ function ApiKeyRow({
     setTestResult(null);
 
     try {
-      const res = await fetch(`/api/keys/${keyInfo.id}/test`, { method: 'POST' });
+      const res = await apiFetch(`/api/keys/${keyInfo.id}/test`, { method: 'POST' });
       const data = await res.json();
       setTestResult(data);
       onUpdate();
@@ -623,7 +624,7 @@ function AddKeyDialog({ open, onOpenChange, exchanges, onSuccess }: AddKeyDialog
         body.passphrase = passphrase;
       }
 
-      const res = await fetch('/api/keys', {
+      const res = await apiFetch('/api/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

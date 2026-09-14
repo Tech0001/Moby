@@ -1,6 +1,6 @@
 {
   "name": "Moby",
-  "version": "1.3.0",
+  "version": "1.3.3",
   "description": "Self-hosted daemon that monitors Kraken trades and auto-withdraws to pre-saved addresses",
   "author": {
     "name": "Moby",
@@ -13,12 +13,12 @@
     "dev": "npm rebuild better-sqlite3 bcrypt && tsx watch src/server/app.ts",
     "dev:fast": "tsx watch src/server/app.ts",
     "dev:ui": "vite",
-    "build": "tsc && tsc -p tsconfig.server.json && vite build",
+    "build": "node scripts/clean-build.mjs && tsc && tsc -p tsconfig.server.json && vite build",
     "build:server": "tsc -p tsconfig.server.json",
     "build:ui": "vite build",
     "start": "node dist/server/app.js",
-    "test": "vitest",
-    "test:run": "vitest run",
+    "test": "npm rebuild better-sqlite3 bcrypt && vitest",
+    "test:run": "npm rebuild better-sqlite3 bcrypt && vitest run",
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "migrate": "tsx src/server/db/migrate.ts",
@@ -28,7 +28,8 @@
     "electron:build:win": "npm run build && electron-builder --win",
     "electron:build:linux": "npm run build && electron-builder --linux",
     "npm ci": "npm ci",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps",
+    "test:smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@emurgo/cardano-serialization-lib-nodejs": "^15.0.3",
@@ -41,9 +42,6 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
-    "@solana/web3.js": "^1.98.4",
-    "@stellar/stellar-sdk": "^14.4.2",
-    "@terra-money/terra.js": "^3.1.10",
     "algosdk": "^3.5.2",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.5.0",
@@ -53,7 +51,6 @@
     "ethers": "^6.16.0",
     "express": "^5.2.1",
     "express-session": "^1.18.2",
-    "long": "^5.3.2",
     "lucide-react": "^0.561.0",
     "pino": "^10.1.0",
     "pino-pretty": "^13.1.3",
@@ -65,11 +62,14 @@
     "ws": "^8.18.3",
     "xrpl": "^4.4.3",
     "yaml": "^2.8.2",
-    "zod": "^4.2.1"
+    "zod": "^4.2.1",
+    "@scure/base": "^2.4.0",
+    "@stellar/stellar-sdk": "^17.0.1"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.2",
     "@tailwindcss/postcss": "^4.1.18",
+    "@testing-library/react": "^16.3.3",
     "@types/bcrypt": "^6.0.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/cookie-parser": "^1.4.10",
@@ -85,13 +85,14 @@
     "autoprefixer": "^10.4.23",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "electron": "^39.2.7",
+    "electron": "^44.3.0",
     "electron-builder": "^26.0.12",
     "eslint": "^9.39.2",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
+    "jsdom": "^30.0.1",
     "postcss": "^8.5.6",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.4",
     "tailwind-merge": "^3.4.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
@@ -100,5 +101,6 @@
   },
   "engines": {
     "node": ">=20.0.0"
-  }
+  },
+  "desktopName": "moby.desktop"
 }
