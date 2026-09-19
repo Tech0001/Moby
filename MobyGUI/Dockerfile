@@ -19,6 +19,7 @@ COPY src ./src
 COPY index.html ./
 COPY vite.config.ts ./
 COPY postcss.config.mjs ./
+COPY scripts ./scripts
 
 # Build
 RUN npm run build

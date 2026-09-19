@@ -1,0 +1,14 @@
+{
+  "request_id": "example-order-001",
+  "account": "main",
+  "order": {
+    "action": "place",
+    "pair": "BTC/USD",
+    "side": "buy",
+    "order_type": "limit",
+    "volume": "0.0001",
+    "price": "10000",
+    "price2": null,
+    "post_only": true
+  }
+}

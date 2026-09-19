@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "godswildones.moby",
+  "name": "Moby",
+  "version": "0.3.0",
+  "author": "GodsWildOnes",
+  "description": "A quick view of Moby's fill monitoring, queued assets and withdrawals.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {"barWidget": "Widget.qml"},
+  "barWidget": {
+    "displayName": "Moby",
+    "category": "Finance",
+    "defaultSection": "right",
+    "allowMultiple": false,
+    "defaults": {
+      "account": "main",
+      "demo": false,
+      "executable": "moby",
+      "stateDir": "",
+      "showAmounts": true,
+      "refreshSeconds": 5
+    },
+    "schema": [
+      {"key": "account", "type": "string", "label": "Moby account profile", "defaultValue": "main"},
+      {"key": "demo", "type": "boolean", "label": "Show the separate paper account", "defaultValue": false},
+      {"key": "showAmounts", "type": "boolean", "label": "Show amounts in the dropdown", "defaultValue": true},
+      {"key": "refreshSeconds", "type": "integer", "label": "Read local status while open (seconds)", "description": "Reads Moby's cache, not Kraken. Closed panels read every 30 seconds or slower.", "min": 3, "max": 60, "defaultValue": 5},
+      {"key": "executable", "type": "string", "label": "Moby executable", "description": "moby on PATH, or an absolute executable path. No shell commands or flags.", "defaultValue": "moby"},
+      {"key": "stateDir", "type": "path", "label": "Custom Moby data root (optional)", "description": "Leave blank for Moby's normal data location. Must match the running worker.", "defaultValue": ""}
+    ]
+  }
+}

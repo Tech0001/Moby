@@ -1,0 +1,39 @@
+[package]
+name = "moby-tui"
+version = "0.2.9"
+edition = "2024"
+rust-version = "1.90"
+description = "A local Moby worker with a shared terminal and JSON control interface"
+publish = false
+
+[[bin]]
+name = "moby"
+path = "src/main.rs"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+futures-util = "0.3"
+tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
+anyhow = "1"
+base64 = "0.22"
+hmac = "0.12"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+argon2 = { version = "0.5", features = ["zeroize"] }
+chacha20poly1305 = "0.10"
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.29"
+image = { version = "0.25", default-features = false, features = ["png"] }
+libc = "0.2"
+ratatui = { version = "0.30", features = ["unstable-rendered-line-info"] }
+ratatui-image = { version = "11.1", default-features = false, features = ["crossterm"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+rust_decimal = { version = "1", features = ["serde-with-str"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["arbitrary_precision"] }
+sha2 = "0.10"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "signal"] }
+uuid = { version = "1", features = ["v4"] }
+zeroize = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"

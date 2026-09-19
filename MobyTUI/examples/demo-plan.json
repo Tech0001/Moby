@@ -1,0 +1,31 @@
+{
+  "schema_version": 2,
+  "account": "demo",
+  "rules": [
+    {
+      "asset": "BTC",
+      "destination": "Demo cold wallet",
+      "chunk": "0.001",
+      "minimum": "0.0001",
+      "reserve": "0",
+      "fee": "0.00001"
+    },
+    {
+      "asset": "ETH",
+      "destination": "Demo hardware wallet",
+      "chunk": "0.1",
+      "minimum": "0.01",
+      "reserve": "0",
+      "fee": "0.0005"
+    },
+    {
+      "asset": "USDC",
+      "destination": "Demo spending wallet",
+      "chunk": "100",
+      "minimum": "10",
+      "reserve": "0",
+      "fee": "1"
+    }
+  ],
+  "cooldown_seconds": 5
+}

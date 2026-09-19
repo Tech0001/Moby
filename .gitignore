@@ -4,6 +4,8 @@ node_modules/
 # Build output
 dist/
 release/
+__pycache__/
+*.pyc
 
 # Data directory (contains SQLite database and user data)
 data/
@@ -30,3 +32,20 @@ coverage/
 # Temporary files
 tmp/
 temp/
+
+# Rust output and local terminal profiles
+/target/
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.sock
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-journal
+*.sqlite3-journal
+vault.json

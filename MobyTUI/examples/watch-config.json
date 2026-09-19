@@ -1,0 +1,45 @@
+{
+  "schema_version": 2,
+  "account": "main",
+  "poll_seconds": 30,
+  "max_inflight": 2,
+  "websocket": true,
+  "rules": [
+    {
+      "asset": "USDC",
+      "enabled": true,
+      "destinations": [
+        {
+          "wallet_id": "REPLACE_WITH_SAVED_WALLET_ID",
+          "method_id": "00000000-0000-4000-8000-000000000000",
+          "address": "REPLACE_WITH_YOUR_VERIFIED_ADDRESS",
+          "memo": null,
+          "network": "REPLACE_WITH_EXACT_FUNDING_NETWORK"
+        }
+      ],
+      "order_types": [
+        "market",
+        "limit",
+        "take-profit",
+        "take-profit-limit",
+        "stop-loss",
+        "stop-loss-limit",
+        "trailing-stop",
+        "trailing-stop-limit"
+      ],
+      "sides": [
+        "buy",
+        "sell"
+      ],
+      "pairs": [],
+      "order_ids": [],
+      "chunk": "10",
+      "minimum": "1",
+      "reserve": "2",
+      "max_fee": "0.1",
+      "max_fee_percent": "1",
+      "daily_fee_budget": "1"
+    }
+  ],
+  "cooldown_seconds": 60
+}

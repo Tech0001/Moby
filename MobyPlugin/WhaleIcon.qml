@@ -1,0 +1,39 @@
+import QtQuick
+import QtQuick.Shapes
+import qs.Commons
+
+// Monochrome version of MobyGUI's WhaleIcon.tsx. Keep the original outline,
+// with a transparent eye so it works with either light or dark bar themes.
+Item {
+    id: root
+    property color color: Color.foreground
+    implicitWidth: Style.bar.iconCanvas
+    implicitHeight: Style.bar.iconCanvas
+
+    Item {
+        width: 709.64
+        height: 318.6
+        x: (root.width - width) / 2
+        y: (root.height - height) / 2
+        scale: Math.min(root.width / width, root.height / height)
+        transformOrigin: Item.Center
+
+        Shape {
+            x: -18.802
+            y: -64.294
+            preferredRendererType: Shape.CurveRenderer
+
+            ShapePath {
+                fillColor: root.color
+                strokeWidth: -1
+                fillRule: ShapePath.OddEvenFill
+                PathSvg {
+                    path: "m 486.47,249.44 c 17.36,-18.58 -2.61,-52.28 -1.19,-100.23 1.43,-47.87 33.75,-64.18 33.75,-64.18 0,0 -10.33,4.037 -6.98,27.38 2.84,19.8 9.13,42.82 23.5,55.58 14.79,12.23 39.12,45.62 30.15,63.45 18.09,-6.14 46.27,8.4 67.08,27.68 21.72,20.55 35.63,30.45 50.69,35.26 21.63,6.92 37.47,0.82 37.47,0.82 -24.75,21.36 -72.19,21.67 -103.15,15.92 -30.29,-5.63 -47.2,-22.11 -74.75,-15.8 -34.98,11.95 -92.86,66.09 -181.53,77.64 C 272.84,384.51 63.25,352.57 38.12,326.13 12.984,299.7 36.019,290.8 34.367,291.99 c -0.224,-0.23 6.034,5.98 133.22,37.5 C 144.767,325.82 48.897352,293.12087 51.161073,291.58087 46.432042,276.53178 81.493,96.3 124.567,75.92 c 43.074,-20.38 140.96,38.97 216.25,82.99 89.27,52.21 125.84,111.73 145.65,90.53 z"
+                }
+                PathSvg {
+                    path: "M 225.65,298.08 a 18.10,15.89 0 1 1 -36.20,0 a 18.10,15.89 0 1 1 36.20,0 z"
+                }
+            }
+        }
+    }
+}
