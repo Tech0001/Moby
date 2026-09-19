@@ -4,7 +4,7 @@ use super::{
     transport::{Operation, Quote, Reply, Submission, WithdrawalStatus},
 };
 use crate::{
-    model::{AccountBalance, Wallet, add, amount, decimal, now, subtract},
+    model::{AccountBalance, Wallet, WithdrawalCooldown, add, amount, decimal, now, subtract},
     storage,
 };
 use anyhow::{Context, Result, bail, ensure};
@@ -28,6 +28,7 @@ struct Saved {
     orders: Vec<Order>,
     orders_at: Option<i64>,
     last_asset: Option<String>,
+    cooldown: Option<WithdrawalCooldown>,
 }
 pub(crate) struct Live {
     saved: Saved,
@@ -84,10 +85,34 @@ impl Live {
     pub fn open(db: &Connection) -> Result<Self> {
         db.execute_batch("CREATE TABLE IF NOT EXISTS live_records(kind TEXT NOT NULL,id TEXT NOT NULL,at INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(kind,id)); CREATE INDEX IF NOT EXISTS live_record_time ON live_records(kind,at); CREATE INDEX IF NOT EXISTS live_record_state ON live_records(kind,json_extract(payload,'$.status'));")?;
         let mut saved: Saved = storage::get(db, "live")?
-            .map(|v| serde_json::from_str(&v))
+            .map(|v| -> Result<Saved> {
+                let mut value: serde_json::Value = serde_json::from_str(&v)?;
+                if let Some(config) = value.get_mut("config").filter(|config| !config.is_null()) {
+                    crate::model::migrate_cooldown_config(config)?;
+                }
+                Ok(serde_json::from_value(value)?)
+            })
             .transpose()?
             .unwrap_or_default();
+        if let Some(config) = &saved.config {
+            config.validate()?;
+        }
         saved.paused = true; // Restart/unlock never silently arms money movement.
+        // Upgrade per-asset timers without shortening any outstanding wait.
+        if saved.cooldown.is_none() {
+            saved.cooldown = saved.config.as_ref().and_then(|config| {
+                config
+                    .rules
+                    .iter()
+                    .filter_map(|rule| {
+                        let at = saved.queues.get(&rule.asset)?.last_submission;
+                        (at > 0).then(|| {
+                            WithdrawalCooldown::new(&rule.asset, at, config.cooldown_seconds)
+                        })
+                    })
+                    .max_by_key(|timer| timer.until)
+            });
+        }
         saved.revision += 1;
         let tx = db.unchecked_transaction()?;
         for mut transfer in records::<Transfer>(&tx, "transfer", usize::MAX / 2)? {
@@ -143,6 +168,9 @@ impl Live {
     }
     pub fn paused(&self) -> bool {
         self.saved.paused
+    }
+    pub fn cooldown(&self) -> Option<&WithdrawalCooldown> {
+        self.saved.cooldown.as_ref()
     }
     pub fn configured(&self) -> bool {
         self.saved.config.is_some()
@@ -319,6 +347,11 @@ impl Live {
                     ..Default::default()
                 });
         }
+        if let Some(timer) = &mut saved.cooldown {
+            timer.until = timer
+                .started_at
+                .saturating_add(config.cooldown_seconds as i64);
+        }
         saved.config = Some(config);
         self.save(db, saved)?;
         self.rest_due = 0;
@@ -335,7 +368,6 @@ impl Live {
     pub fn set_cooldown(
         &mut self,
         db: &Connection,
-        asset: &str,
         seconds: u64,
         expected: &str,
         at: i64,
@@ -363,13 +395,11 @@ impl Live {
         );
         let mut saved = self.saved.clone();
         let config = saved.config.as_mut().unwrap();
-        let rule = config
-            .rules
-            .iter_mut()
-            .find(|r| r.asset == asset)
-            .context("asset has no withdrawal rule")?;
-        rule.cooldown_seconds = seconds;
+        config.cooldown_seconds = seconds;
         config.validate()?;
+        if let Some(timer) = &mut saved.cooldown {
+            timer.until = timer.started_at.saturating_add(seconds as i64);
+        }
         // Timing-only edits retain the fill boundary, cursor, queue, wallet
         // rotation and last submission. New fills share this same timer.
         saved.revision = saved.revision.checked_add(1).context("revision overflow")?;
@@ -378,7 +408,9 @@ impl Live {
         storage::event(
             &tx,
             at,
-            &format!("{asset} withdrawal cooldown set to {seconds}s; withdrawals remain paused"),
+            &format!(
+                "Account-wide withdrawal cooldown set to {seconds}s; withdrawals remain paused"
+            ),
         )?;
         tx.commit()?;
         self.saved = saved;
@@ -449,7 +481,12 @@ impl Live {
             return Ok(None);
         }
         let config = self.saved.config.as_ref().unwrap();
-        if active.len() >= config.max_inflight {
+        if active.len() >= config.max_inflight
+            || active
+                .iter()
+                .any(|transfer| transfer.status == "submitting")
+            || self.cooldown().is_some_and(|timer| timer.remaining(at) > 0)
+        {
             return Ok(None);
         }
         let start = self
@@ -465,7 +502,6 @@ impl Live {
             if !rule.enabled
                 || active.iter().any(|t| t.asset == rule.asset)
                 || at < queue.retry_at
-                || at < queue.last_submission + rule.cooldown_seconds as i64
                 || amount(&queue.amount)? < amount(&rule.minimum)?
             {
                 continue;
@@ -630,15 +666,15 @@ impl Live {
         );
         let active = self.busy_transfers(db)?;
         ensure!(
-            active.len() < config.max_inflight && !active.iter().any(|t| t.asset == quote.asset),
+            active.len() < config.max_inflight
+                && !active
+                    .iter()
+                    .any(|t| t.asset == quote.asset || t.status == "submitting"),
             "withdrawal already active"
         );
         ensure!(
-            at >= self.saved.queues[&rule.asset]
-                .last_submission
-                .saturating_add(rule.cooldown_seconds as i64),
-            "withdrawal cooldown is still active for {}",
-            rule.asset
+            self.cooldown().is_none_or(|timer| timer.remaining(at) == 0),
+            "account-wide withdrawal cooldown is still active"
         );
         let gross = amount(&quote.gross)?;
         let fee = amount(&quote.fee)?;
@@ -694,6 +730,11 @@ impl Live {
         };
         let mut saved = self.saved.clone();
         saved.last_asset = Some(transfer.asset.clone());
+        saved.cooldown = Some(WithdrawalCooldown::new(
+            &transfer.asset,
+            at,
+            config.cooldown_seconds,
+        ));
         let q = saved.queues.get_mut(&transfer.asset).unwrap();
         q.amount = subtract(amount(&q.amount)?, gross)?.normalize().to_string();
         q.last_submission = at;
@@ -756,6 +797,21 @@ impl Live {
             }
         }
         transfer.updated_at = at;
+        // Start the full interval after the attempt returns. Time spent waiting
+        // for a slow/throttled request must not let the next asset send early.
+        if let Some(timer) = &mut saved.cooldown
+            && timer.asset == transfer.asset
+            && timer.started_at == transfer.created_at
+        {
+            let seconds = timer.until.saturating_sub(timer.started_at);
+            timer.started_at = at.max(timer.started_at);
+            timer.until = timer.started_at.saturating_add(seconds);
+            saved
+                .queues
+                .get_mut(&transfer.asset)
+                .context("missing queue")?
+                .last_submission = timer.started_at;
+        }
         saved.revision += 1;
         let tx = db.unchecked_transaction()?;
         put(&tx, "transfer", id, transfer.created_at, &transfer)?;

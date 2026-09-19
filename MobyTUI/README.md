@@ -17,12 +17,12 @@ On [GitHub Releases](https://github.com/GodsWildOnes/Moby/releases), choose a **
 
 The executable is statically linked; separate SQLite and OpenSSL libraries are not needed. You need a Linux terminal and internet access to Kraken. If the repository is private, GitHub access is required to download releases.
 
-For example, after downloading the **v0.2.8 x86_64** files into the same directory:
+For example, after downloading the **v0.2.9 x86_64** files into the same directory:
 
 ```sh
-sha256sum -c moby-tui-v0.2.8-linux-x86_64.tar.gz.sha256
-tar -xzf moby-tui-v0.2.8-linux-x86_64.tar.gz
-cd moby-tui-v0.2.8-linux-x86_64
+sha256sum -c moby-tui-v0.2.9-linux-x86_64.tar.gz.sha256
+tar -xzf moby-tui-v0.2.9-linux-x86_64.tar.gz
+cd moby-tui-v0.2.9-linux-x86_64
 install -Dm755 moby "$HOME/.local/bin/moby"
 export PATH="$HOME/.local/bin:$PATH"
 moby --version
@@ -81,7 +81,7 @@ While paused, open **7 Rules**, press **E**, and follow the prompts. Review the 
 | Filters | Order types, buy/sell sides, optional pairs or order IDs |
 | Chunk | Maximum debit per withdrawal, **including fees**, in asset units |
 | Withdrawal minimum | Taken from Kraken; the amount delivered **after fees** must meet it |
-| Cooldown | Wait between chunks, in seconds |
+| Account cooldown | One wait between all withdrawals, across every asset and wallet |
 | Reserve | Amount to keep on Kraken |
 | Fee limits | Maximum fee in asset units and as a percentage; optional rolling 24-hour budget |
 

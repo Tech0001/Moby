@@ -1,5 +1,5 @@
 //! One worker owns all state. Both interactive and automated clients use IPC.
-pub const PROTOCOL_VERSION: u32 = 8;
+pub const PROTOCOL_VERSION: u32 = 9;
 pub mod account;
 pub mod engine;
 pub mod ipc;

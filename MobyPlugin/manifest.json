@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "godswildones.moby",
   "name": "Moby",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "author": "GodsWildOnes",
   "description": "A quick view of Moby's fill monitoring, queued assets and withdrawals.",
   "kinds": ["bar-widget"],

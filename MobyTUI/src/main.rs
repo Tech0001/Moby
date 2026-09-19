@@ -128,9 +128,8 @@ enum Command {
 #[derive(Subcommand)]
 enum ConfigCommand {
     Show,
-    /// Change one asset's shared cooldown while paused; use config_digest from status.
+    /// Set the shared wait between all withdrawals; pause and use config_digest from status.
     Cooldown {
-        asset: String,
         #[arg(value_parser = clap::value_parser!(u64).range(1..=86400))]
         seconds: u64,
         #[arg(long)]
@@ -411,17 +410,12 @@ async fn execute(args: Args) -> Result<()> {
         }
         Command::Config { command } => match command.unwrap_or(ConfigCommand::Show) {
             ConfigCommand::Show => Request::Status,
-            ConfigCommand::Cooldown {
-                asset,
-                seconds,
-                expect,
-            } => {
+            ConfigCommand::Cooldown { seconds, expect } => {
                 ensure!(
                     mode == Mode::Account,
                     "cooldown editing requires an account profile"
                 );
                 Request::SetCooldown {
-                    asset: asset.to_ascii_uppercase(),
                     seconds,
                     expected_config: expect,
                 }

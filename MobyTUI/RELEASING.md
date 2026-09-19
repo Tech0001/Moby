@@ -8,7 +8,7 @@ The [Release MobyTUI workflow](../.github/workflows/release-tui.yml) builds nati
 
 1. Update `MobyTUI/Cargo.toml`, the workspace `Cargo.lock`, documentation version examples and `RELEASE_NOTES.md` as needed.
 2. Commit and push the reviewed source, including the workspace and GUI/TUI directory split. Release assets must correspond to that source commit.
-3. Tag that commit, for example `git tag tui-v0.2.8`, then push the tag with `git push origin tui-v0.2.8`.
+3. Tag that commit, for example `git tag tui-v0.2.9`, then push the tag with `git push origin tui-v0.2.9`.
 4. Wait for **Release MobyTUI** to pass for both architectures. It rejects a tag that does not match the package version.
 5. Review the resulting **draft prerelease** on GitHub, then publish it when ready for users. While the repository is private, only people with repository access can download it.
 

@@ -16,6 +16,22 @@ impl Engine {
         let connection = db::open(directory)?;
         // A persisted intent without a receipt must never be retried automatically.
         let tx = connection.unchecked_transaction()?;
+        if db::get(&tx, "withdrawal_cooldown")?.is_none() {
+            let plan = db::plan(&tx)?;
+            let mut timer: Option<WithdrawalCooldown> = None;
+            for rule in &plan.rules {
+                let (_, _, at) = db::funds(&tx, &rule.asset)?;
+                if at > 0 {
+                    let candidate = WithdrawalCooldown::new(&rule.asset, at, plan.cooldown_seconds);
+                    if timer.as_ref().is_none_or(|old| candidate.until > old.until) {
+                        timer = Some(candidate);
+                    }
+                }
+            }
+            if let Some(timer) = timer {
+                db::set(&tx, "withdrawal_cooldown", &serde_json::to_string(&timer)?)?;
+            }
+        }
         let recovered = tx.execute(
             "UPDATE withdrawals SET status='unknown',updated_at=?1 WHERE status='submitted'",
             [at],
@@ -107,6 +123,12 @@ impl Engine {
                         "INSERT OR IGNORE INTO amounts(asset,queued,spendable) VALUES(?1,'0','0')",
                         [&rule.asset],
                     )?;
+                }
+                if let Some(mut timer) = withdrawal_cooldown(&tx)? {
+                    timer.until = timer
+                        .started_at
+                        .saturating_add(replacement.cooldown_seconds as i64);
+                    db::set(&tx, "withdrawal_cooldown", &serde_json::to_string(&timer)?)?;
                 }
                 db::set(&tx, "plan", &serde_json::to_string(&replacement)?)?;
                 format!("Reviewed demo plan applied ({digest}); withdrawals remain paused")
@@ -234,7 +256,20 @@ impl Engine {
         }
         if allow_submission && !db::paused(&tx)? {
             changed |= reconcile(&tx, &plan, at)?;
-            for rule in &plan.rules {
+            let cooldown = withdrawal_cooldown(&tx)?;
+            let start = cooldown
+                .as_ref()
+                .and_then(|timer| plan.rules.iter().position(|rule| rule.asset == timer.asset))
+                .map(|index| index + 1)
+                .unwrap_or(0);
+            for offset in 0..plan.rules.len() {
+                if cooldown
+                    .as_ref()
+                    .is_some_and(|timer| timer.remaining(at) > 0)
+                {
+                    break;
+                }
+                let rule = &plan.rules[(start + offset) % plan.rules.len()];
                 let in_flight: u64 = tx.query_row("SELECT COUNT(*) FROM withdrawals WHERE status IN ('submitted','pending','held','unknown')", [], |r| r.get(0))?;
                 if in_flight >= 2 {
                     break;
@@ -242,10 +277,7 @@ impl Engine {
                 if db::active(&tx, Some(&rule.asset))? {
                     continue;
                 }
-                let (queue, balance, last) = db::funds(&tx, &rule.asset)?;
-                if at < last.saturating_add(rule.cooldown_seconds as i64) {
-                    continue;
-                }
+                let (queue, balance, _) = db::funds(&tx, &rule.asset)?;
                 let fee = amount(&rule.fee)?;
                 let spendable = subtract(balance, amount(&rule.reserve)?)?.max(Decimal::ZERO);
                 let net = subtract(queue.min(spendable), fee)?
@@ -281,6 +313,8 @@ impl Engine {
                     params![rule.asset, at],
                 )?;
                 db::set(&tx, "next_outcome", "complete")?;
+                let timer = WithdrawalCooldown::new(&rule.asset, at, plan.cooldown_seconds);
+                db::set(&tx, "withdrawal_cooldown", &serde_json::to_string(&timer)?)?;
                 db::event(
                     &tx,
                     at,
@@ -290,6 +324,7 @@ impl Engine {
                     ),
                 )?;
                 changed = true;
+                break; // Every asset shares the newly started timer.
             }
         }
         if changed {
@@ -303,16 +338,21 @@ impl Engine {
         let connection = &self.connection;
         let plan = db::plan(connection)?;
         let paused = db::paused(connection)?;
+        let cooldown = withdrawal_cooldown(connection)?;
         let mut assets = Vec::new();
         for rule in &plan.rules {
-            let (queue, balance, last) = db::funds(connection, &rule.asset)?;
+            let (queue, balance, _) = db::funds(connection, &rule.asset)?;
             let active: Option<String> = connection.query_row("SELECT status FROM withdrawals WHERE asset=?1 AND status IN ('submitted','pending','held','unknown') LIMIT 1", [&rule.asset], |r| r.get(0)).optional()?;
             let blocked = if let Some(state) = active {
                 Some(format!("{state} withdrawal"))
             } else if paused {
                 Some("Paused".into())
-            } else if at < last.saturating_add(rule.cooldown_seconds as i64) {
-                Some("Cooldown".into())
+            } else if let Some(timer) = cooldown.as_ref().filter(|timer| timer.remaining(at) > 0) {
+                Some(format!(
+                    "Account cooldown: {}s after {}",
+                    timer.remaining(at),
+                    timer.asset
+                ))
             } else if queue < add(amount(&rule.minimum)?, amount(&rule.fee)?)? {
                 Some("Waiting for fills / minimum".into())
             } else if balance
@@ -362,6 +402,8 @@ impl Engine {
             mode: "demo".into(),
             account: "demo".into(),
             paused,
+            withdrawal_cooldown: cooldown,
+            withdrawal_cooldown_seconds: Some(plan.cooldown_seconds),
             vault: Default::default(),
             account_status: Default::default(),
             started_at: self.started_at,
@@ -380,6 +422,12 @@ impl Engine {
             )?,
         })
     }
+}
+
+fn withdrawal_cooldown(connection: &Connection) -> Result<Option<WithdrawalCooldown>> {
+    db::get(connection, "withdrawal_cooldown")?
+        .map(|json| serde_json::from_str(&json).map_err(Into::into))
+        .transpose()
 }
 
 fn queue_digest(connection: &Connection) -> Result<String> {

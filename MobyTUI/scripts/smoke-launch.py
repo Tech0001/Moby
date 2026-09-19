@@ -228,7 +228,7 @@ def smoke(profile):
                 ("Maximum fee per chunk", "1"),
                 ("Maximum fee as percent", "10"),
                 ("Rolling 24-hour fee budget", "2"),
-                ("Cooldown between chunks", "60"),
+                ("Account cooldown between all withdrawals", "60"),
                 ("Type save", "save"),
             ]
             rejected_amounts = 0
@@ -241,7 +241,7 @@ def smoke(profile):
             editor.wait_exit()
             assert fixture_state["paused"] is True
             configured = fixture_state["account_status"]["live"]["config"]["rules"][0]
-            assert configured["chunk"] == "10" and configured["cooldown_seconds"] == 60
+            assert configured["chunk"] == "10" and fixture_state["account_status"]["live"]["config"]["cooldown_seconds"] == 60
             assert configured["minimum"] == "1", "blank minimum did not use Kraken's value"
             assert configured["pairs"] == ["BTC/USD"] and configured["destinations"][0]["address"] == "fixture-address"
         third.send("q")

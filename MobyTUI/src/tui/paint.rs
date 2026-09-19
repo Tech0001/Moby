@@ -223,6 +223,12 @@ fn summary(frame: &mut Frame, area: Rect, view: &View) {
                     "LOCKED".into()
                 } else if state.paused {
                     "PAUSED".into()
+                } else if let Some(timer) = state
+                    .withdrawal_cooldown
+                    .as_ref()
+                    .filter(|timer| timer.remaining(state.observed_at) > 0)
+                {
+                    format!("WAIT {}s · all", timer.remaining(state.observed_at))
                 } else {
                     "RUNNING".into()
                 },
@@ -800,7 +806,16 @@ fn asset_panel(frame: &mut Frame, area: Rect, asset: Option<&AssetStatus>, view:
             label("Reserve  ", DIM),
             label(&asset.rule.reserve, WHITE),
             label("   Cooldown  ", DIM),
-            label(format!("{}s", asset.rule.cooldown_seconds), WHITE),
+            label(
+                format!(
+                    "{}s",
+                    view.state
+                        .as_ref()
+                        .and_then(|s| s.withdrawal_cooldown_seconds)
+                        .unwrap_or(0)
+                ),
+                WHITE,
+            ),
         ]),
     ];
     if area.height >= 9 {

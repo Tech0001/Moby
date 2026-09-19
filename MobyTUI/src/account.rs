@@ -347,13 +347,7 @@ impl Account {
         self.disconnect_ws();
         Ok(())
     }
-    pub fn set_cooldown(
-        &mut self,
-        vault: &Vault,
-        asset: &str,
-        seconds: u64,
-        expected: &str,
-    ) -> Result<()> {
+    pub fn set_cooldown(&mut self, vault: &Vault, seconds: u64, expected: &str) -> Result<()> {
         ensure!(
             self.pending.is_none() && !self.writing,
             "wait for the current Kraken job before changing cooldowns"
@@ -365,8 +359,7 @@ impl Account {
             vault.is_unlocked() && self.live.matches_key(&fingerprint),
             "unlock the configured account first"
         );
-        self.live
-            .set_cooldown(&self.db, asset, seconds, expected, now())
+        self.live.set_cooldown(&self.db, seconds, expected, now())
     }
     pub fn resume(&mut self, vault: &Vault) -> Result<()> {
         let fingerprint = vault.fingerprint().context("unlock and set a key first")?;
@@ -823,6 +816,12 @@ impl Account {
             mode: "account".into(),
             account: "Kraken".into(),
             paused: self.live.paused(),
+            withdrawal_cooldown_seconds: live.config.as_ref().map(|config| config.cooldown_seconds),
+            withdrawal_cooldown: if live_visible {
+                self.live.cooldown().cloned()
+            } else {
+                None
+            },
             vault: vault.status(),
             account_status: AccountStatus {
                 telegram: crate::notifications::Notifications::status(

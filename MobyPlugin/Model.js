@@ -32,11 +32,10 @@ function command(config, action) {
     return baseCommand(config).concat([action, "--json"]);
 }
 
-function cooldownCommand(config, asset, seconds, digest) {
-    if (config.demo || !/^[A-Z0-9]{1,16}$/.test(asset)
-        || !Number.isInteger(seconds) || seconds < 1 || seconds > 86400
+function cooldownCommand(config, seconds, digest) {
+    if (config.demo || !Number.isInteger(seconds) || seconds < 1 || seconds > 86400
         || !/^[a-f0-9]{64}$/.test(digest)) throw new Error("Invalid cooldown change");
-    return baseCommand(config).concat(["config", "cooldown", asset, String(seconds), "--expect", digest, "--json"]);
+    return baseCommand(config).concat(["config", "cooldown", String(seconds), "--expect", digest, "--json"]);
 }
 
 function terminalCommand(config, action) {
@@ -70,13 +69,14 @@ function empty(label, detail) {
         queues: [], transfers: [], rules: [], ruleCount: 0, activeCount: 0, reviewCount: 0,
         queuedCount: 0, orderCount: 0, ws: "—", rest: "—", telegram: "—", version: "",
         canPause: false, canResume: false, canEdit: false, canEditCooldown: false,
+        accountCooldown: false, cooldownSeconds: "—", cooldownRemaining: 0, cooldownAsset: "",
         configDigest: "", cooldownKey: "", confirmationKey: "", warning: ""};
 }
 
 function project(response, config, now) {
     if (!response || response.ok !== true || !response.state) return empty();
     var s = response.state;
-    if (s.protocol_version !== 8) return empty("Version mismatch", "This plugin needs Moby's version 8 status protocol.");
+    if (s.protocol_version !== 9) return empty("Version mismatch", "This plugin needs Moby's version 9 status protocol.");
     if (s.account !== config.account || s.mode !== (config.demo ? "paper" : "account"))
         return empty("Wrong profile", "The returned account does not match widget settings.");
     if (!s.observed_at || s.observed_at > now + 5 || now - s.observed_at > 75)
@@ -95,13 +95,16 @@ function project(response, config, now) {
     var account = s.account_status || {};
     var live = account.live || {};
     var configData = live.config || {};
+    var version = v.version.split(".").map(Number);
+    v.accountCooldown = version[0] > 0 || version[1] > 2 || (version[1] === 2 && version[2] >= 9);
+    v.cooldownSeconds = text(s.withdrawal_cooldown_seconds, 10);
+    var timer = s.withdrawal_cooldown || {};
+    v.cooldownRemaining = v.accountCooldown && Number.isFinite(Number(timer.until)) ? Math.max(0, Math.ceil(Number(timer.until) - now)) : 0;
+    v.cooldownAsset = text(timer.asset, 16);
     var rules = config.demo ? (s.assets || []).map(function(a) { return a.rule; }) : (configData.rules || []);
     v.rules = rules.map(function(r) {
-        var queue = (live.queues || {})[r.asset] || {};
-        var last = Number(queue.last_submission || 0);
         return {asset: text(r.asset, 16), enabled: r.enabled !== false, chunk: r.chunk, minimum: r.minimum,
-            cooldown: text(r.cooldown_seconds, 10), destinations: config.demo ? 1 : (r.destinations || []).length,
-            cooldownRemaining: last > 0 ? Math.max(0, Math.ceil(last + Number(r.cooldown_seconds) - now)) : 0};
+            destinations: config.demo ? 1 : (r.destinations || []).length};
     });
     v.ruleCount = v.rules.filter(function(r) { return r.enabled; }).length;
     if (config.demo) {
@@ -139,10 +142,8 @@ function project(response, config, now) {
     v.canResume = fresh && v.paused && v.ruleCount > 0;
     v.canEdit = fresh && v.paused && !config.demo && v.activeCount === 0
         && !!account.refresh && !!account.refresh.wallets && account.refresh.wallets.stale === false;
-    var version = v.version.split(".").map(Number);
-    var hasCooldownEditor = version[0] > 0 || version[1] > 2 || (version[1] === 2 && version[2] >= 7);
     v.configDigest = text(live.config_digest, 64);
-    v.canEditCooldown = fresh && v.paused && !config.demo && v.activeCount === 0 && rules.length > 0 && hasCooldownEditor;
+    v.canEditCooldown = fresh && v.paused && !config.demo && v.activeCount === 0 && rules.length > 0 && v.accountCooldown;
     v.cooldownKey = JSON.stringify([s.account, s.mode, s.worker_pid, s.paused, v.configDigest]);
     v.confirmationKey = JSON.stringify([s.account, s.mode, s.worker_pid, s.paused, live.config_digest || s.plan_digest, s.queue_digest]);
     return v;

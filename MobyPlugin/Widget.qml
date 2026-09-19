@@ -36,10 +36,9 @@ Ui.Panel {
         service.openTerminal(destination);
         root.close();
     }
-    function editCooldown(rule) {
+    function editCooldown() {
         if (!root.status.canEditCooldown || service.busy) return;
-        cooldownEditor.asset = rule.asset;
-        cooldownEditor.currentSeconds = Number(rule.cooldown);
+        cooldownEditor.currentSeconds = Number(root.status.cooldownSeconds);
         root.cooldownKey = root.status.cooldownKey;
         service.notice = "";
         cooldownEditor.opened = true;
@@ -207,6 +206,12 @@ Ui.Panel {
                         color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption
                     }
                     Text {
+                        visible: root.status.cooldownRemaining > 0
+                        width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText
+                        text: "All withdrawals wait " + root.status.cooldownRemaining + "s · after " + root.status.cooldownAsset
+                        color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption
+                    }
+                    Text {
                         visible: !!root.status.warning
                         width: parent.width; wrapMode: Text.WordWrap; textFormat: Text.PlainText
                         text: root.showAmounts ? root.status.warning : "A rule or service needs attention. Open Moby for details."
@@ -255,6 +260,12 @@ Ui.Panel {
                     Column {
                         visible: root.page === 1
                         width: parent.width; spacing: Style.space(12)
+                        RowLayout {
+                            visible: root.status.rules.length > 0
+                            width: parent.width
+                            Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: root.status.accountCooldown ? "Account cooldown: " + root.status.cooldownSeconds + "s\nShared by all assets and wallets" : "Update Moby for account-wide timing"; color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+                            Ui.Button { text: "Set Cooldown"; fontSize: Style.font.caption; verticalPadding: Style.space(4); enabled: root.status.canEditCooldown && !service.busy; onClicked: root.editCooldown() }
+                        }
                         Text { visible: root.status.rules.length === 0; width: parent.width; text: "Open Moby to choose wallets and add withdrawal rules."; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.body }
                         Repeater {
                             model: root.status.rules
@@ -262,12 +273,7 @@ Ui.Panel {
                                 required property var modelData
                                 width: parent.width; spacing: Style.space(4)
                                 Text { text: modelData.asset + (modelData.enabled ? "" : " · disabled"); textFormat: Text.PlainText; color: Color.foreground; font.family: Style.font.family; font.pixelSize: Style.font.body; font.bold: true }
-                                Text { width: parent.width; textFormat: Text.PlainText; wrapMode: Text.WordWrap; text: "Chunk " + Model.money(modelData.chunk, root.showAmounts) + " · minimum " + Model.money(modelData.minimum, root.showAmounts) + " " + modelData.asset + "\n" + modelData.cooldown + "s cooldown · " + modelData.destinations + " wallet(s)"; color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
-                                RowLayout {
-                                    width: parent.width
-                                    Text { Layout.fillWidth: true; text: modelData.cooldownRemaining > 0 ? "Cooldown: " + modelData.cooldownRemaining + "s left" : "Shared by all " + modelData.asset + " fills"; color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
-                                    Ui.Button { text: "Set Cooldown"; fontSize: Style.font.caption; verticalPadding: Style.space(4); enabled: root.status.canEditCooldown && !service.busy; onClicked: root.editCooldown(modelData) }
-                                }
+                                Text { width: parent.width; textFormat: Text.PlainText; wrapMode: Text.WordWrap; text: "Chunk " + Model.money(modelData.chunk, root.showAmounts) + " · minimum " + Model.money(modelData.minimum, root.showAmounts) + " " + modelData.asset + "\n" + modelData.destinations + " wallet(s)"; color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
                                 Ui.PanelSeparator {}
                             }
                         }
@@ -298,7 +304,7 @@ Ui.Panel {
                 }
                 Text {
                     width: parent.width; wrapMode: Text.WordWrap
-                    text: root.page === 1 ? "Pause and let sends settle to change cooldowns here. Edit rules opens full setup in Moby." : "O open · F reread local status · Esc close"
+                    text: root.page === 1 ? "Pause and let sends settle to change the cooldown here. Edit rules opens full setup in Moby." : "O open · F reread local status · Esc close"
                     color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption
                 }
             }
@@ -324,7 +330,7 @@ Ui.Panel {
                 feedback: service.notice
                 onCanceled: { opened = false; keys.forceActiveFocus(); }
                 onSaved: function(seconds) {
-                    if (service.setCooldown(asset, seconds, root.cooldownKey)) opened = false;
+                    if (service.setCooldown(seconds, root.cooldownKey)) opened = false;
                     if (!opened) keys.forceActiveFocus();
                 }
             }

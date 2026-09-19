@@ -121,7 +121,8 @@ pub fn edit(directory: &Path, runtime: &Handle) -> Result<Response> {
         "Kraken wallet data is stale; wait for automatic refresh before editing"
     );
     let mut config = state.account_status.live.config.unwrap_or(Config {
-        schema_version: 1,
+        schema_version: 2,
+        cooldown_seconds: 60,
         account: state.account,
         poll_seconds: 30,
         max_inflight: 2,
@@ -296,12 +297,10 @@ pub fn edit(directory: &Path, runtime: &Handle) -> Result<Response> {
             .unwrap_or("*"),
     )?;
     let cooldown = prompt(
-        "Cooldown between chunks, seconds",
-        &old.as_ref()
-            .map(|r| r.cooldown_seconds)
-            .unwrap_or(60)
-            .to_string(),
+        "Account cooldown between all withdrawals, seconds",
+        &config.cooldown_seconds.to_string(),
     )?;
+    config.cooldown_seconds = cooldown.parse()?;
     let rule = WatchRule {
         asset: symbol.clone(),
         enabled: enabled == "yes",
@@ -316,7 +315,6 @@ pub fn edit(directory: &Path, runtime: &Handle) -> Result<Response> {
         max_fee,
         max_fee_percent,
         daily_fee_budget: if budget == "*" { None } else { Some(budget) },
-        cooldown_seconds: cooldown.parse()?,
     };
     rule.validate()?;
     if let Some(existing) = config.rules.iter_mut().find(|r| r.asset == symbol) {

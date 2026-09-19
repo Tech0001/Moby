@@ -8,11 +8,11 @@ const clone = value => JSON.parse(JSON.stringify(value));
 const config = m.options({}, '/home/fixture');
 const now = 1000;
 function snapshot() {
-  return {ok: true, state: {protocol_version: 8, version: '0.2.7', account: 'main', mode: 'account',
-    worker_pid: 99, paused: false, observed_at: now, vault: {state: 'unlocked'}, queue_digest: 'queue-a',
+  return {ok: true, state: {protocol_version: 9, version: '0.2.9', account: 'main', mode: 'account',
+    worker_pid: 99, withdrawal_cooldown_seconds: 60, paused: false, observed_at: now, vault: {state: 'unlocked'}, queue_digest: 'queue-a',
     account_status: {refresh: {wallets: {stale: false}}, telegram: {configured: true, enabled: true},
       live: {config_digest: 'a'.repeat(64), rest_updated_at: 995, caught_up_through: 995, websocket: 'Connected', config: {poll_seconds: 30,
-        rules: [{asset: 'BTC', enabled: true, chunk: '0.1', minimum: '0.001', cooldown_seconds: 60,
+        rules: [{asset: 'BTC', enabled: true, chunk: '0.1', minimum: '0.001',
           destinations: [{address: 'PRIVATE_ADDRESS_DO_NOT_PROJECT', wallet_id: 'PRIVATE_WALLET_ID'}]}]},
         queues: {BTC: {amount: '0.000000000000000001'}, ETH: {amount: '0'}},
         transfers: [{asset: 'BTC', net: '0.009', gross: '0.01', fee: '0.001', status: 'complete', updated_at: 980,
@@ -47,6 +47,8 @@ s = snapshot(); s.state.paused = true; v = project(s);
 assert.equal(v.canResume, true);
 assert.equal(v.canEdit, true);
 assert.equal(v.canEditCooldown, true);
+assert.equal(v.cooldownSeconds, '60');
+assert.equal(v.rules[0].cooldown, undefined);
 const cooldownKey = v.cooldownKey;
 const reviewed = v.confirmationKey;
 s.state.queue_digest = 'queue-b';
@@ -72,24 +74,30 @@ s.state.paused = true; assert.equal(project(s).canEdit, false);
 assert.equal(project(s).canEditCooldown, false);
 s = snapshot(); s.state.paused = true; s.state.version = '0.2.6';
 assert.equal(project(s).canEditCooldown, false);
-s = snapshot(); s.state.account_status.live.queues.BTC.last_submission = 990;
-assert.equal(project(s).rules[0].cooldownRemaining, 50);
+s = snapshot(); s.state.withdrawal_cooldown = {asset: 'ETH', started_at: 990, until: 1050};
+assert.equal(project(s).cooldownRemaining, 50);
+assert.equal(project(s).cooldownAsset, 'ETH');
+assert.equal(project(s).accountCooldown, true);
+s.state.withdrawal_cooldown.until = 995;
+assert.equal(project(s).cooldownRemaining, 0);
+s.state.version = '0.2.8'; s.state.paused = true;
+assert.equal(project(s).accountCooldown, false);
+assert.equal(project(s).canEditCooldown, false);
 s = snapshot(); s.state.account_status.live.config.rules = []; s.state.paused = true;
 assert.equal(project(s).canResume, false);
 s = snapshot(); s.state.mode = 'paper'; s.state.vault.state = 'not_required';
-s.state.assets = [{rule: {asset: 'BTC', chunk: '1', minimum: '0.1', cooldown_seconds: 5}, queued: '2'}];
+s.state.assets = [{rule: {asset: 'BTC', chunk: '1', minimum: '0.1'}, queued: '2'}];
 s.state.withdrawals = [{asset: 'BTC', amount: '1', fee: '0.1', status: 'pending', updated_at: 999}];
 v = m.project(s, m.options({demo: true}, ''), now);
 assert.equal(v.paper, true); assert.equal(v.queuedCount, 1); assert.equal(v.transfers[0].amount, '1');
 assert.equal(v.telegram, 'Paper mode');
 assert.deepEqual(clone(m.command(config, 'status')), ['moby', '--account', 'main', 'status', '--json']);
 assert.throws(() => m.command(config, 'orders submit'));
-assert.deepEqual(clone(m.cooldownCommand(config, 'BTC', 120, 'a'.repeat(64))),
-  ['moby','--account','main','config','cooldown','BTC','120','--expect','a'.repeat(64),'--json']);
-for (const seconds of [0,86401,1.5,NaN,'60']) assert.throws(() => m.cooldownCommand(config,'BTC',seconds,'a'.repeat(64)));
-assert.throws(() => m.cooldownCommand(config,'BTC;echo',60,'a'.repeat(64)));
-assert.throws(() => m.cooldownCommand(config,'BTC',60,'old-digest'));
-assert.throws(() => m.cooldownCommand(m.options({demo:true},''),'BTC',60,'a'.repeat(64)));
+assert.deepEqual(clone(m.cooldownCommand(config, 120, 'a'.repeat(64))),
+  ['moby','--account','main','config','cooldown','120','--expect','a'.repeat(64),'--json']);
+for (const seconds of [0,86401,1.5,NaN,'60']) assert.throws(() => m.cooldownCommand(config,seconds,'a'.repeat(64)));
+assert.throws(() => m.cooldownCommand(config,60,'old-digest'));
+assert.throws(() => m.cooldownCommand(m.options({demo:true},''),60,'a'.repeat(64)));
 assert.throws(() => m.options({account: 'main;touch /tmp/no'}, ''));
 assert.throws(() => m.options({executable: 'moby --extra'}, ''));
 assert.throws(() => m.options({stateDir: 'relative/path'}, ''));

@@ -438,12 +438,11 @@ impl Worker {
                 "Watch rules saved; withdrawals remain paused"
             }
             Request::SetCooldown {
-                asset,
                 seconds,
                 expected_config,
             } => {
-                account.set_cooldown(vault, &asset, seconds, &expected_config)?;
-                "Cooldown saved; shared by all fills and wallets for this asset. Withdrawals remain paused"
+                account.set_cooldown(vault, seconds, &expected_config)?;
+                "Account-wide cooldown saved; all withdrawals share one timer. Withdrawals remain paused"
             }
             Request::ClearQueue { digest } => {
                 account.clear_queue(&digest)?;

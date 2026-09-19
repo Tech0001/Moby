@@ -80,9 +80,10 @@ ShellRoot {
             def handle(self):
                 request = json.loads(self.rfile.readline())
                 if request["command"] == "set_cooldown":
+                    fixture["withdrawal_cooldown_seconds"] = 120
                     changes.append(request)
-                    assert request == {"command":"set_cooldown", "asset":"USDC", "seconds":120, "expected_config":"a"*64}
-                    fixture["account_status"]["live"]["config"]["rules"][0]["cooldown_seconds"] = 120
+                    assert request == {"command":"set_cooldown", "seconds":120, "expected_config":"a"*64}
+                    fixture["account_status"]["live"]["config"]["cooldown_seconds"] = 120
                     fixture["account_status"]["live"]["config_digest"] = "b"*64
                 else:
                     assert request["command"] == "status"
@@ -104,11 +105,11 @@ ShellRoot {
       if (++attempts > 150) { console.error("CHECK_FAILED cooldown " + service.error + service.notice); Qt.quit(); return; }
       if (service.busy) return;
       if (phase === 0 && service.view.canEditCooldown) {
-        if (service.setCooldown("USDC",120,"stale-editor")) { console.error("CHECK_FAILED stale edit accepted"); Qt.quit(); return; }
+        if (service.setCooldown(120,"stale-editor")) { console.error("CHECK_FAILED stale edit accepted"); Qt.quit(); return; }
         phase = 1;
       } else if (phase === 1 && service.view.canEditCooldown) {
-        if (service.setCooldown("USDC",120,service.view.cooldownKey)) phase = 2;
-      } else if (phase === 2 && service.view.rules[0].cooldown === "120" && service.view.paused) {
+        if (service.setCooldown(120,service.view.cooldownKey)) phase = 2;
+      } else if (phase === 2 && service.view.cooldownSeconds === "120" && service.view.paused) {
         console.log("MOBY_PLUGIN_COOLDOWN_PASS"); Qt.quit();
       }
     }

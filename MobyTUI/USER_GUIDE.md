@@ -118,15 +118,17 @@ Kraken's [Extended Balance](https://docs.kraken.com/api-reference/account-data/g
 
 ## Configure fill-triggered withdrawals
 
-In the TUI, wait for **5 Wallets** to finish its automatic refresh, then open **7 Watch rules → E**. The editor asks for the asset received from a fill, verified destination(s), order types, buy/sell sides, optional pairs/order IDs, gross chunk size, minimum, reserve, fee caps, optional rolling 24-hour fee budget and cooldown. It fills the minimum from the selected network's Kraken funding method using the last wallet sync. When rotating destinations, it uses the highest minimum; a higher previously configured threshold is retained. Press Enter to accept it or enter a higher value. Undersized amounts are rejected immediately so you can correct them without restarting the editor. A missing Kraken minimum blocks setup until a successful wallet sync supplies it. It displays the complete configuration before saving. **P** pauses and **R** resumes withdrawals. The worker continues monitoring while paused.
+In the TUI, wait for **5 Wallets** to finish its automatic refresh, then open **7 Watch rules → E**. The editor asks for the asset received from a fill, verified destination(s), order types, buy/sell sides, optional pairs/order IDs, gross chunk size, minimum, reserve, fee caps, optional rolling 24-hour fee budget and the shared account cooldown. It fills the minimum from the selected network's Kraken funding method using the last wallet sync. When rotating destinations, it uses the highest minimum; a higher previously configured threshold is retained. Press Enter to accept it or enter a higher value. Undersized amounts are rejected immediately so you can correct them without restarting the editor. A missing Kraken minimum blocks setup until a successful wallet sync supplies it. It displays the complete configuration before saving. **P** pauses and **R** resumes withdrawals. The worker continues monitoring while paused.
 
 Each asset has one rule. Empty `pairs` and `order_ids` lists match all orders satisfying the other filters, including orders placed outside Moby. Market, limit, stop-loss, take-profit and trailing variants are supported for monitoring, as are iceberg fills. Margin trades are excluded. Buys receive the base asset; sells receive the quote asset. For example, a BTC/USD buy credits BTC and a BTC/USDC sell credits USDC. A BTC/USD sell receives fiat USD: Moby does not silently convert it to a stablecoin or send fiat to a crypto wallet. Each partial fill is accounted separately using its settlement ledgers, including the actual fee currency. Deposits and pre-existing balances do not create withdrawal requests.
 
 Each watch rule supports up to 64 verified destinations, visited in the configured rotation order.
 
-All orders receiving the same asset share one queue and one cooldown, including withdrawals to rotating wallets. A new fill does not create a separate timer, and another chunk cannot overlap that asset's active withdrawal. Different assets have independent timers, subject to the global concurrency limit.
+One account-wide cooldown spaces **every withdrawal**, across all assets, orders and rotating wallets. With 60 seconds configured, a BTC attempt makes USDC, XLM and every other asset wait too. Attempts are serialized before dispatch; the full interval starts after the exchange request returns, so network delays cannot shorten it. Each asset still has its own queue and at most one active transfer. Different named account profiles remain independent.
 
-To change only timing, pause withdrawals and let active sends settle, then use the Omarchy dropdown's **Rules → Set Cooldown** button. Agents can use `moby config cooldown XLM 120 --expect CONFIG_DIGEST --json`, taking `CONFIG_DIGEST` from a fresh `state.account_status.live.config_digest` in `moby status --json`. The worker rejects stale edits. This timing-only change preserves the fill boundary, queues, last send time and wallet rotation, and leaves withdrawals paused.
+The timer survives restarts, new fills, queue clearing and rule removal. Existing v1 configurations are upgraded to schema v2 with a single `cooldown_seconds` at the configuration's top level, choosing the longest previous asset cooldown. Existing queues and monitoring cursors are preserved. New configurations must use v2; cooldowns no longer belong inside individual rules.
+
+To change only timing, pause withdrawals and let active sends settle, then use the Omarchy dropdown's **Rules → Set Cooldown** button. Agents can use `moby config cooldown 120 --expect CONFIG_DIGEST --json`, taking `CONFIG_DIGEST` from a fresh `state.account_status.live.config_digest` in `moby status --json`. The worker rejects stale edits. `state.withdrawal_cooldown_seconds` is the shared setting; `state.withdrawal_cooldown` reports its source asset, start time and deadline. This timing-only change preserves the fill boundary, queues, last send time and wallet rotation, and leaves withdrawals paused.
 
 Synthetic spot fills reported by Kraken as explicit `BASE/QUOTE` pairs (for example `XLM/USDC`) do not need a native market listing. Both assets must be known, and the referenced trade ledgers must verify the assets, direction, amounts and fees before Moby queues anything. This is tested with offline fixtures; it does not enable synthetic order placement or monitoring of a separate DEX wallet.
 
@@ -249,7 +251,7 @@ The swimming whale and header mascot use the Moby logo in Ghostty, Kitty and Foo
 
 `moby --demo` never opens the account vault or account database. It has separate rules, pause state, balances, fills, history and simulated destinations. Paper activity cannot modify the configured account. Key entry, key checks, Kraken sync, live watch rules and live order requests are rejected in this mode, including over IPC.
 
-The paper worker initially starts paused with zero balances and BTC, ETH and USDC rules. Select an asset and press **D** to add a fill, then **R** to simulate withdrawals. Default transfers settle after about three seconds with a five-second cooldown. Timings and fees are fixtures, not exchange quotes.
+The paper worker initially starts paused with zero balances and BTC, ETH and USDC rules. Select an asset and press **D** to add a fill, then **R** to simulate withdrawals. Default transfers settle after about three seconds with a five-second cooldown shared by all assets. Timings and fees are fixtures, not exchange quotes.
 
 ```sh
 moby --demo pause --json
@@ -259,7 +261,7 @@ moby --demo resume --json
 
 `demo` subcommands always target paper, even without `--demo`. Other commands need `--demo` to select that profile. Fills represent **net received assets after trading fees**. Partial fills need distinct IDs. Retrying the same ID and contents is safe; changed contents fail. A timeout does not prove an action was rejected.
 
-Review chunk sizes and cooldowns in [`examples/demo-plan.json`](examples/demo-plan.json). Amounts remain quoted decimal strings. `chunk` is the recipient amount, `fee` is extra, `minimum` is the smallest recipient amount, and `reserve` stays on the simulated exchange.
+Review chunk sizes and the account cooldown in [`examples/demo-plan.json`](examples/demo-plan.json). Amounts remain quoted decimal strings. `chunk` is the recipient amount, `fee` is extra, `minimum` is the smallest recipient amount, and `reserve` stays on the simulated exchange.
 
 ```sh
 moby --demo plan validate examples/demo-plan.json --json

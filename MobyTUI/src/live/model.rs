@@ -92,7 +92,6 @@ pub struct WatchRule {
     pub max_fee_percent: String,
     /// Optional rolling 24-hour fee budget denominated in this asset.
     pub daily_fee_budget: Option<String>,
-    pub cooldown_seconds: u64,
 }
 impl WatchRule {
     pub fn validate(&self) -> Result<()> {
@@ -163,10 +162,6 @@ impl WatchRule {
         if let Some(budget) = &self.daily_fee_budget {
             positive(budget)?;
         }
-        ensure!(
-            (1..=86400).contains(&self.cooldown_seconds),
-            "cooldown must be 1–86400 seconds"
-        );
         Ok(())
     }
     pub fn matches(&self, fill: &Trade) -> bool {
@@ -185,6 +180,8 @@ impl WatchRule {
 pub struct Config {
     pub schema_version: u32,
     pub account: String,
+    /// Minimum wait between any two withdrawal attempts in this account.
+    pub cooldown_seconds: u64,
     #[serde(default = "default_poll")]
     pub poll_seconds: u64,
     #[serde(default = "default_inflight")]
@@ -196,10 +193,14 @@ pub struct Config {
 impl Config {
     pub fn validate(&self) -> Result<()> {
         ensure!(
-            self.schema_version == 1,
+            self.schema_version == 2,
             "unsupported watch configuration schema"
         );
         text(&self.account, "account name")?;
+        ensure!(
+            (1..=86400).contains(&self.cooldown_seconds),
+            "cooldown must be 1–86400 seconds"
+        );
         ensure!(
             (10..=300).contains(&self.poll_seconds),
             "REST polling must be 10–300 seconds"

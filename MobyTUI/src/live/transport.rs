@@ -889,7 +889,6 @@ mod tests {
             max_fee: "1".into(),
             max_fee_percent: "10".into(),
             daily_fee_budget: None,
-            cooldown_seconds: 60,
         }
     }
     #[test]

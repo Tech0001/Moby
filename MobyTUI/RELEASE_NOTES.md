@@ -1,5 +1,7 @@
 MobyTUI is the Linux terminal version of Moby. Download the archive for your CPU and its matching SHA-256 file; Rust is not required.
 
+Version 0.2.9 uses one account-wide cooldown setting for every withdrawal, across assets and wallets, in live and paper mode. The persistent timer is enforced before dispatch and after requests return. Stored configurations migrate to schema v2 using the longest old cooldown, preserving queues and monitoring history. The Omarchy companion lives in `MobyPlugin/` and shows one Set Cooldown control and countdown. CLI: `moby config cooldown SECONDS --expect CONFIG_DIGEST --json`. Status protocol is now 9; restart older workers before using the new client.
+
 Version 0.2.8 fixes pieces of the whale repeating near the water during the launch animation in Kitty-compatible terminals. Each image cell retains explicit coordinates when waves overlap it or the whale moves, including at screen edges. This is a display-only change; an existing worker can keep running.
 
 Version 0.2.7 adds settlement validation for Kraken synthetic spot fills reported as explicit `BASE/QUOTE` pairs, such as `XLM/USDC`, without a native market listing. Both assets must be known to Kraken metadata, and linked trade ledgers must match the assets, direction, volume, cost and fees before funds can be queued. Synthetic order placement remains unsupported; Moby does not invent market limits or infer unknown compact pair names. Synthetic handling is covered by offline fixtures, not a live fill test.

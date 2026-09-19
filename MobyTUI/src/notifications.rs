@@ -224,7 +224,7 @@ impl Notifications {
                             .iter()
                             .any(|t| t.asset == rule.asset && t.active())
                     {
-                        conditions.insert(format!("queue:{}",rule.asset), ((rule.cooldown_seconds as i64 + 300).max(1800),format!("Moby · {name}: {} has been waiting without an active withdrawal. Check its watch rule and waiting reason in Moby.",rule.asset)));
+                        conditions.insert(format!("queue:{}",rule.asset), ((config.cooldown_seconds as i64 + 300).max(1800),format!("Moby · {name}: {} has been waiting without an active withdrawal. Check its watch rule and waiting reason in Moby.",rule.asset)));
                     }
                 }
             }

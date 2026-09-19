@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node moby-plugin/tests/model.test.cjs
+      - run: node MobyPlugin/tests/model.test.cjs
   gui:
     runs-on: ubuntu-latest
     defaults:

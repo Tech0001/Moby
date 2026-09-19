@@ -71,24 +71,23 @@ Item {
         return true;
     }
 
-    function setCooldown(asset, seconds, expectedKey) {
+    function setCooldown(seconds, expectedKey) {
         if (!config) return false;
         var current = Model.project(response, config, Date.now() / 1000);
         if (error || action.running || probe.running || !current.canEditCooldown
-            || expectedKey !== current.cooldownKey
-            || !current.rules.some(function(rule) { return rule.asset === asset; })) {
+            || expectedKey !== current.cooldownKey) {
             notice = "Pause withdrawals and refresh before changing this cooldown.";
             refresh();
             return false;
         }
-        try { action.command = Model.cooldownCommand(config, asset, seconds, current.configDigest); }
+        try { action.command = Model.cooldownCommand(config, seconds, current.configDigest); }
         catch (_) { notice = "Enter a cooldown from 1 to 86400 seconds."; return false; }
         actionKey = configKey;
         actionKind = "cooldown";
         actionExpired = false;
         action.running = true;
         actionTimeout.restart();
-        notice = "Saving " + asset + " cooldown…";
+        notice = "Saving account cooldown…";
         return true;
     }
 

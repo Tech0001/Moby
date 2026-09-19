@@ -6,7 +6,6 @@ import qs.Ui as Ui
 Item {
     id: root
     property bool opened: false
-    property string asset: ""
     property string profile: ""
     property string feedback: ""
     property int currentSeconds: 60
@@ -43,11 +42,11 @@ Item {
             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
             anchors.margins: Style.space(16)
             spacing: Style.space(12)
-            Text { text: "Set Cooldown · " + root.asset; color: Color.foreground; font.family: Style.font.family; font.pixelSize: Style.font.body; font.bold: true }
+            Text { text: "Set Cooldown"; color: Color.foreground; font.family: Style.font.family; font.pixelSize: Style.font.body; font.bold: true }
             Text { text: root.profile; textFormat: Text.PlainText; color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
             Text {
                 Layout.fillWidth: true; wrapMode: Text.WordWrap
-                text: "Seconds between withdrawal chunks. All orders receiving " + root.asset + " share this queue and timer, across every configured wallet."
+                text: "Seconds between withdrawals. All assets, orders and wallets in this account share this one timer."
                 color: Color.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption
             }
             Ui.TextField {

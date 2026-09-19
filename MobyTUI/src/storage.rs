@@ -90,6 +90,13 @@ pub fn open(directory: &Path) -> Result<Connection> {
         get(&db, "mode")?.as_deref() == Some("demo"),
         "this executable only opens demo profiles"
     );
+    let mut saved_plan: serde_json::Value =
+        serde_json::from_str(&get(&db, "plan")?.context("missing plan")?)?;
+    if crate::model::migrate_cooldown_config(&mut saved_plan)? {
+        let plan: Plan = serde_json::from_value(saved_plan)?;
+        plan.validate()?;
+        set(&db, "plan", &serde_json::to_string(&plan)?)?;
+    }
     Ok(db)
 }
 

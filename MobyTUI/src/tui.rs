@@ -202,7 +202,7 @@ impl View {
                         field("Fee / transfer", &a.rule.fee),
                         field("Withdrawal minimum", &a.rule.minimum),
                         field("Keep on exchange", &a.rule.reserve),
-                        field("Cooldown", &format!("{} seconds", a.rule.cooldown_seconds)),
+                        field("Cooldown", &format!("{} seconds", state.withdrawal_cooldown_seconds.unwrap_or(0))),
                         field("Status", a.blocked.as_deref().unwrap_or("Ready")),
                     ],
                     status: a.blocked.clone().unwrap_or_else(|| "ready".into()),
@@ -276,13 +276,13 @@ impl View {
                 ];
                 for method in &w.methods {detail.push(field(&format!("{} · {} method",method.asset,method.network),&method.id));}
                 if let Some(config)=&state.account_status.live.config {
-                    for rule in &config.rules {if rule.destinations.iter().any(|d|d.wallet_id==w.id) {detail.push(field("Live watch rule",&format!("{} · chunk {} · {}s cooldown · {}",rule.asset,rule.chunk,rule.cooldown_seconds,if rule.enabled {"enabled"}else{"disabled"})));}}
+                    for rule in &config.rules {if rule.destinations.iter().any(|d|d.wallet_id==w.id) {detail.push(field("Live watch rule",&format!("{} · chunk {} · {}s cooldown · {}",rule.asset,rule.chunk,state.withdrawal_cooldown_seconds.unwrap_or(0),if rule.enabled {"enabled"}else{"disabled"})));}}
                 }
                 if let Some(rule) = &w.rule {
                     detail.extend([
                         field("Chunk", &rule.chunk), field("Withdrawal minimum", &rule.minimum),
                         field("Reserve", &rule.reserve), field("Fee", &rule.fee),
-                        field("Cooldown", &format!("{} seconds", rule.cooldown_seconds)),
+                        field("Cooldown", &format!("{} seconds", state.withdrawal_cooldown_seconds.unwrap_or(0))),
                     ]);
                 }
                 Record { key: w.id.clone(), cells: vec![w.name.clone(), w.assets.join(", "), w.network.clone(),
@@ -305,7 +305,7 @@ impl View {
                 let q=state.account_status.live.queues.get(&r.asset);
                 let status=if !r.enabled {"Disabled"}else if state.paused {"Paused"}else {q.and_then(|q|q.blocked.as_deref()).unwrap_or("Watching")};
                 Record {key:r.asset.clone(),cells:vec![r.asset.clone(),q.map(|q|q.amount.clone()).unwrap_or_else(||"0".into()),r.chunk.clone(),status.into()],status:status.into(),
-                    detail:vec![field("Asset",&r.asset),field("Queued",q.map(|q|q.amount.as_str()).unwrap_or("0")),field("Gross chunk (includes fee)",&r.chunk),field("Withdrawal minimum (net)",&r.minimum),field("Minimum meaning","Amount delivered after withdrawal fees must meet this threshold and Kraken's current withdrawal minimum. Trading pairs have separate order minimums."),field("Keep on Kraken",&r.reserve),field("Cooldown seconds",&r.cooldown_seconds.to_string()),field("Maximum fee",&r.max_fee),field("Maximum fee percent",&r.max_fee_percent),field("Rolling 24h fee budget",r.daily_fee_budget.as_deref().unwrap_or("No cap")),field("Order types",&r.order_types.join(", ")),field("Sides",&r.sides.join(", ")),field("Pairs",&if r.pairs.is_empty(){"All".into()}else{r.pairs.join(", ")}),field("Order IDs",&if r.order_ids.is_empty(){"All matching orders, including external orders".into()}else{r.order_ids.join(", ")}),field("Destinations",&r.destinations.iter().map(|d|format!("{} · {} · {} {}",d.wallet_id,d.network,d.address,d.memo.as_deref().unwrap_or(""))).collect::<Vec<_>>().join("; ")),field("Status",status),field("Edit","P pauses, E adds/edits an asset rule; R resumes after reconciliation")],}
+                    detail:vec![field("Asset",&r.asset),field("Queued",q.map(|q|q.amount.as_str()).unwrap_or("0")),field("Gross chunk (includes fee)",&r.chunk),field("Withdrawal minimum (net)",&r.minimum),field("Minimum meaning","Amount delivered after withdrawal fees must meet this threshold and Kraken's current withdrawal minimum. Trading pairs have separate order minimums."),field("Keep on Kraken",&r.reserve),field("Account cooldown (seconds)",&c.cooldown_seconds.to_string()),field("Cooldown scope","All assets and wallets in this account share one timer"),field("Maximum fee",&r.max_fee),field("Maximum fee percent",&r.max_fee_percent),field("Rolling 24h fee budget",r.daily_fee_budget.as_deref().unwrap_or("No cap")),field("Order types",&r.order_types.join(", ")),field("Sides",&r.sides.join(", ")),field("Pairs",&if r.pairs.is_empty(){"All".into()}else{r.pairs.join(", ")}),field("Order IDs",&if r.order_ids.is_empty(){"All matching orders, including external orders".into()}else{r.order_ids.join(", ")}),field("Destinations",&r.destinations.iter().map(|d|format!("{} · {} · {} {}",d.wallet_id,d.network,d.address,d.memo.as_deref().unwrap_or(""))).collect::<Vec<_>>().join("; ")),field("Status",status),field("Edit","P pauses, E adds/edits an asset rule; R resumes after reconciliation")],}
             }).collect()).unwrap_or_default(),
             7 => self.order_sort.sorted(&state.account_status.live.orders, self.orders_descending).into_iter().filter(|o|self.show_cancelled_orders || !o.is_cancelled()).map(|o|Record {
                 key:o.id.clone(),cells:vec![o.pair.clone(),format!("{} {}",o.side,o.order_type),o.price.clone(),format!("{} / {}",o.filled,o.volume),o.status.clone()],status:o.status.clone(),

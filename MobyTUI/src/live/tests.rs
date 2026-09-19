@@ -35,7 +35,6 @@ fn rule(symbol: &str) -> WatchRule {
         max_fee: "1".into(),
         max_fee_percent: "10".into(),
         daily_fee_budget: Some("2".into()),
-        cooldown_seconds: 60,
     }
 }
 #[test]
@@ -50,13 +49,14 @@ fn large_wallet_rotations_are_bounded_and_still_reject_duplicates() {
         .collect();
     rule.validate().unwrap();
     rule.destinations.push(destination());
-    assert!(rule.validate().unwrap_err().to_string().contains("1–64"));
+    assert!(rule.validate().err().unwrap().to_string().contains("1–64"));
     rule.destinations.truncate(30);
     rule.validate().unwrap();
     rule.destinations.push(rule.destinations[0].clone());
     assert!(
         rule.validate()
-            .unwrap_err()
+            .err()
+            .unwrap()
             .to_string()
             .contains("duplicate destination")
     );
@@ -64,7 +64,8 @@ fn large_wallet_rotations_are_bounded_and_still_reject_duplicates() {
 
 pub(crate) fn config() -> Config {
     Config {
-        schema_version: 1,
+        schema_version: 2,
+        cooldown_seconds: 60,
         account: "main".into(),
         poll_seconds: 30,
         max_inflight: 2,
@@ -287,7 +288,7 @@ fn cooldown_edit_preserves_queue_fill_boundary_and_shared_timer_across_restart()
     let expected = live.status(&db).unwrap().config.unwrap().digest().unwrap();
     live.resume(&db, "fixture-key").unwrap();
     assert!(
-        live.set_cooldown(&db, "BTC", 120, &expected, 109).is_err(),
+        live.set_cooldown(&db, 120, &expected, 109).is_err(),
         "edits require pause"
     );
     let Some(Operation::Submit { transfer, .. }) = live.reserve(&db, quote(110), 110).unwrap()
@@ -306,7 +307,7 @@ fn cooldown_edit_preserves_queue_fill_boundary_and_shared_timer_across_restart()
     .unwrap();
     live.pause(&db).unwrap();
     assert!(
-        live.set_cooldown(&db, "BTC", 120, &expected, 111).is_err(),
+        live.set_cooldown(&db, 120, &expected, 111).is_err(),
         "an active withdrawal blocks edits"
     );
     live.statuses(
@@ -325,20 +326,13 @@ fn cooldown_edit_preserves_queue_fill_boundary_and_shared_timer_across_restart()
     )
     .unwrap();
     for seconds in [0, 86401] {
-        assert!(
-            live.set_cooldown(&db, "BTC", seconds, &expected, 112)
-                .is_err()
-        );
+        assert!(live.set_cooldown(&db, seconds, &expected, 112).is_err());
     }
-    assert!(live.set_cooldown(&db, "BTC", 120, "stale", 112).is_err());
-    assert!(
-        live.set_cooldown(&db, "UNKNOWN", 120, &expected, 112)
-            .is_err()
-    );
+    assert!(live.set_cooldown(&db, 120, "stale", 112).is_err());
     let before = live.status(&db).unwrap();
-    live.set_cooldown(&db, "BTC", 120, &expected, 112).unwrap();
+    live.set_cooldown(&db, 120, &expected, 112).unwrap();
     let after = live.status(&db).unwrap();
-    assert_eq!(after.config.unwrap().rules[0].cooldown_seconds, 120);
+    assert_eq!(after.config.unwrap().cooldown_seconds, 120);
     assert_eq!(after.queues["BTC"].last_submission, 110);
     assert_eq!(
         after.queues["BTC"].destination_index,
@@ -347,7 +341,7 @@ fn cooldown_edit_preserves_queue_fill_boundary_and_shared_timer_across_restart()
     assert_eq!(after.caught_up_through, before.caught_up_through);
     assert_eq!(queued(&live, &db, "BTC"), "20");
     assert!(
-        live.set_cooldown(&db, "BTC", 180, &expected, 113).is_err(),
+        live.set_cooldown(&db, 180, &expected, 113).is_err(),
         "old config digest must not overwrite another edit"
     );
     // A delayed fill predating the timing edit still counts, once, into the
@@ -368,7 +362,7 @@ fn cooldown_edit_preserves_queue_fill_boundary_and_shared_timer_across_restart()
     drop(live);
     let mut live = Live::open(&db).unwrap();
     assert_eq!(
-        live.status(&db).unwrap().config.unwrap().rules[0].cooldown_seconds,
+        live.status(&db).unwrap().config.unwrap().cooldown_seconds,
         120
     );
     live.resume(&db, "fixture-key").unwrap();
@@ -461,7 +455,8 @@ fn fee_budget_does_not_reset_at_utc_midnight() {
 fn filled_orders_chunk_cool_down_rotate_wallets_and_give_other_assets_a_turn() {
     let (_dir, db, mut live) = database();
     let mut c = config();
-    c.max_inflight = 1;
+    c.max_inflight = 2;
+    c.cooldown_seconds = 120;
     let mut second = wallet();
     second.id = "second-wallet".into();
     second.address = "second-fixture-address".into();
@@ -492,7 +487,7 @@ fn filled_orders_chunk_cool_down_rotate_wallets_and_give_other_assets_a_turn() {
     )
     .unwrap();
     live.resume(&db, "fixture-key").unwrap();
-    for (at, asset) in [(110, "BTC"), (120, "USDC")] {
+    for (at, asset) in [(110, "BTC"), (230, "USDC")] {
         live.sync(
             &db,
             vec![],
@@ -504,6 +499,18 @@ fn filled_orders_chunk_cool_down_rotate_wallets_and_give_other_assets_a_turn() {
         .unwrap();
         live.rest_due = 9999;
         live.token_due = 9999;
+        if asset == "USDC" {
+            assert!(live.operation(&db, at - 1).unwrap().is_none());
+            let mut early = quote(at - 1);
+            early.asset = asset.into();
+            assert!(
+                live.reserve(&db, early, at - 1)
+                    .err()
+                    .unwrap()
+                    .to_string()
+                    .contains("account-wide")
+            );
+        }
         let Some(Operation::Quote { rule, .. }) = live.operation(&db, at).unwrap() else {
             panic!("expected eligible asset")
         };
@@ -542,27 +549,146 @@ fn filled_orders_chunk_cool_down_rotate_wallets_and_give_other_assets_a_turn() {
     live.rest_due = 9999;
     live.token_due = 9999;
     assert!(
-        live.operation(&db, 130).unwrap().is_none(),
-        "both assets must respect their cooldown"
+        live.operation(&db, 240).unwrap().is_none(),
+        "the shared cooldown also blocks BTC"
     );
     live.sync(
         &db,
         vec![],
         &[balance("BTC", "30", "0"), balance("USDC", "30", "0")],
         vec![],
-        180,
-        180,
+        349,
+        349,
     )
     .unwrap();
     live.rest_due = 9999;
+    assert!(live.operation(&db, 349).unwrap().is_none());
+    drop(live);
+    let mut live = Live::open(&db).unwrap();
+    live.resume(&db, "fixture-key").unwrap();
+    live.sync(
+        &db,
+        vec![],
+        &[balance("BTC", "30", "0"), balance("USDC", "30", "0")],
+        vec![],
+        350,
+        350,
+    )
+    .unwrap();
+    live.rest_due = 9999;
+    live.token_due = 9999;
     let Some(Operation::Quote {
         rule, destination, ..
-    }) = live.operation(&db, 180).unwrap()
+    }) = live.operation(&db, 350).unwrap()
     else {
         panic!()
     };
     assert_eq!(rule.asset, "BTC");
     assert_eq!(destination, dest);
+}
+
+#[test]
+fn legacy_rules_migrate_to_one_cooldown_without_losing_queues_or_the_timer() {
+    let (_dir, db, mut live) = database();
+    live.sync(
+        &db,
+        vec![
+            fill("btc", "BTC", "30", "101"),
+            fill("usdc", "USDC", "30", "101"),
+        ],
+        &[balance("BTC", "30", "0"), balance("USDC", "30", "0")],
+        vec![],
+        102,
+        102,
+    )
+    .unwrap();
+    let before = live.status(&db).unwrap();
+    let mut saved: serde_json::Value =
+        serde_json::from_str(&crate::storage::get(&db, "live").unwrap().unwrap()).unwrap();
+    saved.as_object_mut().unwrap().remove("cooldown");
+    saved["config"]["schema_version"] = 1.into();
+    saved["config"]
+        .as_object_mut()
+        .unwrap()
+        .remove("cooldown_seconds");
+    for (index, rule) in saved["config"]["rules"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .enumerate()
+    {
+        rule["cooldown_seconds"] = if index == 0 { 60 } else { 120 }.into();
+    }
+    saved["queues"]["BTC"]["last_submission"] = 110.into();
+    saved["queues"]["USDC"]["last_submission"] = 115.into();
+    crate::storage::set(&db, "live", &saved.to_string()).unwrap();
+    drop(live);
+    let mut live = Live::open(&db).unwrap();
+    let state = live.status(&db).unwrap();
+    assert!(live.paused());
+    assert_eq!(state.config.as_ref().unwrap().schema_version, 2);
+    assert_eq!(state.config.unwrap().cooldown_seconds, 120);
+    assert_eq!(state.caught_up_through, before.caught_up_through);
+    assert_eq!(state.monitoring_since, before.monitoring_since);
+    assert_eq!(queued(&live, &db, "BTC"), "30");
+    assert_eq!(queued(&live, &db, "USDC"), "30");
+    assert_eq!(live.cooldown().unwrap().until, 235);
+    live.resume(&db, "fixture-key").unwrap();
+    assert!(live.reserve(&db, quote(234), 234).is_err());
+    assert!(live.reserve(&db, quote(235), 235).unwrap().is_some());
+}
+
+#[test]
+fn account_cooldown_blocks_other_assets_before_dispatch_and_after_rejection() {
+    let (_dir, db, mut live) = database();
+    live.sync(
+        &db,
+        vec![
+            fill("btc", "BTC", "30", "101"),
+            fill("usdc", "USDC", "30", "101"),
+        ],
+        &[balance("BTC", "30", "0"), balance("USDC", "30", "0")],
+        vec![],
+        102,
+        102,
+    )
+    .unwrap();
+    live.resume(&db, "fixture-key").unwrap();
+    let Some(Operation::Submit { transfer, .. }) = live.reserve(&db, quote(110), 110).unwrap()
+    else {
+        panic!()
+    };
+    for at in [110, 111, 199] {
+        let mut next = quote(at);
+        next.asset = "USDC".into();
+        assert!(live.reserve(&db, next, at).is_err());
+    }
+    live.submitted(
+        &db,
+        &transfer.id,
+        Submission::Rejected("fixture rejection".into()),
+        200,
+    )
+    .unwrap();
+    assert_eq!(queued(&live, &db, "BTC"), "30");
+    drop(live);
+    let mut live = Live::open(&db).unwrap();
+    live.resume(&db, "fixture-key").unwrap();
+    let mut next = quote(259);
+    next.asset = "USDC".into();
+    assert!(
+        live.reserve(&db, next, 259)
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("account-wide")
+    );
+    let mut next = quote(260);
+    next.asset = "USDC".into();
+    assert!(matches!(
+        live.reserve(&db, next, 260).unwrap(),
+        Some(Operation::Submit { .. })
+    ));
 }
 #[test]
 fn filters_partial_fills_overlap_restart_and_clear_boundary_never_double_credit() {
@@ -900,7 +1026,8 @@ fn configuration_rejects_both_undersized_chunks_and_thresholds_without_saving() 
                 &[w.clone()],
                 200,
             )
-            .unwrap_err();
+            .err()
+            .unwrap();
         assert!(error.to_string().contains(expected), "{error}");
         assert_eq!(live.status(&db).unwrap().config.unwrap(), original);
         assert!(live.paused());
@@ -989,7 +1116,8 @@ fn missing_or_invalid_kraken_minimum_blocks_setup_but_explicit_zero_is_valid() {
                 &[w],
                 200,
             )
-            .unwrap_err();
+            .err()
+            .unwrap();
         assert!(error.to_string().contains("Kraken minimum"), "{error}");
         assert_eq!(live.status(&db).unwrap().config.unwrap(), original);
     }

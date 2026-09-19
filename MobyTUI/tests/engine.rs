@@ -161,7 +161,7 @@ fn unknown_survives_restart_blocks_retry_and_can_be_resolved_once() {
 }
 
 #[test]
-fn held_transfer_consumes_one_slot_and_blocks_only_its_asset() {
+fn held_transfer_consumes_one_slot_and_other_assets_wait_for_global_cooldown() {
     let (_dir, mut engine) = setup();
     send(&mut engine, fill("btc", "0.01"), 1000);
     send(
@@ -191,9 +191,13 @@ fn held_transfer_consumes_one_slot_and_blocks_only_its_asset() {
     );
     send(&mut engine, Request::Resume, 1000);
     engine.tick(1000).unwrap();
-    assert_eq!(engine.snapshot(1000).unwrap().withdrawals.len(), 2);
-    engine.tick(1003).unwrap();
-    let state = engine.snapshot(1003).unwrap();
+    assert_eq!(engine.snapshot(1000).unwrap().withdrawals.len(), 1);
+    engine.tick(1004).unwrap();
+    assert_eq!(engine.snapshot(1004).unwrap().withdrawals.len(), 1);
+    engine.tick(1005).unwrap();
+    assert_eq!(engine.snapshot(1005).unwrap().withdrawals.len(), 2);
+    engine.tick(1010).unwrap();
+    let state = engine.snapshot(1010).unwrap();
     assert_eq!(
         state
             .withdrawals
@@ -203,6 +207,47 @@ fn held_transfer_consumes_one_slot_and_blocks_only_its_asset() {
         1
     );
     assert!(state.withdrawals.iter().any(|w| w.asset == "USDC"));
+}
+
+#[test]
+fn paper_timer_is_shared_and_migrates_across_restart() {
+    let (dir, mut engine) = setup();
+    send(&mut engine, fill("btc", "0.01"), 1000);
+    send(
+        &mut engine,
+        Request::DemoFill {
+            id: "eth".into(),
+            asset: "ETH".into(),
+            amount: "1".into(),
+        },
+        1000,
+    );
+    send(&mut engine, Request::Resume, 1000);
+    engine.tick(1000).unwrap();
+    drop(engine);
+    let db = storage::open(dir.path()).unwrap();
+    let mut old = serde_json::to_value(Plan::demo()).unwrap();
+    old["schema_version"] = 1.into();
+    old.as_object_mut().unwrap().remove("cooldown_seconds");
+    for (index, rule) in old["rules"].as_array_mut().unwrap().iter_mut().enumerate() {
+        rule["cooldown_seconds"] = if index == 0 { 5 } else { 10 }.into();
+    }
+    storage::set(&db, "plan", &old.to_string()).unwrap();
+    db.execute("DELETE FROM meta WHERE key='withdrawal_cooldown'", [])
+        .unwrap();
+    drop(db);
+    let mut engine = Engine::open(dir.path(), 1002).unwrap();
+    assert_eq!(
+        engine.snapshot(1002).unwrap().withdrawal_cooldown_seconds,
+        Some(10)
+    );
+    engine.tick(1009).unwrap();
+    assert_eq!(engine.snapshot(1009).unwrap().withdrawals.len(), 1);
+    engine.tick(1010).unwrap();
+    let state = engine.snapshot(1010).unwrap();
+    assert_eq!(state.withdrawals.len(), 2);
+    assert_eq!(state.withdrawal_cooldown.unwrap().until, 1020);
+    assert_eq!(state.fill_count, 2);
 }
 
 #[test]

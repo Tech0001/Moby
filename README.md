@@ -5,9 +5,9 @@ Moby monitors order fills and helps move received assets to your own wallets in 
 | Project | Status | Stack | Start here |
 | --- | --- | --- | --- |
 | **[MobyGUI](MobyGUI/)** | Existing desktop app, v1.3.4; Kraken withdrawals | Electron, React, TypeScript | [Desktop guide](MobyGUI/docs/USER_GUIDE.md) |
-| **[MobyTUI](MobyTUI/)** | v0.2.8; Kraken automation, agent CLI + isolated paper mode | Rust, Ratatui, SQLite | [Terminal guide](MobyTUI/README.md) |
+| **[MobyTUI](MobyTUI/)** | v0.2.9; Kraken automation, agent CLI + isolated paper mode | Rust, Ratatui, SQLite | [Terminal guide](MobyTUI/README.md) |
 
-The optional **[Omarchy companion](moby-plugin/)** adds a whale to the desktop bar with a Moby status dropdown, confirmed pause/resume controls, per-asset cooldown settings and terminal configuration shortcuts. It connects to the TUI's worker and keeps account data out of the plugin.
+The optional **[Omarchy companion](MobyPlugin/)** adds a whale to the desktop bar with a Moby status dropdown, confirmed pause/resume controls, one account-wide cooldown setting and terminal configuration shortcuts. It connects to the TUI's worker and keeps account data out of the plugin.
 
 ## Desktop app
 
@@ -57,7 +57,7 @@ The worker owns the database, encrypted vault, and queue. The TUI and command-li
 Moby/
 ├── MobyGUI/                 # Desktop app; npm commands run here
 ├── MobyTUI/                 # Rust worker, CLI, TUI, tests and examples
-├── moby-plugin/             # Omarchy bar companion for the TUI worker
+├── MobyPlugin/              # Omarchy bar companion for the TUI worker
 ├── Cargo.toml               # Rust workspace
 ├── Cargo.lock               # Reproducible Rust dependency versions
 └── .github/workflows/       # Separate GUI/TUI packaging and project checks

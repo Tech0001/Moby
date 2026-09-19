@@ -1,4 +1,4 @@
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -84,7 +84,6 @@ pub struct Rule {
     pub minimum: String,
     pub reserve: String,
     pub fee: String,
-    pub cooldown_seconds: u64,
 }
 
 impl Rule {
@@ -103,10 +102,6 @@ impl Rule {
         let minimum = positive(&self.minimum)?;
         ensure!(chunk >= minimum, "chunk must be at least the minimum");
         add(add(chunk, amount(&self.fee)?)?, amount(&self.reserve)?)?;
-        ensure!(
-            (1..=86400).contains(&self.cooldown_seconds),
-            "cooldown must be 1–86400 seconds"
-        );
         Ok(())
     }
 }
@@ -116,12 +111,17 @@ impl Rule {
 pub struct Plan {
     pub schema_version: u32,
     pub account: String,
+    pub cooldown_seconds: u64,
     pub rules: Vec<Rule>,
 }
 
 impl Plan {
     pub fn validate(&self) -> Result<()> {
-        ensure!(self.schema_version == 1, "unsupported plan schema");
+        ensure!(self.schema_version == 2, "unsupported plan schema");
+        ensure!(
+            (1..=86400).contains(&self.cooldown_seconds),
+            "cooldown must be 1–86400 seconds"
+        );
         ensure!(
             self.account == "demo",
             "this prototype only supports the demo account"
@@ -178,7 +178,6 @@ pub enum Request {
         digest: String,
     },
     SetCooldown {
-        asset: String,
         seconds: u64,
         expected_config: String,
     },
@@ -400,6 +399,56 @@ pub struct Activity {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WithdrawalCooldown {
+    pub asset: String,
+    pub started_at: i64,
+    pub until: i64,
+}
+
+/// Upgrade stored v1 rules once; new configuration files use v2 and one timer.
+pub(crate) fn migrate_cooldown_config(value: &mut serde_json::Value) -> Result<bool> {
+    if value
+        .get("schema_version")
+        .and_then(serde_json::Value::as_u64)
+        != Some(1)
+    {
+        return Ok(false);
+    }
+    let rules = value
+        .get_mut("rules")
+        .and_then(serde_json::Value::as_array_mut)
+        .context("missing saved rules")?;
+    let mut seconds = 1;
+    for rule in rules {
+        let old = rule
+            .as_object_mut()
+            .context("invalid saved rule")?
+            .remove("cooldown_seconds")
+            .and_then(|v| v.as_u64())
+            .context("missing saved cooldown")?;
+        ensure!((1..=86400).contains(&old), "invalid saved cooldown");
+        seconds = seconds.max(old);
+    }
+    value["schema_version"] = 2.into();
+    value["cooldown_seconds"] = seconds.into();
+    Ok(true)
+}
+
+impl WithdrawalCooldown {
+    pub fn new(asset: &str, at: i64, seconds: u64) -> Self {
+        Self {
+            asset: asset.into(),
+            started_at: at,
+            until: at.saturating_add(seconds as i64),
+        }
+    }
+
+    pub fn remaining(&self, at: i64) -> i64 {
+        self.until.saturating_sub(at).max(0)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snapshot {
     pub protocol_version: u32,
     pub version: String,
@@ -408,6 +457,11 @@ pub struct Snapshot {
     pub mode: String,
     pub account: String,
     pub paused: bool,
+    /// One persisted timer spaces withdrawal attempts across every asset in this profile.
+    #[serde(default)]
+    pub withdrawal_cooldown: Option<WithdrawalCooldown>,
+    #[serde(default)]
+    pub withdrawal_cooldown_seconds: Option<u64>,
     #[serde(default)]
     pub vault: crate::vault::VaultStatus,
     #[serde(default)]
