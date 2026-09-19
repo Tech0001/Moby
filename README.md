@@ -1,49 +1,77 @@
 # Moby
 
-Moby automatically withdraws cryptocurrency from your exchanges to your wallets after trades fill. Instead of manually moving funds after every trade, you choose the assets, destinations, and withdrawal rules, and Moby handles the transfers.
+Moby monitors order fills and helps move received assets to your own wallets in configured withdrawal chunks. This repository contains two separate applications:
 
-It runs on your own computer with a desktop dashboard for managing exchange connections, wallets, and withdrawals. Currently supported exchange: Kraken.
+| Project | Status | Stack | Start here |
+| --- | --- | --- | --- |
+| **[MobyGUI](MobyGUI/)** | Existing desktop app, v1.3.4; Kraken withdrawals | Electron, React, TypeScript | [Desktop guide](MobyGUI/docs/USER_GUIDE.md) |
+| **[MobyTUI](MobyTUI/)** | v0.2.8; Kraken automation, agent CLI + isolated paper mode | Rust, Ratatui, SQLite | [Terminal guide](MobyTUI/README.md) |
 
-![Moby dashboard showing withdrawal status and the per-asset sweep monitor](docs/moby-overview.png)
+The optional **[Omarchy companion](moby-plugin/)** adds a whale to the desktop bar with a Moby status dropdown, confirmed pause/resume controls, per-asset cooldown settings and terminal configuration shortcuts. It connects to the TUI's worker and keeps account data out of the plugin.
 
-## How it works
+## Desktop app
 
-1. Connect your exchange account using API credentials.
-2. Choose the assets to monitor and your saved withdrawal addresses.
-3. Set how much to withdraw, how much to leave on the exchange, and when transfers should happen.
-4. Start Moby and follow the activity in the dashboard.
+The desktop source, build tools, tests, and documentation live in `MobyGUI/`. Its product name, installed data location, and version are unchanged by the repository split.
 
-## Get started
+```sh
+cd MobyGUI
+npm ci
+npm run electron:build:linux
+```
 
-Download a trusted desktop build from the [Godswildones/Moby releases](https://github.com/Godswildones/Moby/releases), when available, or [build it from source](docs/USER_GUIDE.md#building-from-source). On Linux, make the AppImage executable and launch it. Create your local dashboard account, then add a dedicated Kraken API key.
+See the [desktop README](MobyGUI/README.md) for exchange setup, wallet security, backups, and pause/restart behavior. Existing releases are on [GitHub](https://github.com/GodsWildOnes/Moby/releases).
 
-Enable **Query Funds**, **Query Open Orders & Trades**, **Query Closed Orders & Trades**, **Withdraw Funds**, and **WebSocket interface**. The [setup guide](docs/USER_GUIDE.md#connect-kraken) explains these permissions and how to configure destinations. Moby does not need permission to place or cancel trading orders.
+## Terminal app
 
-Start in dry-run mode, check the destination address and network, then test a small real withdrawal and confirm receipt before increasing the amount.
+The terminal command is `moby`; its source lives in `MobyTUI/`. Start with the **[new-user README](MobyTUI/README.md)** for downloading a Linux executable, setting up Kraken, choosing wallets and enabling withdrawal rules. Users of a compiled release do not need Rust installed. TUI releases use `tui-v…` tags, separate from the desktop app's `v…` releases.
 
-## What you can do
+For development, build from the repository root with Rust 1.90 or newer:
 
-- **Automate withdrawals:** Set thresholds, transfer sizes, reserves, and cooldowns for each asset.
-- **Manage destinations:** Choose wallets and set per-wallet withdrawal caps.
-- **Monitor activity:** See balances, pending amounts, transfer status, and searchable withdrawal history.
-- **Control fees:** Preview estimated fees and optionally set a rolling 24-hour fee budget.
-- **Stay informed:** Receive optional Telegram alerts for withdrawals, connection problems, and delays.
-- **Pause and review:** Stop new withdrawals, review uncertain transfers, or clear queued amounts you no longer want to withdraw.
+```sh
+cargo build --release --locked -p moby-tui
+./target/release/moby
+```
 
-## Before moving funds
+`moby` starts the background worker if needed, asks you to create or unlock your encrypted vault, and opens the dashboard. Run the same command to reopen it; an already unlocked worker does not ask for the password again. Users of a prebuilt Linux executable do not need Rust installed.
 
-Start with **dry-run mode** to check your settings without sending withdrawals. Verify the destination address and network before enabling real transfers.
+Useful commands:
 
-Moby must remain running to monitor activity and submit transfers. Pausing stops new withdrawals; transfers already submitted to an exchange can still complete. Exchange fees, minimums, and holds still apply.
+```sh
+./target/release/moby --help
+./target/release/moby --demo
+./target/release/moby key set
+./target/release/moby --account second
+./target/release/moby accounts
+./target/release/moby status --json
+./target/release/moby lock
+./target/release/moby stop
+```
 
-## Pausing and restarting
+The worker owns the database, encrypted vault, and queue. The TUI and command-line clients, including local coding agents, connect to that same worker. Quitting the dashboard or closing its terminal leaves the background worker running. A worker restart or reboot requires unlocking again. `moby --account NAME` creates or reopens another account with its own vault, worker and data; plain `moby` uses `main`. `moby watch` remains an alias for opening the app; `moby run` is available for foreground/tmux operation. `moby --demo` opens a separate paper account with its own worker, database and rules; it never loads real credentials or changes the configured account.
 
-Moby keeps a local database of queued amounts and withdrawal jobs. **Pause withdrawals** stops new submissions while fill monitoring continues. After selling or withdrawing manually, resuming checks exchange balances and reduces queued amounts that are no longer available. If you want to discard the queue altogether, stay paused and use **Clear queued amounts…** once there are no active withdrawals.
+**The Rust terminal app supports encrypted named Kraken accounts, agent order commands, fill monitoring with REST/WebSocket recovery, and configurable chunked withdrawals.** Withdrawals start paused. Use **7 Watch rules → E** to configure matching fills, verified destinations, chunks, cooldowns, reserves and fee caps; **N** sets up optional Telegram alerts; balances and orders refresh automatically. `moby --demo` remains completely separate. Automated tests use offline fixtures; a user-run market buy and automatic withdrawal has also completed on Kraken. See the [detailed user guide](MobyTUI/USER_GUIDE.md) and [release process](MobyTUI/RELEASING.md).
 
-Closing Moby stops monitoring. Saved queues survive a restart, but fills from while the app was closed are not added automatically: monitoring begins with the new run. See [pause, restart, and recovery behavior](docs/USER_GUIDE.md#pause-resume-and-restart).
+## Repository layout
 
-## Protect your backups
+```text
+Moby/
+├── MobyGUI/                 # Desktop app; npm commands run here
+├── MobyTUI/                 # Rust worker, CLI, TUI, tests and examples
+├── moby-plugin/             # Omarchy bar companion for the TUI worker
+├── Cargo.toml               # Rust workspace
+├── Cargo.lock               # Reproducible Rust dependency versions
+└── .github/workflows/       # Separate GUI/TUI packaging and project checks
+```
 
-There are three separate secrets: the **dashboard login password**, the **wallet password** that encrypts generated wallets, and the **encryption key in `.env`** used for API credentials and Telegram settings. The `.env` key cannot unlock your wallets or replace a forgotten wallet password.
+The applications have separate dependencies, runtime data, and release versions. They do not yet share an execution engine. Do not run two independent live withdrawal engines against the same exchange account.
 
-Back up `moby.db` and `.env` together after fully quitting the app, and keep the wallet password separately in a secure place. Verify wallet recovery before funding or deleting a generated wallet. See the [backup and recovery instructions](docs/USER_GUIDE.md#backups-and-recovery).
+## Development checks
+
+```sh
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+npm --prefix MobyGUI run test:run
+npm --prefix MobyGUI run build
+npm --prefix MobyGUI run test:smoke
+```

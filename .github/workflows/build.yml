@@ -23,6 +23,10 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    defaults:
+      run:
+        working-directory: MobyGUI
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,6 +36,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+          cache-dependency-path: MobyGUI/package-lock.json
 
       - name: Install Linux build deps
         if: matrix.platform == 'linux'
@@ -92,11 +97,11 @@ jobs:
         with:
           name: moby-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
-            release/*.dmg
-            release/*.zip
-            release/*.exe
-            release/*.AppImage
-            release/*.deb
+            MobyGUI/release/*.dmg
+            MobyGUI/release/*.zip
+            MobyGUI/release/*.exe
+            MobyGUI/release/*.AppImage
+            MobyGUI/release/*.deb
           if-no-files-found: ignore
 
   release:

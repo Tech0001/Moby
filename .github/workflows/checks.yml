@@ -1,0 +1,49 @@
+name: Project checks
+
+on:
+  pull_request:
+  push:
+    branches: [main, 'feat/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node moby-plugin/tests/model.test.cjs
+  gui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: MobyGUI
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: MobyGUI/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run test:run
+      - run: npm run build
+      - run: npm run test:smoke
+  tui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked --no-run
+      - run: sudo unshare --net sh -c 'ip link set lo up && exec runuser -u "$SUDO_USER" -- "$@"' sh "$(command -v cargo)" test --offline --workspace --locked
+      - run: cargo build --release --locked -p moby-tui
+      - run: sudo unshare --net sh -c 'ip link set lo up && python3 MobyTUI/scripts/smoke-launch.py target/release/moby'

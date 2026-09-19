@@ -1,0 +1,89 @@
+name: Release MobyTUI
+
+on:
+  push:
+    tags: ['tui-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    env:
+      CC: musl-gcc
+      RUSTFLAGS: '-C target-feature=+crt-static'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check release version
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: |
+          python3 - <<'PY'
+          import os, tomllib
+          with open('MobyTUI/Cargo.toml', 'rb') as source:
+              version = tomllib.load(source)['package']['version']
+          ref = os.environ['RELEASE_REF']
+          if ref.startswith('refs/tags/') and ref != f'refs/tags/tui-v{version}':
+              raise SystemExit(f'Tag must match Cargo.toml: tui-v{version}')
+          PY
+      - name: Install native static build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools binutils
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Compile tests
+        run: cargo test --workspace --locked --target '${{ matrix.target }}' --no-run
+      - name: Run tests with loopback only
+        run: >-
+          sudo --preserve-env=CC,RUSTFLAGS
+          unshare --net sh -c 'ip link set lo up && exec runuser -u "$SUDO_USER" -- "$@"'
+          sh "$(command -v cargo)" test --offline --workspace --locked --target '${{ matrix.target }}'
+      - name: Build executable
+        run: cargo build --release --locked -p moby-tui --target '${{ matrix.target }}'
+      - name: Check fresh setup in an isolated terminal
+        run: >-
+          sudo unshare --net sh -c 'ip link set lo up && python3 MobyTUI/scripts/smoke-launch.py "$1"'
+          sh 'target/${{ matrix.target }}/release/moby'
+      - name: Package executable and guides
+        run: python3 MobyTUI/scripts/package-release.py --target '${{ matrix.target }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: moby-tui-linux-${{ matrix.arch }}
+          path: dist/tui/*
+          if-no-files-found: error
+
+  release:
+    needs: linux
+    if: startsWith(github.ref, 'refs/tags/tui-v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: moby-tui-linux-*
+          path: dist/tui
+          merge-multiple: true
+      - name: Create draft prerelease with both Linux packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: >-
+          gh release create "$RELEASE_TAG" dist/tui/* --verify-tag
+          --draft --prerelease --title "MobyTUI ${RELEASE_TAG#tui-}"
+          --notes-file MobyTUI/RELEASE_NOTES.md

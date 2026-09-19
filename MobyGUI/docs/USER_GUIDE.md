@@ -13,6 +13,7 @@ The running version appears beside **Moby** at the top of the dashboard. After r
 Use Node.js 22 LTS and the native build prerequisites for your platform (a C/C++ compiler, Python, and the platform SDK). From your checkout:
 
 ```sh
+cd MobyGUI
 npm ci
 npm run build
 npx electron-builder --linux AppImage --x64 --publish never

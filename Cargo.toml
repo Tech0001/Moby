@@ -1,0 +1,7 @@
+[workspace]
+members = ["MobyTUI"]
+resolver = "3"
+
+[profile.release]
+lto = "thin"
+strip = true
